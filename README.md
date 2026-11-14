@@ -4,11 +4,11 @@
 
 # GuriMoon
 
-**An EVE Online server emulation project for client version 1931a - Red Moon Rising (2005) written in .Go**
+**An EVE Online server emulation project for client version 3913 - Red Moon Rising (2005) written in .Go**
 
-GuriMoon is a server emulator compatible with EVE Online's 2005 Red Moon Rising 1931a ‘Blood' client. The dawn of the titan shipline, and the last build featuring some of CCP/FC's more interesting design choices for EVE. All encapsulated in EVE Online's original graphics engine before its first major graphics overhaul with Trinity (2008). This is NOT the client, and it is not in the repo.
+GuriMoon is a server emulator compatible with EVE Online's 2005 Red Moon Rising 3913 ‘Blood' client. The dawn of the titan shipline, and the last build featuring some of CCP/FC's more interesting design choices for EVE. All encapsulated in EVE Online's original graphics engine before its first major graphics overhaul with Trinity (2008). This is NOT the client, and it is not in the repo.
 
-Originally a part of the EveClassic project started by PixelCatBurger, which was a broader initiative to create connectable emulators for multiple builds of EVE. (Yes, there's more.) GuriMoon is specifically focused on full restoration of EVE's 1931a version of Red Moon Rising. While also providing tools to give you the ability to modify and create your own experience to your preferences.
+Originally a part of the EveClassic project started by PixelCatBurglar, which was a broader initiative to create connectable emulators for multiple builds of EVE. (Yes, there's more.) GuriMoon is specifically focused on full restoration of EVE's 1931a version of Red Moon Rising. While also providing tools to give you the ability to modify and create your own experience to your preferences.
 
 Of course, EVEClassic and GuriMoon owe their existence to the original EVEmu project and community. The original developers of EVE Online server emulation tech as far back as 2005. The community initially tried to get Red Moon Rising emulated, but moved on to work on, and succeeded in emulating Crucible (2013). GuriMoon/EVEClassic is a .go rewrite of their original work.
 
@@ -127,7 +127,7 @@ I've not managed my own GitHub project before and thus not fully prepared to sta
 
 ## Special thanks
 
-**PixelCatBurger**
+**PixelCatBurglar**
 * Starter of EVEClassic project which GuriMoon inherits its foundation from.
 
 **EVEmu community**
