@@ -28,20 +28,21 @@
     "autoaccount": true,
     "role": 1073741826,
     "slashRoles": 262200
+    // GM role is 1073741887
   },
   "character": {
     "startBalance": 1000000
   },
   "rates": {
-    "skillTraining": 5.0,
+    "skillTraining": 1.0,
     "npcBounty": 1.0,
     "miningYield": 1.0,
     "lootDrop": 1.0,
     "playerDamage": 1.0,
     "npcDamage": 1.0,
-    "industrySpeed": 2.0,
-    "productionSpeed": 2.0,
-    "researchSpeed": 2.0,
+    "industrySpeed": 1.0,
+    "productionSpeed": 1.0,
+    "researchSpeed": 1.0,
     "missionReward": 1.0,
     "loyaltyPoints": 1.0,
     "standingGain": 1.0,
