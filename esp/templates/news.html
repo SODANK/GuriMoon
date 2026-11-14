@@ -1,0 +1,225 @@
+{{define "content"}}
+<h2>News Feed</h2>
+
+<details style="margin-bottom:12px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:#170d0d">
+  <summary style="cursor:pointer;color:#a78bfa;font-size:13px;font-weight:bold;user-select:none">Client Setup &mdash; Hosts File</summary>
+  <div style="color:#9ca3af;font-size:12px;margin-top:8px">
+    <p style="margin:0 0 6px">
+      The Blood 3913 client fetches news and billboard content from hardcoded hostnames.
+      To redirect these requests to your server, add entries to the <strong>hosts file</strong> on each client machine.
+    </p>
+    <p style="margin:0 0 4px"><strong>Hosts file location:</strong></p>
+    <ul style="margin:0 0 8px 18px">
+      <li><strong>Windows:</strong> <code>C:\Windows\System32\drivers\etc\hosts</code> (edit as Administrator)</li>
+      <li><strong>Linux / macOS:</strong> <code>/etc/hosts</code> (edit with sudo)</li>
+    </ul>
+    <p style="margin:0 0 4px"><strong>Add these lines</strong> (replace <code>SERVER_IP</code> with your server&rsquo;s IP, or <code>127.0.0.1</code> if running locally):</p>
+    <pre style="background:#221616;padding:8px;border-radius:4px;margin:0 0 8px;overflow-x:auto;color:#e6edf3"><code>SERVER_IP    myeve.eve-online.com
+SERVER_IP    img.eve.is</code></pre>
+    <ul style="margin:0 0 4px 18px;color:#9ca3af">
+      <li><code>myeve.eve-online.com</code> &mdash; news pages (<code>/mb/news.asp</code>), billboard ticker (<code>/mb/news-headlines.asp</code>), and billboard images (<code>/bitmaps/billboards/</code>)</li>
+      <li><code>img.eve.is</code> &mdash; character portraits used by WANTED billboard posters (<code>/serv.asp</code>, <code>/chr/serv.asp</code>)</li>
+    </ul>
+    <p style="margin:4px 0 0;color:#6b7280;font-size:11px">
+      The news server must listen on port 80 (the client URLs carry no port). Configured via <code>"newsListen": ":80"</code> in config.json. Restart the server after changing config.
+    </p>
+  </div>
+</details>
+
+<p style="color:#9ca3af;font-size:12px;margin-bottom:12px">
+  Articles are served to the game client at <code>/mb/news.asp</code> (character select screen)
+  and <code>/mb/news-headlines.asp</code> (billboard ticker).
+  The body is EVE-HTML — an old-HTML subset, <em>not</em> Markdown. Use the toolbar buttons below to insert tags.
+  Insert <code>&lt;!--more--&gt;</code> (the &#182; button) to cut the list view there with a "&raquo; read more" link.
+  Articles flagged <strong>Billboard Screen</strong> push their image onto in-space billboard screens
+  (upload square images, 512&times;512 works best; clients refresh within ~60s).
+</p>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="card">
+  <h3>{{if .Edit}}Edit Article #{{.Edit.ID}}{{else}}New Article{{end}}</h3>
+  <form method="POST" action="/news">
+    <input type="hidden" name="action" value="save">
+    <input type="hidden" name="newsID" value="{{if .Edit}}{{.Edit.ID}}{{else}}0{{end}}">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-bottom:12px">
+      <label>Title<input type="text" name="title" required value="{{if .Edit}}{{.Edit.Title}}{{end}}"></label>
+      <label>Author (reported by)<input type="text" name="author" placeholder="blank = The Scope" value="{{if .Edit}}{{.Edit.Author}}{{end}}"></label>
+      <label>Date<input type="datetime-local" name="publishDate" value="{{if .Edit}}{{.Edit.Date.Format "2006-01-02T15:04"}}{{else}}{{.Now.Format "2006-01-02T15:04"}}{{end}}"></label>
+      <label>Article image (uploaded below)
+        <select name="imageURL" id="imageURL">
+          <option value="">(none)</option>
+          {{$edit := .Edit}}
+          {{range .Images}}<option value="/img/{{.}}" {{if and $edit (eq $edit.ImageURL (printf "/img/%s" .))}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label>Billboard Ticker
+        <select name="showTicker">
+          <option value="1" {{if or (not .Edit) .Edit.ShowTicker}}selected{{end}}>Yes</option>
+          <option value="0" {{if and .Edit (not .Edit.ShowTicker)}}selected{{end}}>No</option>
+        </select>
+      </label>
+      <label>Billboard Screen (article image on billboards)
+        <select name="showBillboard">
+          <option value="0" {{if or (not .Edit) (not .Edit.ShowBillboard)}}selected{{end}}>No</option>
+          <option value="1" {{if and .Edit .Edit.ShowBillboard}}selected{{end}}>Yes</option>
+        </select>
+      </label>
+      <label>Section (The Scope desk)
+        <select name="section">
+          <option value="">(none)</option>
+          {{$sec := ""}}{{if .Edit}}{{$sec = .Edit.Section}}{{end}}
+          {{range .Sections}}<option value="{{.}}" {{if eq $sec .}}selected{{end}}>{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label>Corporation (logo beside the headline)
+        <input type="text" name="corpID" list="newsCorps" placeholder="corporation ID, blank = none"
+               value="{{if and .Edit .Edit.CorpID}}{{.Edit.CorpID}}{{end}}">
+        <datalist id="newsCorps">
+          {{range .Corps}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </datalist>
+      </label>
+      <label>Published
+        <select name="published">
+          <option value="1" {{if or (not .Edit) .Edit.Published}}selected{{end}}>Yes</option>
+          <option value="0" {{if and .Edit (not .Edit.Published)}}selected{{end}}>No</option>
+        </select>
+      </label>
+    </div>
+    <div id="evehtml-toolbar" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">
+      <button type="button" data-wrap="<b>|</b>" title="Bold"><b>B</b></button>
+      <button type="button" data-wrap="<i>|</i>" title="Italic"><i>I</i></button>
+      <button type="button" data-wrap="<u>|</u>" title="Underline"><u>U</u></button>
+      <button type="button" data-wrap="<font size=4>|</font>" title="Large text">A&#8593;</button>
+      <button type="button" data-wrap="<font size=2>|</font>" title="Small text">A&#8595;</button>
+      <button type="button" data-wrap="<font color=#4a9ce8>|</font>" title="EVE-blue text" style="color:#4a9ce8">A</button>
+      <button type="button" data-wrap="<center>|</center>" title="Center">&#8596;</button>
+      <button type="button" data-insert="<br>" title="Line break">BR</button>
+      <button type="button" data-insert="<hr>" title="Horizontal rule">HR</button>
+      <button type="button" data-wrap='<a href="/scope/story?id=1">|</a>' title="Link">Link</button>
+      <button type="button" data-insert='<img src="/img/myimage.jpg">' title="Inline image">Img</button>
+      <button type="button" data-insert="<!--more-->" title="Read-more cut point">&#182; more</button>
+      <button type="button" data-wrap="<ul><li>|</li></ul>" title="Bullet list">&#8226; List</button>
+    </div>
+    <label style="display:block;margin-bottom:12px">Body (EVE-HTML — tags: font b i u p br hr h1-h6 a img table ul ol center; no CSS/JS/Markdown)
+      <textarea name="body" id="newsBody" rows="10" style="width:100%;font-family:monospace">{{if .Edit}}{{.Edit.Body}}{{end}}</textarea>
+    </label>
+    <button type="submit">{{if .Edit}}Save Changes{{else}}Create Article{{end}}</button>
+    {{if .Edit}}<a href="/news" style="margin-left:8px">Cancel</a>{{end}}
+  </form>
+</div>
+
+<div class="card">
+  <h3>Images</h3>
+  <p style="color:#9ca3af;font-size:12px;margin-bottom:8px">
+    Uploaded files land in <code>data/news-images/</code> and are served to the client at <code>/img/&lt;filename&gt;</code>.
+    Use one as the article image (right-hand thumbnail), inline in the body via the <strong>Img</strong> toolbar button,
+    or on billboards via the <strong>Billboard Screen</strong> flag.
+  </p>
+  <ul style="color:#9ca3af;font-size:12px;margin:0 0 12px 18px">
+    <li><strong>Formats:</strong> JPG or PNG preferred; GIF works. BMP renders on news pages but cannot go on billboards.</li>
+    <li><strong>Article thumbnail:</strong> shown 170px wide in the news list — roughly square to 4:3 looks right, any size accepted.</li>
+    <li><strong>Inline body images:</strong> rendered at native pixel size in the client browser (~760px usable width at char select).</li>
+    <li><strong>Billboard screen:</strong> the server rescales the flagged article's image to a 512&times;512 baseline JPEG automatically (the 3D screen requires power-of-two textures). Upload square or near-square — non-square images get stretched to fit. In-space screens refresh within ~60s.</li>
+    <li><strong>WANTED portraits:</strong> separate system — drop <code>&lt;charID&gt;_256.jpg</code> files into <code>data/portraits/</code>; rescaled the same way.</li>
+  </ul>
+  <form method="POST" action="/news" enctype="multipart/form-data" class="inline-form">
+    <input type="file" name="imageFile" accept=".jpg,.jpeg,.png,.gif,.bmp" required>
+    <button type="submit">Upload</button>
+  </form>
+  {{if .Images}}
+  <table>
+    <thead><tr><th>Preview</th><th>Client URL</th><th>Actions</th></tr></thead>
+    <tbody>
+      {{range .Images}}
+      <tr>
+        <td><img src="/news-image/{{.}}" style="max-height:48px;max-width:120px"></td>
+        <td><code>/img/{{.}}</code></td>
+        <td>
+          <button type="button" class="btn-sm" onclick="document.getElementById('imageURL').value='/img/{{.}}'">Set as article image</button>
+          <button type="button" class="btn-sm" onclick="insertAtCursor('<img src=&quot;/img/{{.}}&quot;>')">Insert in body</button>
+          <form method="POST" action="/news" style="display:inline">
+            <input type="hidden" name="action" value="deleteImage">
+            <input type="hidden" name="imageName" value="{{.}}">
+            <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete image {{.}}?')">Del</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">No images uploaded yet.</p>
+  {{end}}
+</div>
+
+{{if .Articles}}
+<div class="card">
+  <h3>Articles ({{len .Articles}})</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Date</th>
+        <th>Title</th>
+        <th>Ticker</th>
+        <th>Billboard</th>
+        <th>Published</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Articles}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Date.Format "2006.01.02 15:04"}}</td>
+        <td><strong>{{.Title}}</strong></td>
+        <td>{{if .ShowTicker}}Yes{{else}}No{{end}}</td>
+        <td>{{if .ShowBillboard}}Yes{{else}}No{{end}}</td>
+        <td>{{if .Published}}Yes{{else}}<span style="color:#f87171">Draft</span>{{end}}</td>
+        <td>
+          <a href="/news?edit={{.ID}}" class="btn-sm">Edit</a>
+          <form method="POST" action="/news" style="display:inline">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="newsID" value="{{.ID}}">
+            <button type="submit" class="btn-sm btn-danger" onclick="return confirm('Delete article {{.ID}}?')">Del</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+<script>
+function insertAtCursor(text) {
+  var ta = document.getElementById('newsBody');
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = start + text.length;
+}
+document.getElementById('evehtml-toolbar').addEventListener('click', function (e) {
+  var btn = e.target.closest('button');
+  if (!btn) return;
+  var ta = document.getElementById('newsBody');
+  var start = ta.selectionStart, end = ta.selectionEnd;
+  var selected = ta.value.slice(start, end);
+  if (btn.dataset.wrap) {
+    var parts = btn.dataset.wrap.split('|');
+    var inserted = parts[0] + selected + parts[1];
+    ta.value = ta.value.slice(0, start) + inserted + ta.value.slice(end);
+    ta.focus();
+    if (selected) {
+      ta.selectionStart = start;
+      ta.selectionEnd = start + inserted.length;
+    } else {
+      ta.selectionStart = ta.selectionEnd = start + parts[0].length;
+    }
+  } else if (btn.dataset.insert) {
+    insertAtCursor(btn.dataset.insert);
+  }
+});
+</script>
+{{end}}

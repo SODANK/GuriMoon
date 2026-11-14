@@ -1,0 +1,163 @@
+{{define "content"}}
+<h2>Wars &amp; Bills</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  A war becomes shootable <b>24 hours after timeDeclared</b> and stays hot for 24 hours after a
+  retraction &mdash; both delays are client arithmetic on the row's own timestamps
+  (<code>IsWarInHostileState</code>), so the only lever that skips the arming delay is
+  backdating the declaration. CONCORD collects the declaration fee and a weekly continuation
+  bill from the aggressor; an unpaid war bill past its due date ends the war. CONCORD mails
+  every member of both sides on declaration and conclusion.
+</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if not .HooksLive}}
+<div class="alert" style="background:#3b2020;color:#fca5a5">Game server hooks are not wired — the page is read-only.</div>
+{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Wars</div><div class="value">{{len .Wars}}</div></div>
+  <div class="stat"><div class="label">Active</div><div class="value">{{.ActiveWars}}</div></div>
+  <div class="stat"><div class="label">Open bills</div><div class="value">{{len .Bills}}</div></div>
+  <div class="stat"><div class="label">Declaration fee</div><div class="value">{{formatISK .DeclCost}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Declare war</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Runs the full path an in-game declaration runs: validity checks, the fee out of the
+    declarer's wallet (the executor corp's, for an alliance) <b>to CONCORD</b> with refType-49
+    journal rows in both wallets, the war row, the OnWarChanged push, and CONCORD's letter to
+    every member of both sides. A corporation inside an alliance cannot be a party — the war
+    belongs to the alliance.
+  </p>
+  <form method="POST" action="/wars">
+    <input type="hidden" name="action" value="declare">
+    <table>
+      <tr><td style="width:160px;color:#6b7280">Declared by</td>
+          <td>
+            <select name="declaredByID" style="width:340px" required>
+              <option value="">— corporation or alliance —</option>
+              {{range .Alliances}}<option value="{{.AllianceID}}">[Alliance] {{.AllianceName}} &lt;{{.ShortName}}&gt;</option>{{end}}
+              {{range .Corps}}{{if not .AllianceID}}<option value="{{.CorporationID}}">[Corp] {{.CorporationName}} &lt;{{.TickerName}}&gt;</option>{{end}}{{end}}
+            </select>
+          </td></tr>
+      <tr><td style="color:#6b7280">Against</td>
+          <td>
+            <select name="againstID" style="width:340px" required>
+              <option value="">— corporation or alliance —</option>
+              {{range .Alliances}}<option value="{{.AllianceID}}">[Alliance] {{.AllianceName}} &lt;{{.ShortName}}&gt;</option>{{end}}
+              {{range .Corps}}{{if not .AllianceID}}<option value="{{.CorporationID}}">[Corp] {{.CorporationName}} &lt;{{.TickerName}}&gt;</option>{{end}}{{end}}
+            </select>
+          </td></tr>
+      <tr><td style="color:#6b7280">Hostile immediately</td>
+          <td><input type="checkbox" name="backdate" value="1">
+              <span style="font-size:11px;color:#6b7280">backdates timeDeclared past the client's 24h arming delay</span></td></tr>
+    </table>
+    <button type="submit" style="margin-top:10px">Declare war</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Wars ({{len .Wars}})</h3>
+  {{if .Wars}}
+  <table>
+    <tr><th>ID</th><th>Declared by</th><th>Against</th><th>State</th><th>Mutual</th><th>Actions</th></tr>
+    {{range .Wars}}
+    <tr>
+      <td>{{.WarID}}</td>
+      <td>{{if .DeclaredByName}}{{.DeclaredByName}}{{else}}{{.DeclaredByID}}{{end}}</td>
+      <td>{{if .AgainstName}}{{.AgainstName}}{{else}}{{.AgainstID}}{{end}}</td>
+      <td>
+        {{if not .Active}}<span style="color:#6b7280">concluded</span>
+        {{else if .Retracted.Valid}}<span style="color:#fbbf24">retracted — cooling off</span>
+        {{else if .HostileNow}}<span style="color:#fca5a5">hostile</span>
+        {{else}}<span style="color:#fbbf24">arming (24h)</span>{{end}}
+      </td>
+      <td>{{if eq .Mutual 1}}Yes{{else}}No{{end}}</td>
+      <td>
+        {{if .Active}}
+        <form method="POST" action="/wars" style="display:inline">
+          <input type="hidden" name="warID" value="{{.WarID}}">
+          {{if not .Retracted.Valid}}<button type="submit" name="action" value="retract">Retract</button>{{end}}
+          <input type="hidden" name="mutual" value="{{if eq .Mutual 1}}0{{else}}1{{end}}">
+          <button type="submit" name="action" value="mutual">{{if eq .Mutual 1}}Unset mutual{{else}}Make mutual{{end}}</button>
+          <button type="submit" name="action" value="finish">End now</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">No wars.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Open bills ({{len .Bills}})</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Who is owed follows the bill type: <b>war</b> and <b>alliance maintenance</b> bills are
+    CONCORD's; <b>rental</b> bills belong to the station-owning corporation. Paying moves real
+    ISK debtor&nbsp;&rarr;&nbsp;creditor with a journal row in each wallet; writing off voids
+    the claim without moving anything.
+  </p>
+  {{if .Bills}}
+  <table>
+    <tr><th>ID</th><th>Type</th><th>Debtor</th><th>Creditor</th><th>Amount</th><th>Due</th><th></th></tr>
+    {{range .Bills}}
+    <tr>
+      <td>{{.BillID}}</td>
+      <td>{{.TypeName}}</td>
+      <td>{{if .DebtorName}}{{.DebtorName}}{{else}}{{.DebtorID}}{{end}}</td>
+      <td>{{if .CreditorName}}{{.CreditorName}}{{else}}{{.CreditorID}}{{end}}</td>
+      <td style="text-align:right">{{formatISK .Amount}}</td>
+      <td>{{if .Overdue}}<span style="color:#fca5a5">overdue</span>{{else}}<span style="color:#9ca3af">open</span>{{end}}</td>
+      <td>
+        <form method="POST" action="/wars" style="display:inline">
+          <input type="hidden" name="billID" value="{{.BillID}}">
+          <button type="submit" name="action" value="paybill">Force pay</button>
+          <button type="submit" name="action" value="writeoff">Write off</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">No open bills.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Costs</h3>
+  <form class="inline-form" method="POST" action="/wars" style="margin-bottom:8px">
+    <input type="hidden" name="action" value="warsettings">
+    <label style="font-size:12px;color:#9ca3af">Declaration fee
+      <input type="number" name="declCost" value="{{printf "%.0f" .DeclCost}}" style="width:120px;text-align:right"> ISK
+    </label>
+    <label style="font-size:12px;color:#9ca3af">Weekly war bill
+      <input type="number" name="weeklyCost" value="{{printf "%.0f" .WeeklyCost}}" style="width:120px;text-align:right"> ISK
+    </label>
+    <label style="font-size:12px;color:#9ca3af">Max concurrent declarations
+      <input type="number" name="maxDecl" value="{{.MaxDecl}}" style="width:60px;text-align:right">
+    </label>
+    <button type="submit">Save</button>
+  </form>
+  <form class="inline-form" method="POST" action="/wars">
+    <input type="hidden" name="action" value="billsettings">
+    <label style="font-size:12px;color:#9ca3af">Bill grace period
+      <input type="number" name="graceDays" step="0.5" value="{{printf "%.4g" .GraceDays}}" style="width:70px;text-align:right"> days
+    </label>
+    <label style="font-size:12px;color:#9ca3af">Office rent / 30 days
+      <input type="number" name="officeRent" value="{{printf "%.0f" .OfficeRent}}" style="width:120px;text-align:right"> ISK
+    </label>
+    <button type="submit">Save</button>
+  </form>
+  <p style="font-size:11px;color:#6b7280;margin-top:8px">
+    No fee constant ships in this database (eveConstants has refWarFee and voteWar but no
+    amount), so these are server settings. Alliance maintenance is fixed at
+    const.allianceMembershipCost = 2,000,000 ISK per member corporation per week, to CONCORD.
+  </p>
+</div>
+{{end}}
+
+{{template "layout" .}}

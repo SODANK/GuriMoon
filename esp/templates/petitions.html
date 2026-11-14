@@ -1,0 +1,45 @@
+{{define "content"}}
+<h2>Petitions</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Open</div><div class="value" style="color:#ef4444">{{.Open}}</div></div>
+  <div class="stat"><div class="label">In action</div><div class="value" style="color:#f59e0b">{{.Claimed}}</div></div>
+  <div class="stat"><div class="label">Closed</div><div class="value" style="color:#22c55e">{{.Closed}}</div></div>
+</div>
+
+<div class="card">
+  <form class="search-form" method="GET" action="/petitions">
+    <select name="filter">
+      {{$cur := .Filter}}
+      {{range .Filters}}<option value="{{.}}" {{if eq $cur .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+    <button type="submit">Filter</button>
+  </form>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+    The in-game help desk (Help &rarr; Petition). A GM account (role bit 256) works the same rows from
+    the client's Claimed / GM Queue tabs; replies written here are signed CONCORD.
+  </p>
+
+  {{if .Petitions}}
+  <table>
+    <tr><th>ID</th><th>Subject</th><th>Petitioner</th><th>Category</th><th>Status</th><th>Created</th><th>Last activity</th></tr>
+    {{range .Petitions}}
+    <tr>
+      <td><a href="/petition/{{.PetitionID}}">#{{.PetitionID}}</a></td>
+      <td><a href="/petition/{{.PetitionID}}">{{.Subject}}</a></td>
+      <td><a href="/character/{{.PetitionerID}}">{{.Petitioner}}</a></td>
+      <td>{{.Category}}</td>
+      <td>{{.Status}}{{if .Updated}} <span style="color:#f59e0b">(updated)</span>{{end}}</td>
+      <td>{{.Created}}</td>
+      <td>{{.Touched}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>No petitions match.</p>
+  {{end}}
+</div>
+{{end}}

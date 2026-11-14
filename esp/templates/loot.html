@@ -1,0 +1,304 @@
+{{define "content"}}
+<h2>NPC Loot</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">NPC Groups</div><div class="value">{{len .Groups}}</div></div>
+  <div class="stat"><div class="label">Group Loot Entries</div><div class="value">{{.TotalEntries}}</div></div>
+  <div class="stat"><div class="label">NPCs w/ Specific Loot</div><div class="value">{{len .Overrides}}</div></div>
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
+<div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
+  <h3>Jump to a Specific NPC</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Search any NPC by name (officers, named rats) to author loot just for that one type.</p>
+  <div style="position:relative;max-width:480px">
+    <input type="text" id="npcSearch" placeholder="Search NPC types... (e.g. Gist Seraphim, Angel Warlord)" autocomplete="off" style="width:100%">
+    <div id="npcResults" class="ac-results"></div>
+  </div>
+</div>
+
+<div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
+  <h3 id="bulkTitle">Add an Item to ALL Groups</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Inserts one group-wide entry. Tag groups in the table below to target only those; <strong>with nothing tagged it hits every NPC group</strong>. Groups that already drop the item are skipped. Each drop table is a 100% budget, so the new item takes an <em>equal slice</em> of every table it lands on and the entries already there shrink to pay for it — set its real weight on the group page afterwards.</p>
+  <form method="POST" action="/loot" id="bulkForm">
+    <input type="hidden" name="action" value="addall">
+    <input type="hidden" name="itemTypeID" id="itemTypeID">
+    <input type="hidden" name="groupIDs" id="bulkGroupIDs">
+    <div style="position:relative;margin-bottom:8px">
+      <input type="text" id="itemSearch" placeholder="Search item to drop... (name or typeID)" autocomplete="off" style="width:100%">
+      <div id="itemResults" class="ac-results"></div>
+    </div>
+    <div class="inline-form" style="margin-bottom:0">
+      <label style="font-size:12px;color:#6b7280">Min <input type="number" name="minQty" value="1" min="1" style="width:64px"></label>
+      <label style="font-size:12px;color:#6b7280">Max <input type="number" name="maxQty" value="1" min="1" style="width:64px"></label>
+      <button type="submit" id="bulkBtn">Add to All Groups</button>
+      <span style="font-size:12px;color:#6b7280">A blueprint always drops as one <strong>copy</strong>, never an original; Min/Max are its runs.</span>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#fbbf24;margin-top:8px">
+      <input type="checkbox" name="commanderOnly" value="1"> Commander only — the item drops only when a <strong>commander</strong>-role rat in the group is killed
+    </label>
+    <div id="tagStatus" style="margin-top:8px;font-size:12px;color:#6b7280"></div>
+  </form>
+</div>
+</div>
+
+<div class="card">
+  <h3>NPC Groups</h3>
+  <form class="search-form" method="GET" action="/loot">
+    <input type="text" name="q" placeholder="Filter groups... (e.g. angel frigate)" value="{{.Query}}" style="width:320px">
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+      <input type="checkbox" name="withloot" value="1" {{if .OnlyWithLoot}}checked{{end}}> only groups with loot
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+  {{if .Groups}}
+  <div style="background:var(--win-deep);padding:12px;border-radius:4px;border:1px solid var(--line);margin:10px 0">
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <strong id="capTitle" style="font-size:13px">Set Max Drops on Tagged Groups</strong>
+      <form method="POST" action="/loot" id="capForm" style="display:flex;gap:8px;align-items:center;margin:0">
+        <input type="hidden" name="action" value="setcap">
+        <input type="hidden" name="groupIDs" id="capGroupIDs">
+        <input type="number" name="maxDrops" value="1" min="0" style="width:80px" title="0 clears the cap (uncapped)">
+        <button type="submit" id="capBtn" disabled>Set Cap on Tagged Groups</button>
+      </form>
+      <span style="font-size:12px;color:#6b7280">Tag rows below, then apply. 0 = uncapped.</span>
+    </div>
+    <p style="font-size:12px;color:#6b7280;margin:8px 0 0">
+      Caps how many entries actually drop per kill — when more roll than this, a random subset of this size survives.
+      Tags survive filter reloads and also target the item-add tool above.
+      <a href="#" id="tagAllShown">tag all {{len .Groups}} shown</a> · <a href="#" id="untagAll">clear tags</a>
+    </p>
+  </div>
+  <table>
+    <tr><th title="Tag groups to target them with the bulk tools above">Tag</th><th>Group</th><th>NPC Types</th><th>Loot Entries</th><th>Max Drops</th><th></th></tr>
+    {{range .Groups}}
+    <tr>
+      <td class="tagcell"><label title="Tag {{.GroupName}} for bulk add"><input type="checkbox" class="tagbox" data-gid="{{.GroupID}}" data-gname="{{.GroupName}}"></label></td>
+      <td><a href="/loot/group/{{.GroupID}}">{{.GroupName}}</a></td>
+      <td>{{.TypeCount}}</td>
+      <td>{{if .EntryCount}}<strong style="color:#6ee7b7">{{.EntryCount}}</strong>{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .MaxDrops}}{{.MaxDrops}}{{else}}<span style="color:#4b5563">uncapped</span>{{end}}</td>
+      <td><a href="/loot/group/{{.GroupID}}">Edit loot →</a></td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>No NPC groups match.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>NPCs with Type-Specific Loot</h3>
+  {{if .Overrides}}
+  <table>
+    <tr><th>NPC</th><th>Group</th><th>Specific Entries</th><th></th></tr>
+    {{range .Overrides}}
+    <tr>
+      <td><a href="/loot/npc/{{.TypeID}}">{{.TypeName}}</a></td>
+      <td>{{if .GroupID}}<a href="/loot/group/{{.GroupID}}">{{.GroupName}}</a>{{end}}</td>
+      <td>{{.EntryCount}}</td>
+      <td><a href="/loot/npc/{{.TypeID}}">Edit loot →</a></td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">None yet — use the NPC search above to declare drops for a specific rat (its group loot still applies on top).</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Rebalance Every Drop Table</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    <code>dropChance</code> is a <strong>relative weight</strong>, not an independent chance — a kill picks one entry per haul slot with probability <code>weight ÷ pool total</code>. Twenty entries authored at "10%" are 5% each; a "50%" entry beside them takes 21%, not half. Rescaling a whole pool by one factor changes nothing about what drops, it just makes the number on each row mean what it says.
+  </p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    This sweeps <strong>every</strong> NPC group and type override in the game and puts each role pool on a 100% budget. Commander-only entries are budgeted separately (they get one guaranteed pick on a commander kill). Nothing else changes — no entry is added, removed, or reordered, and every item keeps its exact share of its pool.
+  </p>
+  {{if .OffBudget}}
+  <p style="font-size:12px;color:#fbbf24;margin-bottom:8px">
+    <strong>{{.OffBudget}}</strong> pool{{if ne .OffBudget 1}}s{{end}} across <strong>{{.OffScopes}}</strong> drop table{{if ne .OffScopes 1}}s{{end}} don't add up to 100% right now, so their percentages are misleading.
+  </p>
+  {{else}}
+  <p style="font-size:12px;color:#6ee7b7;margin-bottom:8px">Every drop table already reads as a 100% budget.</p>
+  {{end}}
+  <form method="POST" action="/loot" id="normalizeAllForm" style="margin:0"
+        onsubmit="return confirm('Rescale every NPC drop table in the game to a 100% budget?\n\nThis rewrites the stored percentages but NOT the odds — each item keeps the same share of its pool, so no rat drops anything more or less often than it does now.');">
+    <input type="hidden" name="action" value="normalizeall">
+    <button type="submit">Rebalance All Drop Tables to 100%</button>
+  </form>
+</div>
+
+<style>
+.ac-results { position:absolute; top:100%; left:0; right:0; background:var(--win); border:1px solid var(--btn-hi); border-radius:4px; max-height:320px; overflow-y:auto; z-index:50; display:none; }
+.ac-results .ac-row { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line-soft); }
+.ac-results .ac-row:hover, .ac-results .ac-row.sel { background:var(--btn); }
+.ac-results .ac-sub { color:#6b7280; font-size:11px; }
+.ac-results .ac-unpub { color:#fbbf24; font-size:10px; border:1px solid #78551a; border-radius:3px; padding:0 4px; margin-left:6px; }
+/* Tag checkboxes: oversized hit target so tagging a long group list is quick. */
+td.tagcell { text-align:center; padding:0 }
+td.tagcell label { display:block; padding:10px 14px; cursor:pointer }
+input.tagbox { width:20px; height:20px; cursor:pointer; vertical-align:middle }
+</style>
+<script>
+// Generic autocomplete: fetches url+query, renders rows, arrow keys + Enter
+// select, Escape hides. pick(row) handles selection.
+function wireAC(inpID, boxID, url, renderRow, pick) {
+  const inp = document.getElementById(inpID);
+  const box = document.getElementById(boxID);
+  if (!inp || !box) return;
+  let timer = null, rows = [], sel = -1;
+  function render() {
+    box.innerHTML = '';
+    rows.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'ac-row' + (i === sel ? ' sel' : '');
+      d.innerHTML = renderRow(it);
+      d.onclick = () => pick(it, inp, box);
+      box.appendChild(d);
+    });
+    box.style.display = rows.length ? 'block' : 'none';
+  }
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    inp.style.borderColor = '';
+    const q = inp.value.trim();
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      const res = await fetch(url + encodeURIComponent(q));
+      rows = (await res.json()).slice(0, 30);
+      sel = -1;
+      render();
+    }, 200);
+  });
+  inp.addEventListener('keydown', e => {
+    if (box.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, rows.length - 1); render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
+    else if (e.key === 'Enter') { if (rows.length) { e.preventDefault(); pick(rows[sel >= 0 ? sel : 0], inp, box); } }
+    else if (e.key === 'Escape') box.style.display = 'none';
+  });
+  document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none'; });
+}
+
+wireAC('npcSearch', 'npcResults', '/region-spawns/npctypes/api?q=',
+  n => '<div>' + n.typeName + '</div><div class="ac-sub">' + n.group + ' · typeID ' + n.typeID + '</div>',
+  n => { window.location = '/loot/npc/' + n.typeID; });
+
+wireAC('itemSearch', 'itemResults', '/loot/items/api?q=',
+  it => {
+    const price = it.basePrice ? ' · ' + Math.round(it.basePrice).toLocaleString() + ' ISK' : '';
+    const unpub = it.published ? '' : ' <span class="ac-unpub">unpublished</span>';
+    return '<div>' + it.typeName + unpub + '</div><div class="ac-sub">' + it.group + ' · ' + it.category + price + '</div>';
+  },
+  (it, inp, box) => {
+    document.getElementById('itemTypeID').value = it.typeID;
+    inp.value = it.typeName;
+    inp.style.borderColor = '#22c55e';
+    box.style.display = 'none';
+  });
+
+// ── Group tagging ───────────────────────────────────────────────────────────
+// Tags live in sessionStorage so they survive filter reloads. The bulk-add
+// form targets tagged groups; with no tags it falls back to ALL groups.
+(function(){
+  const KEY = 'lootTags';
+  const load = () => { try { return JSON.parse(sessionStorage.getItem(KEY)) || {}; } catch { return {}; } };
+  const save = t => sessionStorage.setItem(KEY, JSON.stringify(t));
+
+  const title = document.getElementById('bulkTitle');
+  const btn = document.getElementById('bulkBtn');
+  const status = document.getElementById('tagStatus');
+  const hidden = document.getElementById('bulkGroupIDs');
+  const form = document.getElementById('bulkForm');
+  const capTitle = document.getElementById('capTitle');
+  const capBtn = document.getElementById('capBtn');
+  const capHidden = document.getElementById('capGroupIDs');
+  const capForm = document.getElementById('capForm');
+
+  function clearAll() {
+    sessionStorage.removeItem(KEY);
+    document.querySelectorAll('.tagbox').forEach(cb => cb.checked = false);
+    refresh();
+  }
+
+  function refresh() {
+    const tags = load();
+    const ids = Object.keys(tags);
+    hidden.value = ids.join(',');
+
+    // The cap action has no "every group" fallback — it needs an explicit
+    // selection, so the button stays disabled until something is tagged. The
+    // controls only exist when the filter matched at least one group.
+    if (capBtn) {
+      capHidden.value = ids.join(',');
+      capBtn.disabled = ids.length === 0;
+      capTitle.textContent = ids.length
+        ? 'Set Max Drops on ' + ids.length + ' Tagged Group' + (ids.length > 1 ? 's' : '')
+        : 'Set Max Drops on Tagged Groups';
+      capBtn.textContent = ids.length
+        ? 'Set Cap on ' + ids.length + ' Tagged Group' + (ids.length > 1 ? 's' : '')
+        : 'Set Cap on Tagged Groups';
+    }
+
+    if (ids.length === 0) {
+      title.textContent = 'Add an Item to ALL Groups';
+      btn.textContent = 'Add to All Groups';
+      status.innerHTML = 'No groups tagged — the item add hits <strong>every</strong> NPC group; the cap needs a selection.';
+      return;
+    }
+    title.textContent = 'Add an Item to ' + ids.length + ' Tagged Group' + (ids.length > 1 ? 's' : '');
+    btn.textContent = 'Add to ' + ids.length + ' Tagged Group' + (ids.length > 1 ? 's' : '');
+    const names = ids.map(id => tags[id]);
+    const shown = names.slice(0, 6).join(', ') + (names.length > 6 ? ' … +' + (names.length - 6) + ' more' : '');
+    status.innerHTML = 'Tagged: <strong style="color:#fbbf24">' + shown +
+      '</strong> &nbsp;<a href="#" id="clearTags">clear tags</a>';
+    document.getElementById('clearTags').onclick = e => { e.preventDefault(); clearAll(); };
+  }
+
+  document.querySelectorAll('.tagbox').forEach(cb => {
+    const tags = load();
+    if (tags[cb.dataset.gid]) cb.checked = true;
+    cb.addEventListener('change', () => {
+      const t = load();
+      if (cb.checked) t[cb.dataset.gid] = cb.dataset.gname;
+      else delete t[cb.dataset.gid];
+      save(t);
+      refresh();
+    });
+  });
+
+  // Tag every row the current filter shows — makes "cap all Angel frigates"
+  // one click instead of forty.
+  document.getElementById('tagAllShown')?.addEventListener('click', e => {
+    e.preventDefault();
+    const t = load();
+    document.querySelectorAll('.tagbox').forEach(cb => {
+      cb.checked = true;
+      t[cb.dataset.gid] = cb.dataset.gname;
+    });
+    save(t);
+    refresh();
+  });
+  document.getElementById('untagAll')?.addEventListener('click', e => { e.preventDefault(); clearAll(); });
+
+  form.addEventListener('submit', e => {
+    const n = Object.keys(load()).length;
+    const target = n > 0 ? n + ' tagged group' + (n > 1 ? 's' : '') : 'EVERY NPC group';
+    if (!confirm('Add this item as a drop to ' + target + '?')) e.preventDefault();
+  });
+
+  capForm?.addEventListener('submit', e => {
+    const n = Object.keys(load()).length;
+    if (n === 0) { e.preventDefault(); return; }
+    const v = capForm.querySelector('[name=maxDrops]').value;
+    const what = Number(v) === 0 ? 'clear the drop cap (uncapped)' : 'set max drops to ' + v;
+    if (!confirm('This will ' + what + ' on ' + n + ' tagged group' + (n > 1 ? 's' : '') + ', replacing any cap they have now. Continue?')) e.preventDefault();
+  });
+
+  refresh();
+})();
+</script>
+{{end}}

@@ -1,0 +1,315 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP — EVE Server Pages</title>
+<style id="esp-theme">{{themeCSS}}</style>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: #c5c8d0; display: flex; min-height: 100vh; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hi); text-decoration: underline; }
+
+/* Sidebar */
+.sidebar { width: 220px; background: var(--win-deep); border-right: 1px solid var(--line); padding: 0; flex-shrink: 0; }
+.sidebar-header { padding: 20px 16px; border-bottom: 1px solid var(--line); }
+.sidebar-header h1 { font-size: 18px; color: #e0e4ec; letter-spacing: 1px; }
+.sidebar-header small { color: #6b7280; font-size: 11px; }
+.sidebar-nav { padding: 12px 0; }
+.sidebar-nav .section { padding: 12px 16px 6px; font-size: 14px; font-weight: 700; text-transform: uppercase; color: #e6c27a; letter-spacing: 1.5px; cursor: pointer; user-select: none; }
+.sidebar-nav .section:hover { color: #ffe3a3; }
+.sidebar-nav .section::before { content: '\25BE'; display: inline-block; margin-right: 5px; transition: transform 0.12s; }
+.sidebar-nav .section.collapsed::before { transform: rotate(-90deg); }
+.sidebar-nav a.nav-hidden { display: none; }
+.sidebar-nav a { display: block; padding: 9px 16px 9px 24px; color: #cdd2dc; font-size: 15px; border-left: 3px solid transparent; }
+.sidebar-nav a:hover { background: var(--win-hover); color: #e0e4ec; text-decoration: none; }
+.sidebar-foot { border-top: 1px solid var(--line); padding: 8px 0; }
+.sidebar-foot a { display: block; padding: 9px 16px 9px 24px; color: #cdd2dc; font-size: 15px; }
+.sidebar-foot a:hover { background: var(--win-hover); color: #e0e4ec; text-decoration: none; }
+.sidebar-nav a.active { border-left-color: var(--accent); color: var(--accent); background: var(--win); }
+
+/* Main */
+.main { flex: 1; padding: 24px 32px; overflow-x: auto; }
+.main h2 { color: #e0e4ec; margin-bottom: 16px; font-size: 20px; }
+
+/* Cards */
+.card { background: var(--win); border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px; margin-bottom: 16px; }
+.card h3 { color: #e0e4ec; font-size: 14px; margin-bottom: 8px; }
+
+/* Stats row */
+.stats { display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+.stat { background: var(--win); border: 1px solid var(--line); border-radius: 6px; padding: 16px 20px; min-width: 160px; }
+.stat .label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+.stat .value { font-size: 24px; color: #e0e4ec; font-weight: 600; margin-top: 4px; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 8px 12px; background: var(--win-deep); color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--line); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+tr:hover td { background: var(--win); }
+
+/* Dense inline-edit grids. Every row carries form controls, so the default
+   cell padding plus a wrapped pair of action buttons doubles the row height
+   against a plain table. Keeps rows one control tall. */
+table.compact { max-width: 1200px; }
+table.compact th { padding: 6px 10px; }
+table.compact td { padding: 3px 10px; }
+table.compact input[type="text"], table.compact input[type="number"], table.compact select { padding: 4px 8px; }
+table.compact button { padding: 4px 10px; }
+/* Dense record listings: one line per row. Every stacked sub-line (a name over
+   its ID, a station over its system) becomes an inline dim span instead, and
+   long names ellipsize with the full text on title=. */
+table.rows th { padding: 5px 10px; }
+table.rows td { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+table.rows .sub { color: #6b7280; font-size: 11px; }
+table.rows .clip { display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+table.rows button { padding: 3px 8px; font-size: 11px; }
+table.rows input[type="number"], table.rows input[type="text"] { padding: 3px 6px; font-size: 11px; }
+td.actions { white-space: nowrap; }
+/* :not([class]) so a form that opted into its own layout (.inline-form) is
+   left alone — those are meant to break onto their own line. */
+td.actions form:not([class]) { display: inline; }
+td.actions button + button, td.actions form + form { margin-left: 4px; }
+
+/* Forms */
+.search-form { margin-bottom: 16px; display: flex; gap: 8px; }
+input[type="text"], input[type="number"] { background: var(--win); border: 1px solid var(--line); color: #e0e4ec; padding: 8px 12px; border-radius: 4px; font-size: 13px; }
+input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: var(--accent); }
+button, input[type="submit"] { background: var(--btn); color: #e0e4ec; border: 1px solid var(--btn-hi); padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+button:hover, input[type="submit"]:hover { background: var(--btn-hi); }
+select { background: var(--win); border: 1px solid var(--line); color: #e0e4ec; padding: 8px 12px; border-radius: 4px; font-size: 13px; }
+
+/* Alerts */
+.alert { padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 13px; }
+.alert-success { background: #0f2a1f; border: 1px solid #1a4731; color: #6ee7b7; }
+.alert-error { background: #2a0f0f; border: 1px solid #471a1a; color: #fca5a5; }
+
+/* Overview pages (dashboard.html, factories.html): tab strip, KPI strip, 12-column
+   panel grid, bars and column charts. Page-specific rules stay on the page. */
+.sx { --mfg:#e8a33d; --sci:#9b7bd4; --run:#fbbf24; --rdy:#6ee7b7; --dim:#6b7280; }
+.sx-top { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:4px; }
+.sx-top h2 { margin:0; }
+.sx-top .asof { margin-left:auto; font-size:12px; color:var(--dim); }
+.sx-lede { font-size:13px; color:var(--dim); margin:0 0 14px; }
+.sx-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+.sx-tabs a button { background:var(--win); border-color:var(--line); color:#9ca3af; }
+.sx-tabs a button .n { color:var(--dim); font-size:11px; margin-left:4px; }
+.sx-tabs a.on button { background:var(--btn-hi); border-color:var(--btn-hi); color:#e0e4ec; }
+.sx-tabs a:hover { text-decoration:none; }
+
+/* KPI strip: tiles share one row and wrap on a narrow window. */
+.sx-kpis { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:0;
+           background:var(--win); border:1px solid var(--line); border-radius:6px; margin-bottom:14px; overflow:hidden; }
+.sx-kpi { padding:12px 16px; border-left:1px solid var(--line); border-top:1px solid var(--line); margin:-1px 0 0 -1px; min-width:0; }
+.sx-kpi .label { font-size:10px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+.sx-kpi .big { font-size:24px; font-weight:600; color:#e0e4ec; line-height:1.15; margin-top:2px;
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sx-kpi .big small { font-size:12px; color:var(--dim); font-weight:400; }
+.sx-kpi .split { font-size:11px; color:#9ca3af; margin-top:3px; }
+.sx-kpi .split b { font-weight:600; }
+.sx-meter { height:5px; background:var(--bg); border:1px solid var(--line); border-radius:3px; overflow:hidden; margin:7px 0 3px; }
+.sx-meter div { height:100%; background:linear-gradient(90deg,var(--btn-hi),var(--accent)); }
+
+/* Panels sit on a 12-column grid so they use the whole window. */
+.sx-grid { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:14px; margin-bottom:14px; }
+.sx-p { background:var(--win); border:1px solid var(--line); border-radius:6px; padding:12px 14px; min-width:0; }
+.sx-p h3 { margin:0 0 2px; font-size:13px; color:#e0e4ec; display:flex; align-items:baseline; gap:8px; }
+.sx-p h3 .hint { margin-left:auto; font-size:11px; font-weight:400; color:var(--dim); }
+.sx-p .note { font-size:11px; color:var(--dim); margin:0 0 8px; }
+/* A column of panels in one grid cell; the last panel takes the leftover height. */
+.sx-stack { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.sx-stack > .sx-p:last-child { flex:1; }
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c6{grid-column:span 6}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
+@media (max-width:1500px){ .sx-kpis{grid-template-columns:repeat(4,minmax(0,1fr))} }
+@media (max-width:1350px){ .c3,.c4,.c5,.c7,.c8{grid-column:span 6} }
+@media (max-width:900px){ .c3,.c4,.c5,.c6,.c7,.c8{grid-column:span 12} .sx-kpis{grid-template-columns:repeat(2,minmax(0,1fr))} }
+
+.sx-p table { width:100%; }
+.sx-p th { padding:4px 8px; font-size:10px; }
+.sx-p td { padding:3px 8px; font-size:12px; white-space:nowrap; }
+.sx-p td.r, .sx-p th.r { text-align:right; }
+.sx-p td.name { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+.sx-p .sub { color:var(--dim); font-size:11px; }
+.sx-empty { color:var(--dim); font-size:12px; padding:8px 0; }
+
+/* Bars */
+.sx-bar { display:flex; height:9px; background:var(--bg); border:1px solid var(--line); border-radius:3px; overflow:hidden; min-width:60px; }
+.sx-bar i { display:block; height:100%; }
+.sx-bar .run { background:var(--run); } .sx-bar .rdy { background:var(--rdy); }
+.sx-bar .use { background:var(--accent); }
+.sx-bar .prog { background:var(--btn-hi); }
+.sx-bar .prog.ok { background:#1a4731; }
+
+/* Column charts: finish timeline and throughput. Bars stack upward inside a
+   fixed-height lane; a non-empty segment is never thinner than 2px. */
+.sx-cols { display:flex; align-items:flex-end; gap:2px; height:104px; border-bottom:1px solid var(--line); }
+.sx-col { flex:1; height:100%; display:flex; flex-direction:column-reverse; min-width:0; }
+.sx-col i { display:block; min-height:2px; }
+.sx-col .m { background:var(--mfg); } .sx-col .s { background:var(--sci); }
+.sx-cols.tall { height:190px; }
+.sx-col.pair { flex-direction:row; align-items:flex-end; gap:1px; }
+.sx-col.pair > span { flex:1; height:100%; display:flex; flex-direction:column-reverse; }
+.sx-col.pair > span.inst { opacity:.55; }
+.sx-col.today { background:color-mix(in srgb, var(--accent) 10%, transparent); }
+.sx-axis { display:flex; gap:2px; font-size:9px; color:var(--dim); margin-top:3px; }
+.sx-axis span { flex:1; text-align:center; min-width:0; overflow:hidden; }
+.sx-legend { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:#9ca3af; margin-top:6px; }
+.sx-legend .sw { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
+.sx-chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+.sx-chip { background:var(--bg); border:1px solid var(--line); border-radius:4px; padding:3px 8px; font-size:11px; color:#9ca3af; }
+.sx-chip b { color:#e0e4ec; }
+
+/* Inline forms */
+.inline-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.form-group { margin-bottom: 12px; }
+.form-group label { display: block; font-size: 11px; color: #6b7280; text-transform: uppercase; margin-bottom: 4px; }
+
+textarea { background: var(--win); border: 1px solid var(--line); color: #e0e4ec; padding: 8px 12px; border-radius: 4px; font-size: 13px; font-family: 'Consolas', monospace; width: 100%; }
+textarea:focus { outline: none; border-color: var(--accent); }
+pre { background: var(--bg); border: 1px solid var(--line); padding: 12px; border-radius: 4px; font-size: 12px; color: #9ca3af; overflow-x: auto; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>ESP</h1>
+    <small>EVE Server Pages</small>
+  </div>
+  <nav class="sidebar-nav">
+    <div class="section">Admin</div>
+    <a href="/accounts" {{if eq .Page "accounts"}}class="active"{{end}}>Accounts</a>
+    <a href="/bugs" {{if eq .Page "bugs"}}class="active"{{end}}>Bug Tracker</a>
+    <a href="/theme" {{if eq .Page "theme"}}class="active"{{end}}>Color Scheme</a>
+    <a href="/console" {{if eq .Page "console"}}class="active"{{end}}>Console</a>
+    <a href="/content/packages" {{if eq .Page "content-packages"}}class="active"{{end}}>Content Packages</a>
+    <a href="/" {{if eq .Page "dashboard"}}class="active"{{end}}>Dashboard</a>
+    <a href="/forum" {{if eq .Page "forum"}}class="active"{{end}}>Forum</a>
+    <a href="/items" {{if eq .Page "items"}}class="active"{{end}}>Item Search</a>
+    <a href="/killboard" {{if eq .Page "killboard"}}class="active"{{end}}>Killboard</a>
+    <a href="/news" {{if eq .Page "news"}}class="active"{{end}}>News Feed</a>
+    <a href="/petitions" {{if eq .Page "petitions"}}class="active"{{end}}>Petitions</a>
+    <a href="/coverage" {{if eq .Page "coverage"}}class="active"{{end}}>RPC Coverage</a>
+    <div class="section">Agents</div>
+    <a href="/agents" {{if eq .Page "agents"}}class="active"{{end}}>Agents</a>
+    <a href="/agents/distribution" {{if eq .Page "agent-distribution"}}class="active"{{end}}>Mission Distribution</a>
+    <a href="/agents/services" {{if eq .Page "agent-services"}}class="active"{{end}}>Services</a>
+    <a href="/agents/dialogue" {{if eq .Page "agent-dialogue"}}class="active"{{end}}>Dialogue</a>
+    <a href="/missions" {{if eq .Page "missions"}}class="active"{{end}}>Missions</a>
+    <a href="/offers" {{if eq .Page "offers"}}class="active"{{end}}>Offers</a>
+    <a href="/rnd" {{if eq .Page "rnd"}}class="active"{{end}}>R&amp;D Research</a>
+    <div class="section">Characters</div>
+    <a href="/alliances" {{if eq .Page "alliances"}}class="active"{{end}}>Alliances</a>
+    <a href="/characters" {{if eq .Page "characters"}}class="active"{{end}}>Characters</a>
+    <a href="/corps" {{if eq .Page "corporations"}}class="active"{{end}}>Corporations</a>
+    <a href="/wars" {{if eq .Page "wars"}}class="active"{{end}}>Wars &amp; Bills</a>
+    <div class="section">Dungeon</div>
+    <a href="/editor/">3D Layout Editor</a>
+    <a href="/dungeons" {{if eq .Page "dungeons"}}class="active"{{end}}>Dungeon Logic</a>
+    <a href="/dungeon-spawners" {{if eq .Page "dungeon-spawners"}}class="active"{{end}}>Dungeon Spawners</a>
+    <a href="/dungeons/items" {{if eq .Page "dungeon_items"}}class="active"{{end}}>Object Browser</a>
+    <div class="section">Industry</div>
+    <a href="/industry/belts" {{if eq .Page "industry-belts"}}class="active"{{end}}>Asteroid Belts</a>
+    <a href="/industry/moons" {{if eq .Page "industry-moons"}}class="active"{{end}}>Moons</a>
+    <a href="/industry/blueprints" {{if eq .Page "blueprints"}}class="active"{{end}}>Blueprints</a>
+    <a href="/industry/factories" {{if eq .Page "factories"}}class="active"{{end}}>Science &amp; Industry</a>
+    <div class="section">Landscape</div>
+    <a href="/outposts" {{if eq .Page "outposts"}}class="active"{{end}}>Outposts/Conquerable</a>
+    <a href="/solarsystems" {{if eq .Page "solarsystems"}}class="active"{{end}}>Solar Systems</a>
+    <a href="/sov" {{if eq .Page "sov"}}class="active"{{end}}>Sovereignty</a>
+    <a href="/starbases" {{if eq .Page "starbases"}}class="active"{{end}}>Starbases</a>
+    <a href="/stargates" {{if eq .Page "stargates"}}class="active"{{end}}>Stargates</a>
+    <a href="/stations" {{if eq .Page "stations"}}class="active"{{end}}>Stations</a>
+    <div class="section">Market</div>
+    <a href="/market/contraband" {{if eq .Page "contraband"}}class="active"{{end}}>Contraband</a>
+    <a href="/couriers" {{if eq .Page "couriers"}}class="active"{{end}}>Couriers</a>
+    <a href="/escrows" {{if eq .Page "escrows"}}class="active"{{end}}>Escrows</a>
+    <a href="/market/supply" {{if eq .Page "market-supply"}}class="active"{{end}}>NPC Supply/Demand</a>
+    <div class="section">NPCs</div>
+    <a href="/npcs/new" {{if eq .Page "npc-new"}}class="active"{{end}}>Create NPC</a>
+    <a href="/npcs" {{if eq .Page "npcs"}}class="active"{{end}}>NPC Browser</a>
+    <a href="/loot" {{if eq .Page "loot"}}class="active"{{end}}>NPC Loot</a>
+    <a href="/spawner-rules" {{if eq .Page "spawner-rules"}}class="active"{{end}}>NPC Spawner Rules</a>
+    <a href="/region-spawns" {{if eq .Page "region-spawns"}}class="active"{{end}}>Region Spawns</a>
+    {{range moduleNav}}<div class="section">{{.Title}}</div>
+    {{range .Links}}<a href="{{.Path}}" {{if eq $.Page .Page}}class="active"{{end}}>{{.Label}}</a>
+    {{end}}{{end}}</nav>
+  <div class="sidebar-foot"><a href="/logout">Log out</a></div>
+</div>
+<div class="main">
+{{template "content" .}}
+</div>
+<script>
+// Keep scroll position across form submits: every ESP action is a classic
+// POST + re-render, which resets scroll to top. Save position when any form
+// submits, restore it when the same page renders again.
+(function(){
+  var key = 'espScroll:' + location.pathname;
+  // Capture phase so every submit is seen — saves, deletes, inline row forms.
+  document.addEventListener('submit', function(){
+    try {
+      sessionStorage.setItem(key, JSON.stringify({y: window.scrollY, t: Date.now()}));
+    } catch (e) {}
+  }, true);
+  try {
+    var saved = sessionStorage.getItem(key);
+    if (saved) {
+      sessionStorage.removeItem(key);
+      var s = JSON.parse(saved);
+      // Only restore right after a submit round-trip, not on later visits
+      // (a redirect elsewhere can leave a stale entry behind).
+      if (s && Date.now() - s.t < 60000) {
+        window.scrollTo(0, s.y);
+      }
+    }
+  } catch (e) {}
+})();
+
+// Collapsible sidebar categories. Every page load starts with all categories
+// collapsed except the one holding the current page; a click toggles one
+// open or shut for that page view only.
+(function(){
+  var nav = document.querySelector('.sidebar-nav');
+  if (!nav) return;
+
+  var groups = [];
+  nav.querySelectorAll('.section').forEach(function(sec){
+    // Collect the links belonging to this section (siblings until next header).
+    var links = [];
+    var el = sec.nextElementSibling;
+    while (el && !el.classList.contains('section')) {
+      if (el.tagName === 'A') links.push(el);
+      el = el.nextElementSibling;
+    }
+    groups.push({sec: sec, links: links});
+  });
+
+  // Section of the current page: the link marked active, else (sub-pages and
+  // pages with no active mark, e.g. the 3D editor) the longest href prefix of
+  // the path. "/" only matches itself or it would claim every page.
+  var current = null, best = -1, path = location.pathname;
+  groups.forEach(function(g){
+    g.links.forEach(function(a){
+      var href = a.getAttribute('href');
+      var score = -1;
+      if (a.classList.contains('active')) score = 1e6;
+      else if (href === path) score = href.length;
+      else if (href !== '/' && path.indexOf(href.replace(/\/?$/, '/')) === 0) score = href.length;
+      if (score > best) { best = score; current = g; }
+    });
+  });
+
+  groups.forEach(function(g){
+    function apply(collapsed){
+      g.sec.classList.toggle('collapsed', collapsed);
+      g.links.forEach(function(a){ a.classList.toggle('nav-hidden', collapsed); });
+    }
+    apply(g !== current);
+    g.sec.addEventListener('click', function(){
+      apply(!g.sec.classList.contains('collapsed'));
+    });
+  });
+})();
+</script>
+</body>
+</html>{{end}}

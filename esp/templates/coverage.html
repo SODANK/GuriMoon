@@ -1,0 +1,124 @@
+{{define "content"}}
+<style>
+.cov-tiles { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.cov-tile { background: var(--win); border: 1px solid var(--line); border-radius: 4px; padding: 10px 14px; min-width: 96px; }
+.cov-tile .n { font-size: 20px; font-weight: 600; color: #e0e4ec; }
+.cov-tile .l { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; }
+.cov-tile.bad .n { color: #f87171; }
+.cov-tile.silent .n { color: #fbbf24; }
+.cov-tile.ok .n { color: #4ade80; }
+.cov-tabs { margin-bottom: 12px; }
+.cov-tabs a { display: inline-block; padding: 4px 10px; margin-right: 4px; border: 1px solid var(--line); border-radius: 3px; color: #9ca3af; font-size: 12px; }
+.cov-tabs a.on { border-color: var(--accent); color: var(--accent); }
+tr.cov-bad td { background: #2a1416; }
+tr.cov-silent td { background: #2a2413; }
+.cov-badge { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; padding: 1px 6px; border-radius: 3px; }
+.cov-badge.unhandled { background: #7f1d1d; color: #fecaca; }
+.cov-badge.fallthrough, .cov-badge.stub { background: #78350f; color: #fde68a; }
+.cov-badge.handled { background: #14532d; color: #bbf7d0; }
+.cov-trace pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #d1d5db; background: var(--win-deep); padding: 8px; border-radius: 3px; max-height: 340px; overflow: auto; }
+.cov-ctx { font-size: 11px; color: #9ca3af; }
+.cov-note { font-size: 12px; color: #6b7280; margin: 6px 0 14px; }
+</style>
+
+<h2>RPC Coverage</h2>
+<p class="cov-note">
+  Every call the client has made to this server, and what the dispatcher did with it.
+  <strong>unhandled</strong> = no handler, client got an exception.
+  <strong>fallthrough</strong> / <strong>stub</strong> = the server answered <code>None</code> and the
+  client silently rendered nothing — the failure mode playtesting does not catch.
+</p>
+
+<div class="cov-tiles">
+  <div class="cov-tile"><div class="n">{{commas .Stats.Total}}</div><div class="l">Calls seen</div></div>
+  <div class="cov-tile"><div class="n">{{.Stats.Distinct}}</div><div class="l">Distinct</div></div>
+  <div class="cov-tile ok"><div class="n">{{.Stats.Handled}}</div><div class="l">Handled</div></div>
+  <div class="cov-tile bad"><div class="n">{{.Stats.Unhandled}}</div><div class="l">Unhandled</div></div>
+  <div class="cov-tile silent"><div class="n">{{add .Stats.Fallthrough .Stats.Stub}}</div><div class="l">Silent None</div></div>
+  <div class="cov-tile bad"><div class="n">{{.Stats.Tracebacks}}</div><div class="l">Tracebacks</div></div>
+  {{if .ExpectedTotal}}<div class="cov-tile silent"><div class="n">{{len .Missing}}</div><div class="l">Never called</div></div>{{end}}
+</div>
+
+<div class="cov-tabs">
+  <a href="/coverage?show=gaps" {{if eq .Show "gaps"}}class="on"{{end}}>Gaps</a>
+  <a href="/coverage?show=handled" {{if eq .Show "handled"}}class="on"{{end}}>Handled</a>
+  <a href="/coverage?show=all" {{if eq .Show "all"}}class="on"{{end}}>All</a>
+  <a href="/coverage/export.json">Export JSON</a>
+</div>
+
+<div class="card">
+  {{if .Rows}}
+  <table>
+    <tr><th>Service</th><th>Method</th><th>Outcome</th><th>Calls</th><th>Last seen</th></tr>
+    {{range .Rows}}
+    <tr class="{{.Class}}">
+      <td>{{.Service}}</td>
+      <td><code>{{.Method}}</code></td>
+      <td><span class="cov-badge {{.Outcome}}">{{.Outcome}}</span></td>
+      <td>{{commas .Count}}</td>
+      <td>{{.LastSeen}} UTC</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>{{if eq .Show "gaps"}}No gaps recorded — every call seen so far reached a real handler.{{else}}Nothing recorded yet. Connect a client and exercise the UI.{{end}}</p>
+  {{end}}
+</div>
+
+<h3>Never called</h3>
+{{if .ExpectedTotal}}
+<p class="cov-note">
+  {{.ExpectedTotal}} calls found by a static scan of the client scripts
+  (scanned {{.ExpectedAt}} UTC); these have never arrived. Each one is a UI surface
+  nobody has exercised yet — this list is the playtest to-do. <em>Sites</em> is how many
+  places in the client can make the call.
+</p>
+<div class="card">
+  {{if .Missing}}
+  <table>
+    <tr><th>Service</th><th>Method</th><th>Sites</th></tr>
+    {{range .Missing}}
+    <tr><td>{{.Service}}</td><td><code>{{.Method}}</code></td><td>{{.Sites}}</td></tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>Every call the client can make has been seen at least once.</p>
+  {{end}}
+</div>
+{{else}}
+<div class="card">
+  <p>No client scan loaded. This section lists calls the client can make that the server has
+  never seen. It needs <code>{{.ExpectedPath}}</code>, a static scan of the client's own
+  scripts, which this installation does not carry; the live ledger above works without it.</p>
+</div>
+{{end}}
+
+<h3>Client tracebacks</h3>
+<p class="cov-note">
+  Exceptions the client mailed back after a call succeeded — the server answered with the
+  wrong shape. <em>Preceding calls</em> is the last few RPCs on that connection, oldest first;
+  the culprit is usually the last one.
+</p>
+{{if .Traces}}
+{{range .Traces}}
+<div class="card cov-trace">
+  <strong>{{if .Culprit}}{{.Culprit}}{{else}}(no culprit text){{end}}</strong>
+  &nbsp;<span class="cov-ctx">×{{.Count}} · last {{.LastSeen}} UTC</span>
+  {{if .Context}}<div class="cov-ctx">Preceding calls: {{range $i, $c := .Context}}{{if $i}} → {{end}}<code>{{$c}}</code>{{end}}</div>{{end}}
+  {{if .Text}}<pre>{{.Text}}</pre>{{end}}
+</div>
+{{end}}
+{{else}}
+<div class="card"><p>No client exceptions recorded.</p></div>
+{{end}}
+
+<div class="card">
+  <form method="post" action="/coverage" onsubmit="return confirm('Clear the whole coverage ledger, including saved history?');">
+    <input type="hidden" name="action" value="reset">
+    <button type="submit">Reset ledger</button>
+    <span class="cov-note">Starts a fresh sweep. Saved history is overwritten on the next save.</span>
+  </form>
+</div>
+{{end}}
+
+{{template "layout" .}}

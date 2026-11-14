@@ -1,0 +1,68 @@
+{{define "content"}}
+<h2>Agent Offers</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  LP-store special offers shown in the client journal "Offers" tab and in agent
+  conversations. An offer trades reward items for a payment of items, ISK and
+  loyalty points. Who presents it is an allow-list per axis &mdash; corporation,
+  faction, division &mdash; and an offer that narrows none of them is presented
+  by every agent in the game.
+</p>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="card">
+  <h3>Create Offer</h3>
+  <form class="inline-form" method="POST" action="/offers">
+    <input type="text" name="name" placeholder="Offer name" required>
+    <button type="submit">Create</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Notice sweep</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:10px;max-width:900px">
+    Nothing else pushes an offer at a player &mdash; it sits in a journal tab most never open.
+    Every 30 minutes the sweep finds the offers each pilot could <em>already</em> take (the LP
+    they hold with that agent plus the ISK in their wallet, the same two numbers the accept
+    path checks) and rolls once per pilot. On a hit the agent mails them about one of them.
+    <b>One roll and at most one letter per pilot per sweep</b>, and the same offer will not come
+    round again for that pilot until the cooldown is up. Cost <em>items</em> are not checked
+    &mdash; an offer taking ore is something to go and mine for. Set the chance to 0 to turn the
+    sweep off.
+  </p>
+  <form class="inline-form" method="POST" action="/offers">
+    <input type="hidden" name="action" value="notices">
+    <label style="font-size:12px;color:#9ca3af">Chance per pilot
+      <input type="number" name="noticeChance" min="0" max="100" value="{{.NoticeChance}}" style="width:70px;text-align:right"> %
+    </label>
+    <label style="font-size:12px;color:#9ca3af">Re-notify cooldown
+      <input type="number" name="noticeCooldown" min="1" value="{{.NoticeCooldown}}" style="width:70px;text-align:right"> days
+    </label>
+    <button type="submit">Save</button>
+  </form>
+</div>
+
+{{if .Offers}}
+<div class="card">
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Presented by</th><th>LP Cost</th><th>ISK Cost</th><th>Rewards</th><th>Costs</th><th>Enabled</th></tr>
+    {{range .Offers}}
+    <tr>
+      <td>{{.Offer.OfferID}}</td>
+      <td><a href="/offer/{{.Offer.OfferID}}">{{.Offer.OfferName}}</a></td>
+      <td>{{.Scope}}</td>
+      <td>{{.Offer.LPCost}}</td>
+      <td>{{commas .Offer.ISKCost}}</td>
+      <td>{{len .Offer.Rewards}}</td>
+      <td>{{len .Offer.Costs}}</td>
+      <td>{{if .Offer.Enabled}}<span style="color:#6ee7b7">Yes</span>{{else}}<span style="color:#fca5a5">No</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{else}}
+<div class="card"><p>No offers found. Create one above.</p></div>
+{{end}}
+{{end}}
+
+{{template "layout" .}}

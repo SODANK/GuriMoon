@@ -1,0 +1,151 @@
+{{define "content"}}
+{{$k := .K}}
+<h2>{{$k.ShipTypeName}} &mdash; {{if $k.VictimName}}{{$k.VictimName}}{{else}}Unknown pilot{{end}}</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  {{$k.KillTime.UTC.Format "2006-01-02 15:04:05 UTC"}}
+  &nbsp;&middot;&nbsp; {{if $k.SolarSystemID}}<a href="/solarsystem/{{$k.SolarSystemID}}">{{$k.SystemName}}</a>{{else}}{{$k.SystemName}}{{end}}
+  ({{printf "%.1f" $k.Security}})
+  {{if $k.IsPod}}&nbsp;&middot;&nbsp;<span style="color:#fca5a5">capsule</span>{{end}}
+  {{if $k.VictimIsBot}}&nbsp;&middot;&nbsp;<span style="color:#6b7280">synthetic pilot</span>{{end}}
+  {{if eq $k.Source 1}}&nbsp;&middot;&nbsp;<span style="color:#6b7280">filed by a module</span>{{end}}
+</p>
+
+<div class="card">
+  <h3>Victim</h3>
+  <table>
+    <tr>
+      <td style="width:150px;vertical-align:top">
+        {{if $k.VictimCharID}}<img src="/portrait/{{$k.VictimCharID}}?size=128" width="128" height="128" alt="{{$k.VictimName}}">{{end}}
+      </td>
+      <td style="width:80px;vertical-align:top">
+        <img src="/typeicon/{{$k.ShipTypeID}}?size=64" width="64" height="64" alt="{{$k.ShipTypeName}}">
+      </td>
+      <td style="vertical-align:top">
+        <table>
+          <tr><td style="width:130px;color:#6b7280">Pilot</td>
+              <td>{{if $k.VictimCharID}}<a href="/character/{{$k.VictimCharID}}">{{$k.VictimName}}</a>{{else}}{{$k.VictimName}}{{end}}</td></tr>
+          <tr><td style="color:#6b7280">Corporation</td>
+              <td>{{if $k.VictimCorpID}}<a href="/corporation/{{$k.VictimCorpID}}">{{$k.VictimCorpName}}</a>{{else}}&mdash;{{end}}</td></tr>
+          <tr><td style="color:#6b7280">Alliance</td>
+              <td>{{if $k.VictimAllianceID}}<a href="/alliance/{{$k.VictimAllianceID}}">{{$k.VictimAllianceName}}</a>{{else}}&mdash;{{end}}</td></tr>
+          <tr><td style="color:#6b7280">Ship</td><td>{{$k.ShipTypeName}}</td></tr>
+          <tr><td style="color:#6b7280">Damage taken</td>
+              <td>{{commasf $k.DamageTaken}}
+                  <span style="font-size:11px;color:#6b7280">&nbsp;total applied &mdash; overshoots effective HP by whatever was repaired or overkilled</span></td></tr>
+          <tr><td style="color:#6b7280">Involved</td><td>{{$k.AttackerCount}}</td></tr>
+        </table>
+      </td>
+      <td style="width:220px;vertical-align:top">
+        <table>
+          <tr><td style="color:#6b7280">Hull</td><td style="text-align:right">{{formatISK $k.ShipValue}}</td></tr>
+          <tr><td style="color:#6b7280">Dropped</td><td style="text-align:right">{{formatISK $k.DroppedValue}}</td></tr>
+          <tr><td style="color:#6b7280">Destroyed</td><td style="text-align:right">{{formatISK $k.DestroyedValue}}</td></tr>
+          <tr><td><b>Total</b></td><td style="text-align:right"><b>{{formatISK $k.TotalValue}}</b></td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Involved parties ({{len $k.Attackers}})</h3>
+  {{if $k.Attackers}}
+  <table>
+    <tr><th></th><th>Pilot</th><th>Ship</th><th>Weapon</th><th style="text-align:right">Damage</th><th style="text-align:right">Share</th></tr>
+    {{range $k.Attackers}}
+    <tr{{if .FinalBlow}} style="background:#1f2a1a"{{end}}>
+      <td style="width:36px">
+        {{if and .CharID (not .IsNPC)}}<img src="/portrait/{{.CharID}}?size=64" width="32" height="32" alt="{{.Name}}">
+        {{else}}<img src="/typeicon/{{.ShipTypeID}}?size=32" width="32" height="32" alt="{{.ShipTypeName}}">{{end}}
+      </td>
+      <td>
+        {{if and .CharID (not .IsNPC)}}<a href="/character/{{.CharID}}">{{if .Name}}{{.Name}}{{else}}{{.CharID}}{{end}}</a>
+        {{else}}{{if .Name}}{{.Name}}{{else}}{{.ShipTypeName}}{{end}}{{end}}
+        {{if .FinalBlow}}<span style="color:#9acd6a;font-size:11px"> (final blow)</span>{{end}}
+        {{if .IsNPC}}<span style="color:#6b7280;font-size:11px"> [NPC]</span>{{end}}
+        <div style="font-size:11px;color:#6b7280">
+          {{if .CorpName}}{{.CorpName}}{{else}}&mdash;{{end}}{{if .AllianceName}} / {{.AllianceName}}{{end}}
+        </div>
+      </td>
+      <td>{{if .ShipTypeName}}{{.ShipTypeName}}{{else}}&mdash;{{end}}</td>
+      <td style="color:#9ca3af">{{if .WeaponName}}{{.WeaponName}}{{else}}&mdash;{{end}}</td>
+      <td style="text-align:right">{{commasf .Damage}}</td>
+      <td style="text-align:right;width:180px">
+        {{$share := 0.0}}{{if gt $k.DamageTaken 0.0}}{{$share = divf .Damage $k.DamageTaken}}{{end}}
+        <div style="display:inline-block;width:100px;height:8px;background:#333;vertical-align:middle">
+          <div style="width:{{printf "%.1f" (mulf $share 100.0)}}%;height:8px;background:#9acd6a"></div>
+        </div>
+        <span style="margin-left:6px">{{printf "%.1f" (mulf $share 100.0)}}%</span>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">
+    Nobody was recorded as an attacker. That is what a killmail filed outside the core's damage
+    paths looks like &mdash; nothing was watching the hits.
+  </p>
+  {{end}}
+</div>
+
+{{if .Bands}}
+<div class="card">
+  <h3>
+    Fitting ({{len $k.Items}})
+    <span style="font-weight:normal;font-size:12px;margin-left:10px">
+      <span style="color:#9acd6a">&#9632;</span> <span style="color:#6b7280">dropped {{formatISK $k.DroppedValue}}</span>
+      &nbsp;&nbsp;
+      <span style="color:#fca5a5">&#9632;</span> <span style="color:#6b7280">destroyed {{formatISK $k.DestroyedValue}}</span>
+    </span>
+  </h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    One list in fitting order &mdash; high, mid, low, rig, then the holds &mdash; not two tables
+    split by survival. A rack reads as a rack: whether a module dropped is a property of the row
+    and is carried by its colour, so the same three gyros do not come back as "two here, one over
+    there".
+  </p>
+  <table class="rows">
+    <tr>
+      <th style="width:8px"></th><th style="width:36px"></th><th>Item</th>
+      <th style="text-align:right;width:90px">Qty</th>
+      <th style="text-align:right;width:140px">Value</th>
+      <th style="width:110px">Fate</th>
+    </tr>
+    {{range .Bands}}
+    <tr>
+      <td colspan="3" style="background:#1c1010;color:#e0b060;font-weight:600;font-size:12px">{{.Label}}</td>
+      <td colspan="3" style="background:#1c1010;text-align:right;font-size:11px">
+        <span style="color:#9acd6a">{{formatISK .DroppedValue}}</span>
+        &nbsp;<span style="color:#6b7280">/</span>&nbsp;
+        <span style="color:#fca5a5">{{formatISK .DestroyedValue}}</span>
+      </td>
+    </tr>
+    {{range .Items}}
+    <tr>
+      <td style="background:{{if .Dropped}}#9acd6a{{else}}#fca5a5{{end}}"></td>
+      <td><img src="/typeicon/{{.TypeID}}?size=32" width="24" height="24" alt="{{.TypeName}}"></td>
+      <td style="color:{{if .Dropped}}#9acd6a{{else}}#fca5a5{{end}}">{{.TypeName}}</td>
+      <td style="text-align:right">{{if gt .Quantity 1}}{{commas .Quantity}}{{end}}</td>
+      <td style="text-align:right;color:{{if .Dropped}}#9acd6a{{else}}#fca5a5{{end}}">{{formatISK .TotalValue}}</td>
+      <td class="sub">{{if .Dropped}}dropped{{else}}destroyed{{end}}</td>
+    </tr>
+    {{end}}
+    {{end}}
+  </table>
+</div>
+{{else}}
+<div class="card">
+  <h3>Fitting</h3>
+  <p style="color:#6b7280">
+    Nothing aboard. Expected for a capsule; for a hull it means the loot roll never ran &mdash; the
+    death bailed out before it, and the killmail was filed anyway rather than lost.
+  </p>
+</div>
+{{end}}
+
+<p style="margin-top:14px;font-size:12px">
+  <a href="/killboard">&laquo; back to the killboard</a>
+  {{if $k.SolarSystemID}}&nbsp;&middot;&nbsp;<a href="/killboard?sys={{$k.SolarSystemID}}&amp;days=365">more kills in {{$k.SystemName}}</a>{{end}}
+  {{if $k.VictimCharID}}&nbsp;&middot;&nbsp;<a href="/killboard?involving={{$k.VictimCharID}}&amp;days=365">everything involving {{$k.VictimName}}</a>{{end}}
+</p>
+{{end}}

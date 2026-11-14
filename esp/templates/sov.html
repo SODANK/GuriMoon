@@ -1,0 +1,215 @@
+{{define "content"}}
+<h2>Sovereignty</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Regions</div><div class="value">{{len .Regions}}</div></div>
+  <div class="stat"><div class="label">Solar Systems</div><div class="value">{{.TotalSystems}}</div></div>
+  <div class="stat"><div class="label">Faction Sov Systems</div><div class="value">{{.TotalFactionSov}}</div></div>
+  <div class="stat"><div class="label">Alliance Sov Systems</div><div class="value">{{.TotalAllianceSov}}</div></div>
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
+<div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
+  <h3>Jump to a Solar System</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Search any system by name to open its region and set sov for just that system.</p>
+  <div style="position:relative;max-width:480px">
+    <input type="text" id="sysSearch" placeholder="Search solar systems... (e.g. Todaki, EC-P8R)" autocomplete="off" style="width:100%">
+    <div id="sysResults" class="ac-results"></div>
+  </div>
+</div>
+
+<div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
+  <h3 id="bulkTitle">Set Sov for ALL Regions</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag regions in the table below to target only those; <strong>with nothing tagged it repaints every region in the universe</strong>.</p>
+  <form method="POST" action="/sov" id="bulkForm" class="inline-form" style="margin-bottom:0">
+    <input type="hidden" name="action" value="bulkregion">
+    <input type="hidden" name="regionIDs" id="bulkRegionIDs">
+    <select name="owner" id="bulkOwner">
+      <option value="0">— No sovereignty —</option>
+      <optgroup label="NPC Factions">
+        {{range .Factions}}<option value="f:{{.FactionID}}">{{.FactionName}}</option>{{end}}
+      </optgroup>
+      {{if .Alliances}}
+      <optgroup label="Player Alliances">
+        {{range .Alliances}}<option value="a:{{.AllianceID}}">{{.AllianceName}}</option>{{end}}
+      </optgroup>
+      {{end}}
+    </select>
+    <button type="submit" id="bulkBtn">Apply to All Regions</button>
+  </form>
+  <div id="tagStatus" style="margin-top:8px;font-size:12px;color:#6b7280"></div>
+</div>
+</div>
+
+<div class="card">
+  <h3>Regions</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Broadstroke: pick an owner and Apply to repaint <strong>every system</strong> in that region. NPC factions paint region + constellations + systems; alliances write player sov claims (same data as <code>/claim</code>). Open a region to edit single systems.</p>
+  <form class="search-form" method="GET" action="/sov">
+    <input type="text" name="q" placeholder="Filter regions... (e.g. Forge, Curse)" value="{{.Query}}" style="width:320px">
+    <button type="submit">Filter</button>
+  </form>
+  {{if .Regions}}
+  <table>
+    <tr><th title="Tag regions to target them with the bulk apply above">Tag</th><th>Region</th><th>Region Faction</th><th>Systems</th><th>System Sov</th><th>Set Whole Region</th><th></th></tr>
+    {{range .Regions}}
+    <tr>
+      <td><input type="checkbox" class="tagbox" data-gid="{{.RegionID}}" data-gname="{{.RegionName}}"></td>
+      <td><a href="/sov/region/{{.RegionID}}">{{.RegionName}}</a></td>
+      <td>{{if .FactionName}}{{.FactionName}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{.SystemCount}}</td>
+      <td>
+        {{if .SystemsWithAlliance}}<span style="color:#fbbf24">{{.SystemsWithAlliance}} alliance</span>{{end}}
+        {{if and .SystemsWithAlliance .SystemsWithSov}} · {{end}}
+        {{if .SystemsWithSov}}
+          {{if eq .DistinctFactions 1}}<span style="color:#6ee7b7">{{.SystemFactionName}}</span> ({{.SystemsWithSov}}){{else}}<span style="color:#6ee7b7">{{.SystemsWithSov}} faction</span> · {{.DistinctFactions}} mixed{{end}}
+        {{end}}
+        {{if and (not .SystemsWithSov) (not .SystemsWithAlliance)}}<span style="color:#4b5563">none</span>{{end}}
+      </td>
+      <td>
+        <form method="POST" action="/sov" class="inline-form sov-region-form" style="margin:0" data-region="{{.RegionName}}" data-count="{{.SystemCount}}">
+          <input type="hidden" name="action" value="region">
+          <input type="hidden" name="regionID" value="{{.RegionID}}">
+          <select name="owner">
+            <option value="0">— No sovereignty —</option>
+            <optgroup label="NPC Factions">
+              {{range $.Factions}}<option value="f:{{.FactionID}}">{{.FactionName}}</option>{{end}}
+            </optgroup>
+            {{if $.Alliances}}
+            <optgroup label="Player Alliances">
+              {{range $.Alliances}}<option value="a:{{.AllianceID}}">{{.AllianceName}}</option>{{end}}
+            </optgroup>
+            {{end}}
+          </select>
+          <button type="submit">Apply</button>
+        </form>
+      </td>
+      <td><a href="/sov/region/{{.RegionID}}">Systems →</a></td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>No regions match.</p>
+  {{end}}
+</div>
+
+<style>
+.ac-results { position:absolute; top:100%; left:0; right:0; background:var(--win); border:1px solid var(--btn-hi); border-radius:4px; max-height:320px; overflow-y:auto; z-index:50; display:none; }
+.ac-results .ac-row { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line-soft); }
+.ac-results .ac-row:hover, .ac-results .ac-row.sel { background:var(--btn); }
+.ac-results .ac-sub { color:#6b7280; font-size:11px; }
+</style>
+<script>
+// System jump autocomplete → region page.
+(function(){
+  const inp = document.getElementById('sysSearch');
+  const box = document.getElementById('sysResults');
+  let timer = null, rows = [], sel = -1;
+  function render() {
+    box.innerHTML = '';
+    rows.forEach((h, i) => {
+      const d = document.createElement('div');
+      d.className = 'ac-row' + (i === sel ? ' sel' : '');
+      const sov = h.allianceName ? ' · ' + h.allianceName : (h.factionName ? ' · ' + h.factionName : '');
+      d.innerHTML = '<div>' + h.systemName + '</div><div class="ac-sub">' +
+        h.regionName + ' · sec ' + h.security.toFixed(1) + sov + '</div>';
+      d.onclick = () => { window.location = '/sov/region/' + h.regionID + '#sys-' + h.solarSystemID; };
+      box.appendChild(d);
+    });
+    box.style.display = rows.length ? 'block' : 'none';
+  }
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      const res = await fetch('/sov/systems/api?q=' + encodeURIComponent(q));
+      rows = (await res.json()).slice(0, 20);
+      sel = -1;
+      render();
+    }, 200);
+  });
+  inp.addEventListener('keydown', e => {
+    if (box.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, rows.length - 1); render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
+    else if (e.key === 'Enter') { if (rows.length) { e.preventDefault(); const h = rows[sel >= 0 ? sel : 0]; window.location = '/sov/region/' + h.regionID + '#sys-' + h.solarSystemID; } }
+    else if (e.key === 'Escape') box.style.display = 'none';
+  });
+  document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none'; });
+})();
+
+// Confirm before repainting a whole region.
+document.querySelectorAll('.sov-region-form').forEach(f => {
+  f.addEventListener('submit', e => {
+    const sel = f.querySelector('select[name=owner]');
+    const owner = sel.options[sel.selectedIndex].text;
+    if (!confirm('Set sovereignty of ALL ' + f.dataset.count + ' systems in ' + f.dataset.region + ' to: ' + owner + '?'))
+      e.preventDefault();
+  });
+});
+
+// ── Region tagging ──────────────────────────────────────────────────────────
+// Tags live in sessionStorage so they survive filter reloads. The bulk form
+// targets tagged regions; with no tags it falls back to ALL regions.
+(function(){
+  const KEY = 'sovRegionTags';
+  const load = () => { try { return JSON.parse(sessionStorage.getItem(KEY)) || {}; } catch { return {}; } };
+  const save = t => sessionStorage.setItem(KEY, JSON.stringify(t));
+
+  const title = document.getElementById('bulkTitle');
+  const btn = document.getElementById('bulkBtn');
+  const status = document.getElementById('tagStatus');
+  const hidden = document.getElementById('bulkRegionIDs');
+  const form = document.getElementById('bulkForm');
+
+  function refresh() {
+    const tags = load();
+    const ids = Object.keys(tags);
+    hidden.value = ids.join(',');
+    if (ids.length === 0) {
+      title.textContent = 'Set Sov for ALL Regions';
+      btn.textContent = 'Apply to All Regions';
+      status.innerHTML = 'No regions tagged — this repaints <strong>every</strong> region in the universe.';
+      return;
+    }
+    title.textContent = 'Set Sov for ' + ids.length + ' Tagged Region' + (ids.length > 1 ? 's' : '');
+    btn.textContent = 'Apply to ' + ids.length + ' Tagged Region' + (ids.length > 1 ? 's' : '');
+    const names = ids.map(id => tags[id]);
+    const shown = names.slice(0, 6).join(', ') + (names.length > 6 ? ' … +' + (names.length - 6) + ' more' : '');
+    status.innerHTML = 'Tagged: <strong style="color:#fbbf24">' + shown +
+      '</strong> &nbsp;<a href="#" id="clearTags">clear tags</a>';
+    document.getElementById('clearTags').onclick = e => {
+      e.preventDefault();
+      sessionStorage.removeItem(KEY);
+      document.querySelectorAll('.tagbox').forEach(cb => cb.checked = false);
+      refresh();
+    };
+  }
+
+  document.querySelectorAll('.tagbox').forEach(cb => {
+    const tags = load();
+    if (tags[cb.dataset.gid]) cb.checked = true;
+    cb.addEventListener('change', () => {
+      const t = load();
+      if (cb.checked) t[cb.dataset.gid] = cb.dataset.gname;
+      else delete t[cb.dataset.gid];
+      save(t);
+      refresh();
+    });
+  });
+
+  form.addEventListener('submit', e => {
+    const n = Object.keys(load()).length;
+    const target = n > 0 ? n + ' tagged region' + (n > 1 ? 's' : '') : 'EVERY region in the universe';
+    const sel = document.getElementById('bulkOwner');
+    const owner = sel.options[sel.selectedIndex].text;
+    if (!confirm('Set sovereignty of ' + target + ' to: ' + owner + '?')) e.preventDefault();
+  });
+
+  refresh();
+})();
+</script>
+{{end}}

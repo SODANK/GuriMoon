@@ -1,0 +1,112 @@
+{{define "content"}}
+<h2>Courier Contracts</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  Player and bot courier contracts. Bots post contracts for scattered assets
+  and accept contracts that pass their reward/jump filter. Collateral is real
+  ISK at risk &mdash; a failed contract forfeits it to the issuer.
+</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Total</div><div class="value">{{.Stats.Total}}</div></div>
+  <div class="stat"><div class="label">Posted</div><div class="value">{{.Stats.Posted}}</div></div>
+  <div class="stat"><div class="label">In transit</div><div class="value">{{.Stats.Accepted}}</div></div>
+  <div class="stat"><div class="label">Delivered</div><div class="value">{{.Stats.Delivered}}</div></div>
+  <div class="stat"><div class="label">Failed</div><div class="value">{{.Stats.Failed}}</div></div>
+  <div class="stat"><div class="label">Collateral at risk</div><div class="value">{{formatISK .Stats.TotalCollat}}</div></div>
+  <div class="stat"><div class="label">Bot issued</div><div class="value">{{.Stats.BotIssued}}</div></div>
+  <div class="stat"><div class="label">Bot accepted</div><div class="value">{{.Stats.BotAccepted}}</div></div>
+</div>
+
+<!-- Filter -->
+<div class="card" style="padding:8px 16px">
+  <span style="color:#6b7280;font-size:13px">Filter by state:</span>
+  <a href="/couriers" {{if eq .StateFilter -1}}style="font-weight:bold"{{end}}>All</a> &middot;
+  <a href="/couriers?state=0" {{if eq .StateFilter 0}}style="font-weight:bold"{{end}}>Posted</a> &middot;
+  <a href="/couriers?state=1" {{if eq .StateFilter 1}}style="font-weight:bold"{{end}}>Accepted</a> &middot;
+  <a href="/couriers?state=2" {{if eq .StateFilter 2}}style="font-weight:bold"{{end}}>Delivered</a> &middot;
+  <a href="/couriers?state=3" {{if eq .StateFilter 3}}style="font-weight:bold"{{end}}>Failed</a> &middot;
+  <a href="/couriers?state=4" {{if eq .StateFilter 4}}style="font-weight:bold"{{end}}>Expired</a> &middot;
+  <a href="/couriers?state=5" {{if eq .StateFilter 5}}style="font-weight:bold"{{end}}>Cancelled</a>
+</div>
+
+<!-- Settings -->
+<div class="card">
+  <h3>Settings</h3>
+  <form method="POST" action="/couriers">
+    <input type="hidden" name="action" value="settings">
+    <table>
+      <tr><td style="width:220px;color:#6b7280">Bot accept min ISK/jump</td>
+          <td><input type="number" name="acceptMinISKPerJump" placeholder="8000" style="width:120px"> ISK</td></tr>
+    </table>
+    <button type="submit" style="margin-top:8px">Save settings</button>
+  </form>
+</div>
+
+<!-- Contracts table -->
+<div class="card">
+  <h3>Contracts ({{len .Contracts}})</h3>
+  {{if .Contracts}}
+  <div style="overflow-x:auto">
+  <table>
+    <tr>
+      <th>ID</th>
+      <th>State</th>
+      <th>Issuer</th>
+      <th>Acceptor</th>
+      <th>Pickup</th>
+      <th>Drop</th>
+      <th>Reward</th>
+      <th>Collateral</th>
+      <th>Volume</th>
+      <th>Issued</th>
+      <th>Expires</th>
+      <th>Actions</th>
+    </tr>
+    {{range .Contracts}}
+    <tr>
+      <td>{{.MissionID}}</td>
+      <td>
+        {{if eq .State 0}}<span style="color:#60a5fa">{{.StateLabel}}</span>
+        {{else if eq .State 1}}<span style="color:#fbbf24">{{.StateLabel}}</span>
+        {{else if eq .State 2}}<span style="color:#34d399">{{.StateLabel}}</span>
+        {{else if eq .State 3}}<span style="color:#fca5a5">{{.StateLabel}}</span>
+        {{else}}<span style="color:#6b7280">{{.StateLabel}}</span>{{end}}
+      </td>
+      <td>{{.IssuerName}}{{if .IssuerIsBot}} <span style="color:#6b7280;font-size:11px">[bot]</span>{{end}}</td>
+      <td>{{if .AcceptorID}}{{.AcceptorName}}{{if .AcceptorIsBot}} <span style="color:#6b7280;font-size:11px">[bot]</span>{{end}}{{else}}<span style="color:#6b7280">&mdash;</span>{{end}}</td>
+      <td style="font-size:12px">{{.PickupStation}}</td>
+      <td style="font-size:12px">{{.DropStation}}</td>
+      <td style="text-align:right">{{formatISK .TotalReward}}</td>
+      <td style="text-align:right">{{formatISK .Collateral}}</td>
+      <td style="text-align:right">{{printf "%.0f" .Volume}} m&sup3;</td>
+      <td style="font-size:12px">{{unixTime .DateIssued}}</td>
+      <td style="font-size:12px">{{unixTime .DateExpires}}</td>
+      <td>
+        {{if eq .State 0}}
+        <form method="POST" action="/couriers" style="display:inline">
+          <input type="hidden" name="missionID" value="{{.MissionID}}">
+          <button type="submit" name="action" value="cancel" style="font-size:11px"
+                  onclick="return confirm('Cancel contract {{.MissionID}}?')">Cancel</button>
+        </form>
+        {{else if eq .State 1}}
+        <form method="POST" action="/couriers" style="display:inline">
+          <input type="hidden" name="missionID" value="{{.MissionID}}">
+          <button type="submit" name="action" value="complete" style="font-size:11px"
+                  onclick="return confirm('Force-complete contract {{.MissionID}}?')">Complete</button>
+          <button type="submit" name="action" value="fail" style="font-size:11px"
+                  onclick="return confirm('Force-fail contract {{.MissionID}}? Collateral will be forfeited.')">Fail</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  {{else}}
+  <p style="color:#6b7280">No contracts{{if ne .StateFilter -1}} in this state{{end}}.</p>
+  {{end}}
+</div>
+
+{{end}}

@@ -1,0 +1,293 @@
+{{define "content"}}
+<h2>{{.Info.SystemName}} <span style="color:#6b7280;font-size:14px;font-weight:normal">solar system {{.Info.SolarSystemID}} · <a href="/stargates">build a stargate</a></span></h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Security</div><div class="value">{{printf "%.2f" .Info.Security}}</div></div>
+  <div class="stat"><div class="label">Region</div><div class="value" style="font-size:16px">{{.Info.RegionName}}</div></div>
+  <div class="stat"><div class="label">Constellation</div><div class="value" style="font-size:16px">{{.Info.ConstellationName}}</div></div>
+  <div class="stat"><div class="label">Celestials</div><div class="value">{{len .Celestials}}</div></div>
+  <div class="stat"><div class="label">Belts</div><div class="value">{{.Info.BeltCount}}</div></div>
+  <div class="stat"><div class="label">Players In System</div><div class="value">{{len .Players}}</div></div>
+</div>
+
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+
+<div class="card" style="flex:0 0 auto">
+  <h3>Radial Map <span style="color:#6b7280;font-size:11px;font-weight:normal">top-down (x/z plane), log-scaled orbits</span></h3>
+  <svg id="sysmap" width="640" height="640" viewBox="0 0 640 640" style="background:#120707;border:1px solid var(--line);border-radius:6px;display:block"></svg>
+  <div id="maptip" style="display:none;position:fixed;background:var(--win);border:1px solid var(--btn-hi);border-radius:4px;padding:6px 10px;font-size:12px;pointer-events:none;z-index:100;max-width:280px"></div>
+  <div style="margin-top:8px;font-size:11px;color:#6b7280;display:flex;gap:12px;flex-wrap:wrap">
+    <span><span class="lg" style="background:#fbbf24"></span> Sun</span>
+    <span><span class="lg" style="background:var(--accent)"></span> Planet</span>
+    <span><span class="lg" style="background:#9ca3af"></span> Moon</span>
+    <span><span class="lg" style="background:#b4846c"></span> Belt</span>
+    <span><span class="lg" style="background:#f97316"></span> Stargate</span>
+    <span><span class="lg" style="background:#22d3ee"></span> Station</span>
+    <span><span class="lg" style="background:#e879f9"></span> Beacon</span>
+    <span><span class="lg" style="background:transparent;border:2px solid #6ee7b7;box-sizing:border-box"></span> Custom-seeded</span>
+  </div>
+</div>
+
+<div style="flex:1;min-width:380px">
+  <div class="card">
+    <h3>Seed a New Celestial</h3>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+      Inserts a row into <code>mapDenormalize</code>. The object becomes a real, warpable celestial
+      the next time the system loads. Seeded belts get asteroids; a <strong>Dungeon Entrance</strong>
+      is a beacon that spawns its linked dungeon room when a player warps to it.
+    </p>
+    <form method="POST" action="/solarsystem/{{.Info.SolarSystemID}}">
+      <input type="hidden" name="action" value="addCelestial">
+      <div class="form-group">
+        <label>Kind</label>
+        <select name="kind" id="seedKind">
+          <option value="planet">Planet</option>
+          <option value="moon">Moon</option>
+          <option value="belt">Asteroid Belt</option>
+          <option value="beacon">Beacon</option>
+          <option value="dungeon">Dungeon Entrance (warpable beacon)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select name="typeID" id="seedType">
+          {{range .SeedTypes}}<option value="{{.TypeID}}" data-group="{{.GroupID}}">{{.TypeName}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Name <span style="color:#6b7280">(blank = auto)</span></label>
+        <input type="text" name="name" maxlength="100" placeholder="e.g. {{.Info.SystemName}} X - Pirate Hideout" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Orbits</label>
+        <select name="parentID">
+          <option value="0">— System star —</option>
+          {{range .Parents}}<option value="{{.ItemID}}">{{.Name}} ({{.Group}})</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label>Distance from parent</label>
+          <input type="text" name="dist" id="seedDist" placeholder="e.g. 12.5" style="width:100%">
+        </div>
+        <div>
+          <label>Unit</label>
+          <select name="distUnit" id="seedUnit">
+            <option value="au">AU</option>
+            <option value="km">km</option>
+          </select>
+        </div>
+        <div style="flex:1">
+          <label>Angle ° <span style="color:#6b7280">(blank = random)</span></label>
+          <input type="text" name="angle" placeholder="0–360" style="width:100%">
+        </div>
+      </div>
+      <div class="form-group" style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label>Y offset km <span style="color:#6b7280">(off-plane, optional)</span></label>
+          <input type="text" name="yOffset" placeholder="0" style="width:100%">
+        </div>
+        <div style="flex:1">
+          <label>Radius m <span style="color:#6b7280">(blank = default)</span></label>
+          <input type="text" name="radius" placeholder="auto" style="width:100%">
+        </div>
+      </div>
+      <div id="dungeonFields" style="display:none">
+        <div class="form-group" style="display:flex;gap:8px">
+          <div style="flex:1">
+            <label>Dungeon</label>
+            <select name="dungeonVID">
+              {{range .Dungeons}}<option value="{{.DungeonVID}}">{{.Name}} ({{.RoomCount}} rooms)</option>{{end}}
+            </select>
+          </div>
+          <div>
+            <label>Start room #</label>
+            <input type="text" name="roomIdx" value="1" style="width:80px">
+          </div>
+        </div>
+        {{if not .Dungeons}}<p style="color:#fbbf24;font-size:12px">No dungeons authored yet — create one in the Dungeon Editor first.</p>{{end}}
+      </div>
+      <button type="submit">Seed Celestial</button>
+      {{if .Players}}<span style="color:#fbbf24;font-size:12px;margin-left:8px">System is loaded ({{len .Players}} inside) — appears after reload.</span>{{end}}
+    </form>
+  </div>
+
+  {{if .Players}}
+  <div class="card">
+    <h3>Players In System</h3>
+    <table>
+      <tr><th>Character</th></tr>
+      {{range .Players}}<tr><td><a href="/character/{{.CharID}}">{{.CharName}}</a></td></tr>{{end}}
+    </table>
+  </div>
+  {{end}}
+</div>
+</div>
+
+<div class="card">
+  <h3>Celestials</h3>
+  <table>
+    <tr><th>Name</th><th>Group</th><th>Type</th><th>Orbits</th><th>Dist (AU)</th><th>Radius (km)</th><th>Item ID</th><th></th></tr>
+    {{range .Celestials}}
+    <tr id="cel-{{.ItemID}}" {{if .IsCustom}}style="background:rgba(110,231,183,0.05)"{{end}}>
+      <td>{{.Name}}{{if .DungeonName}} <span style="color:#e879f9;font-size:11px">⤳ {{.DungeonName}}</span>{{end}}</td>
+      <td>{{.GroupName}}{{if .IsCustom}} <span style="color:#6ee7b7;font-size:11px">custom</span>{{end}}</td>
+      <td>{{.TypeID}}</td>
+      <td>{{if .OrbitName}}{{.OrbitName}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{printf "%.2f" .DistAU}}</td>
+      <td>{{commas .RadiusKM}}</td>
+      <td style="color:#6b7280">{{.ItemID}}</td>
+      <td>
+        {{if .IsCustom}}
+        <form method="POST" action="/solarsystem/{{$.Info.SolarSystemID}}" class="inline-form del-cel" style="margin:0" data-name="{{.Name}}">
+          <input type="hidden" name="action" value="deleteCelestial">
+          <input type="hidden" name="itemID" value="{{.ItemID}}">
+          <button type="submit" style="background:#7f1d1d">Delete</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+<style>
+.lg { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:4px; vertical-align:-1px; }
+tr.flash { animation: rowflash 1.6s; }
+@keyframes rowflash { 0% { background:var(--btn); } 100% { background:transparent; } }
+</style>
+<script>
+const CELS = {{.CelJSON}};
+const AU = 149597870700;
+const GROUP_COLOR = {6:'#fbbf24',7:'var(--accent)',8:'#9ca3af',9:'#b4846c',10:'#f97316',15:'#22d3ee',310:'#e879f9'};
+const GROUP_NAME  = {6:'Sun',7:'Planet',8:'Moon',9:'Asteroid Belt',10:'Stargate',15:'Station',310:'Beacon'};
+const GROUP_SIZE  = {6:13,7:7,8:3.5,9:3,10:5,15:5,310:4.5};
+
+(function(){
+  const svg = document.getElementById('sysmap');
+  const NS = 'http://www.w3.org/2000/svg';
+  const CX = 320, CY = 320, RMIN = 46, RMAX = 296;
+
+  const star = CELS.find(c => c.group === 6);
+  const sx = star ? star.x : 0, sy = star ? star.z : 0;
+  const byID = {};
+  CELS.forEach(c => byID[c.id] = c);
+
+  // Anchors are bodies laid out by true distance from the star: the star
+  // itself plus everything that orbits it (or has no parent). Children
+  // (moons, belts, stations) cluster around their nearest anchor ancestor.
+  function anchorOf(c) {
+    let cur = c, hops = 0;
+    while (cur && hops++ < 8) {
+      const p = byID[cur.orbit];
+      if (!p || p.group === 6) return cur;
+      cur = p;
+    }
+    return c;
+  }
+
+  const anchors = CELS.filter(c => c.group !== 6 && anchorOf(c) === c);
+  const dists = anchors.map(c => Math.hypot(c.x - sx, c.z - sy)).filter(d => d > 0);
+  const lmin = Math.log10(Math.min(...dists, 1e9)), lmax = Math.log10(Math.max(...dists, 1e10));
+  function rScreen(d) {
+    if (d <= 0) return 0;
+    const t = (Math.log10(d) - lmin) / Math.max(lmax - lmin, 0.001);
+    return RMIN + Math.max(0, Math.min(1, t)) * (RMAX - RMIN);
+  }
+
+  const pos = {};   // itemID -> [px, py]
+  if (star) pos[star.id] = [CX, CY];
+
+  // Pass 1: anchors + their orbit rings.
+  anchors.forEach(c => {
+    const dx = c.x - sx, dz = c.z - sy;
+    const d = Math.hypot(dx, dz), a = Math.atan2(dz, dx);
+    const r = rScreen(d);
+    pos[c.id] = [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+    if (c.group === 7) {
+      const ring = document.createElementNS(NS, 'circle');
+      ring.setAttribute('cx', CX); ring.setAttribute('cy', CY); ring.setAttribute('r', r);
+      ring.setAttribute('fill', 'none'); ring.style.stroke = 'var(--line)'; ring.setAttribute('stroke-width', '1');
+      svg.appendChild(ring);
+    }
+  });
+
+  // Pass 2: children clustered around their anchor, keeping true bearing.
+  const childIdx = {};
+  CELS.forEach(c => {
+    if (pos[c.id]) return;
+    const anc = anchorOf(c);
+    const ap = pos[anc.id] || [CX, CY];
+    const n = childIdx[anc.id] = (childIdx[anc.id] || 0) + 1;
+    const a = Math.atan2(c.z - anc.z, c.x - anc.x);
+    const rr = 14 + ((n - 1) % 4) * 7;
+    pos[c.id] = [ap[0] + rr * Math.cos(a), ap[1] + rr * Math.sin(a)];
+  });
+
+  const tip = document.getElementById('maptip');
+  function showTip(evt, c) {
+    const d = Math.hypot(c.x - sx, c.z - sy);
+    const parent = byID[c.orbit];
+    tip.innerHTML = '<strong>' + c.name + '</strong><br>' +
+      (GROUP_NAME[c.group] || ('Group ' + c.group)) + (c.custom ? ' · <span style="color:#6ee7b7">custom</span>' : '') +
+      (c.dungeon ? ' · <span style="color:#e879f9">dungeon link</span>' : '') + '<br>' +
+      (parent ? 'orbits ' + parent.name + '<br>' : '') +
+      (d / AU).toFixed(2) + ' AU from star · radius ' + Math.round(c.radius).toLocaleString() + ' m<br>' +
+      '<span style="color:#6b7280">x ' + c.x.toExponential(3) + ' · y ' + c.y.toExponential(3) + ' · z ' + c.z.toExponential(3) + '</span>';
+    tip.style.display = 'block';
+    tip.style.left = (evt.clientX + 14) + 'px';
+    tip.style.top = (evt.clientY + 10) + 'px';
+  }
+
+  // Draw order: big groups first so small markers stay clickable on top.
+  const order = CELS.slice().sort((a, b) => (GROUP_SIZE[b.group] || 4) - (GROUP_SIZE[a.group] || 4));
+  order.forEach(c => {
+    const p = pos[c.id];
+    if (!p) return;
+    const dot = document.createElementNS(NS, 'circle');
+    dot.setAttribute('cx', p[0]); dot.setAttribute('cy', p[1]);
+    dot.setAttribute('r', GROUP_SIZE[c.group] || 4);
+    dot.setAttribute('fill', GROUP_COLOR[c.group] || '#e0e4ec');
+    if (c.custom) { dot.setAttribute('stroke', '#6ee7b7'); dot.setAttribute('stroke-width', '2'); }
+    dot.style.cursor = 'pointer';
+    dot.addEventListener('mousemove', e => showTip(e, c));
+    dot.addEventListener('mouseleave', () => tip.style.display = 'none');
+    dot.addEventListener('click', () => {
+      const row = document.getElementById('cel-' + c.id);
+      if (row) { row.scrollIntoView({behavior: 'smooth', block: 'center'}); row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+    });
+    svg.appendChild(dot);
+  });
+})();
+
+// Seed form: filter type options by kind, toggle dungeon fields, unit default.
+(function(){
+  const kind = document.getElementById('seedKind');
+  const typeSel = document.getElementById('seedType');
+  const unit = document.getElementById('seedUnit');
+  const dun = document.getElementById('dungeonFields');
+  const KIND_GROUP = {planet: 7, moon: 8, belt: 9, beacon: 310, dungeon: 310};
+  const all = Array.from(typeSel.options);
+  function refresh() {
+    const g = KIND_GROUP[kind.value];
+    typeSel.innerHTML = '';
+    all.forEach(o => { if (+o.dataset.group === g) typeSel.appendChild(o); });
+    dun.style.display = kind.value === 'dungeon' ? 'block' : 'none';
+    unit.value = kind.value === 'planet' ? 'au' : 'km';
+    if (kind.value === 'moon') unit.value = 'km';
+  }
+  kind.addEventListener('change', refresh);
+  refresh();
+})();
+
+// Confirm deletes.
+document.querySelectorAll('.del-cel').forEach(f => {
+  f.addEventListener('submit', e => {
+    if (!confirm('Delete custom celestial "' + f.dataset.name + '"? This removes it from the map data.')) e.preventDefault();
+  });
+});
+</script>
+{{end}}

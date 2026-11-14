@@ -1,0 +1,104 @@
+{{define "content"}}
+<h2>Blueprints</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Every <code>invBlueprintTypes</code> row in the game. Open one to edit what it builds, how long it takes, what it consumes, and the ME/PE of the individual copies players hold.</p>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+
+{{with .Stats}}
+<div class="stats">
+  <div class="stat"><div class="label">Blueprint types</div><div class="value">{{commas .Types}}</div></div>
+  <div class="stat"><div class="label">Published</div><div class="value">{{commas .Published}}</div></div>
+  <div class="stat"><div class="label">Tech II</div><div class="value">{{commas .T2}}</div></div>
+  <div class="stat"><div class="label">Copies in game</div><div class="value">{{commas .Instances}}<span style="font-size:13px;color:#6b7280"> · {{commas .Copies}} BPC</span></div></div>
+  <div class="stat"><div class="label">Active jobs</div><div class="value">{{commas .ActiveJobs}}</div></div>
+</div>
+{{if or .Missing .Orphaned}}
+<div class="alert alert-error">
+  {{if .Missing}}<b>{{commas .Missing}}</b> blueprint item type{{if ne .Missing 1}}s{{end}} have no <code>invBlueprintTypes</code> row — they exist as items but nothing can be built from them. <a href="/industry/blueprints?missing=1">Show them</a>.{{end}}
+  {{if and .Missing .Orphaned}}<br>{{end}}
+  {{if .Orphaned}}<b>{{commas .Orphaned}}</b> blueprint type{{if ne .Orphaned 1}}s{{end}} point at a <code>productTypeID</code> that is not an item type. A job on one of those installs fine and then fails on delivery.{{end}}
+</div>
+{{end}}
+{{end}}
+
+<div class="card">
+  <form method="GET" action="/industry/blueprints" class="inline-form" style="margin-bottom:0">
+    <input type="text" name="q" value="{{.Query}}" placeholder="Blueprint or product name, or a typeID…" style="flex:1;min-width:260px">
+    <select name="category">
+      <option value="0">All categories</option>
+      {{$cat := .CategoryID}}
+      {{range .Categories}}
+      <option value="{{.CategoryID}}" {{if eq .CategoryID $cat}}selected{{end}}>{{.Name}} ({{.Count}})</option>
+      {{end}}
+    </select>
+    <select name="tech">
+      <option value="0" {{if eq .TechLevel 0}}selected{{end}}>Any tech level</option>
+      <option value="1" {{if eq .TechLevel 1}}selected{{end}}>Tech I</option>
+      <option value="2" {{if eq .TechLevel 2}}selected{{end}}>Tech II</option>
+    </select>
+    <label style="font-size:12px;color:#9ca3af"><input type="checkbox" name="owned" value="1" {{if .OwnedOnly}}checked{{end}}> Only ones players hold</label>
+    <label style="font-size:12px;color:#9ca3af"><input type="checkbox" name="missing" value="1" {{if .Missing}}checked{{end}}> Missing blueprint data</label>
+    <button type="submit">Search</button>
+    <a href="/industry/blueprints" style="font-size:12px">reset</a>
+  </form>
+</div>
+
+{{if .Truncated}}
+<div class="alert alert-error">Showing the first {{.Limit}} matches — narrow the search to see the rest.</div>
+{{end}}
+
+<div class="card">
+  {{if .Missing}}
+  <h3>Blueprint items with no blueprint data ({{len .Rows}})</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">These are category-9 item types with no <code>invBlueprintTypes</code> row. Seeding one gives it placeholder values (1 hour production, waste 10, max 10 runs) — set the real product and times on the detail page afterwards.</p>
+  <table class="compact">
+    <tr><th>Type</th><th style="width:90px">ID</th><th>Group</th><th style="width:90px">Published</th><th style="width:300px">Seed blueprint data</th></tr>
+    {{range .Rows}}
+    <tr>
+      <td style="font-weight:600;color:#e0e4ec">{{.BlueprintName}}</td>
+      <td style="color:#6b7280">{{.BlueprintTypeID}}</td>
+      <td style="color:#9ca3af">{{.ProductGroup}}</td>
+      <td>{{if eq .Published 1}}yes{{else}}<span style="color:#6b7280">no</span>{{end}}</td>
+      <td>
+        <form method="POST" class="inline-form" style="margin-bottom:0">
+          <input type="hidden" name="action" value="createType">
+          <input type="hidden" name="blueprintTypeID" value="{{.BlueprintTypeID}}">
+          <input type="number" name="productTypeID" placeholder="product typeID" style="width:130px">
+          <button type="submit">Seed</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="color:#6b7280">Nothing missing — every blueprint item type has data.</td></tr>
+    {{end}}
+  </table>
+  {{else}}
+  <h3>{{len .Rows}} blueprint{{if ne (len .Rows) 1}}s{{end}}</h3>
+  <table>
+    <tr>
+      <th>Blueprint</th><th>Builds</th><th>Category</th><th>T</th>
+      <th>Build time</th><th>Waste</th><th>Max runs</th><th>Materials</th><th>In game</th>
+    </tr>
+    {{range .Rows}}
+    <tr>
+      <td><a href="/industry/blueprint/{{.BlueprintTypeID}}" style="font-weight:600">{{.BlueprintName}}</a>
+          <span style="color:#4b5563;font-size:11px"> {{.BlueprintTypeID}}</span></td>
+      <td>{{if .ProductName}}{{.ProductName}}{{if gt .PortionSize 1}}<span style="color:#6b7280;font-size:11px"> ×{{.PortionSize}}/run</span>{{end}}{{else}}<span style="color:#f87171">missing type {{.ProductTypeID}}</span>{{end}}</td>
+      <td style="color:#9ca3af;font-size:12px">{{.ProductCategory}}{{if .ProductGroup}} › {{.ProductGroup}}{{end}}</td>
+      <td>{{.TechLevel}}</td>
+      <td>{{secs .ProductionTime}}</td>
+      <td>{{.WasteFactor}}%</td>
+      <td>{{.MaxProductionLimit}}</td>
+      <td {{if eq .MaterialCount 0}}style="color:#f87171"{{end}}>{{.MaterialCount}}</td>
+      <td>{{if .Instances}}{{.Instances}}{{if .ActiveJobs}} <span style="color:#fbbf24">· {{.ActiveJobs}} in job</span>{{end}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="9" style="color:#6b7280">No blueprints match.</td></tr>
+    {{end}}
+  </table>
+  {{end}}
+</div>
+{{end}}
+
+{{template "layout" .}}

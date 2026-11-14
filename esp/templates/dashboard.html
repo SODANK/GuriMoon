@@ -1,0 +1,335 @@
+{{define "content"}}
+<style>
+.dim { color:#6b7280; font-size:12px; }
+.tag { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;
+       padding:1px 6px; border-radius:3px; border:1px solid var(--line); color:#9ca3af; margin-right:6px; }
+.tag-docked { border-color:#1a4731; color:#6ee7b7; }
+.tag-space { border-color:var(--btn-hi); color:var(--accent-hi); }
+/* Economy ledger: faucets green, sinks red, a ruled total row under each group. */
+.sx .in { color:#6ee7b7; } .sx .out { color:var(--accent-hi); }
+.sx tr.grp td { color:#9ca3af; font-size:10px; text-transform:uppercase; letter-spacing:1px; padding-top:8px; }
+.sx tr.tot td { border-top:1px solid var(--line); font-weight:600; }
+.sx .kv td:first-child { color:#9ca3af; }
+.sx .kv td.r b { color:#e0e4ec; }
+</style>
+
+<div class="sx">
+<div class="sx-top">
+  <h2>Dashboard</h2>
+  {{if eq .View "overview"}}<span class="asof">as of {{unixTime .O.AsOfUnix}} &middot; <a href="/?refresh=1">Refresh</a></span>{{end}}
+</div>
+
+<div class="sx-tabs">
+  <a href="/" class="{{if eq .View "overview"}}on{{end}}"><button type="button">Overview</button></a>
+  <a href="/?view=players" class="{{if eq .View "players"}}on{{end}}"><button type="button">Players<span class="n">{{.Vitals.Online}}</span></button></a>
+</div>
+
+{{if eq .View "players"}}
+<div class="stats">
+  <div class="stat">
+    <div class="label">Players Online</div>
+    <div class="value">{{.PlayerCount}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Docked</div>
+    <div class="value">{{.Docked}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">In Space</div>
+    <div class="value">{{.InSpace}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Selecting</div>
+    <div class="value">{{.Selecting}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Uptime</div>
+    <div class="value">{{formatDuration .Uptime}}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Connected Players</h3>
+  {{if .Sessions}}
+  <table>
+    <tr>
+      <th>Character</th><th>Account</th><th>Corporation</th>
+      <th>Where</th><th>System</th><th>Connected</th><th>Address</th>
+    </tr>
+    {{range .Sessions}}
+    <tr>
+      <td>{{if .CharID}}<a href="/character/{{.CharID}}">{{.CharName}}</a>{{else}}<em>selecting...</em>{{end}}</td>
+      <td>{{.AccountName}} <span class="dim">({{.AccountID}})</span></td>
+      <td>{{if .CorpID}}<a href="/corporation/{{.CorpID}}">{{if .CorpName}}{{.CorpName}}{{else}}Corp {{.CorpID}}{{end}}</a>{{else}}-{{end}}</td>
+      <td>
+        {{if .Docked}}
+          <span class="tag tag-docked">docked</span>
+          <a href="/station/{{.StationID}}">{{.Location}}</a>
+        {{else if .SolarSystemID}}
+          <span class="tag tag-space">in space</span>
+        {{else}}
+          <span class="tag">-</span>
+        {{end}}
+      </td>
+      <td>{{if .SolarSystemID}}<a href="/solarsystem/{{.SolarSystemID}}">{{if .SystemName}}{{.SystemName}}{{else}}{{.SolarSystemID}}{{end}}</a>{{else}}-{{end}}</td>
+      <td>{{formatDuration (since .ConnectedAt)}} ago</td>
+      <td class="dim">{{.Addr}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="dim">No clients connected.</p>
+  {{end}}
+</div>
+
+{{else}}
+{{$v := .Vitals}}
+{{$live := .Sites}}
+{{with .O}}
+<p class="sx-lede">Everything happening on the shard right now and over the last day and week. Figures come from the database every 30 seconds; the vitals strip is read live. A rolebot counts as a player.</p>
+
+{{range .Warnings}}<div class="alert alert-error" style="margin-bottom:14px">Panel unavailable &mdash; {{.}}</div>{{end}}
+
+<div class="sx-kpis">
+  <div class="sx-kpi">
+    <div class="label">Online now</div>
+    <div class="big">{{$v.Online}}</div>
+    <div class="split"><b>{{$v.Docked}}</b> docked &middot; <b>{{$v.InSpace}}</b> in space{{if $v.Selecting}} &middot; {{$v.Selecting}} selecting{{end}}</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Pilots</div>
+    <div class="big">{{commas .Population.Pilots}}</div>
+    <div class="split"><b>+{{commas .Population.NewPilots.H24}}</b> today &middot; <b>+{{commas .Population.NewPilots.D7}}</b> this week &middot; {{commas .Population.Accounts}} accounts</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">ISK created, 24h</div>
+    <div class="big in" title="{{formatISK .Economy.FaucetTotal.H24}}">{{shortISK .Economy.FaucetTotal.H24}}</div>
+    <div class="split">7d <b title="{{formatISK .Economy.FaucetTotal.D7}}">{{shortISK .Economy.FaucetTotal.D7}}</b></div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">ISK destroyed, 24h</div>
+    <div class="big out" title="{{formatISK .Economy.SinkTotal.H24}}">{{shortISK .Economy.SinkTotal.H24}}</div>
+    <div class="split">net 24h <b class="{{if lt .Economy.Net.H24 0.0}}out{{else}}in{{end}}" title="{{formatISK .Economy.Net.H24}}">{{shortISK .Economy.Net.H24}}</b></div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Active orders</div>
+    <div class="big">{{commas .Market.ActiveOrders}}</div>
+    <div class="split"><b>{{commas .Market.BuyOrders}}</b> buy &middot; <b>{{commas .Market.SellOrders}}</b> sell &middot; {{commas .Market.PlayerOrders}} by pilots</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Jobs running</div>
+    <div class="big">{{commas .Industry.Stats.Running}}</div>
+    <div class="split"><b>{{commas .Industry.Stats.Ready}}</b> ready &middot; <b>{{commas .Industry.Delivered.H24}}</b> delivered today</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Kills, 24h</div>
+    <div class="big">{{commas .Combat.Kills.H24}}</div>
+    <div class="split"><b title="{{formatISK .Combat.ISKDestroyed.H24}}">{{shortISK .Combat.ISKDestroyed.H24}}</b> lost &middot; {{commas .Combat.Kills.D7}} this week</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Uptime</div>
+    <div class="big">{{formatDuration $v.Uptime}}</div>
+    <div class="split"><b>{{$v.LoadedSystems}}</b> systems loaded &middot; <b>{{$v.NPCsInSpace}}</b> NPCs in space</div>
+  </div>
+</div>
+
+<div class="sx-grid">
+  <div class="sx-p c6">
+    <h3>Economy <span class="hint">ISK created and destroyed</span></h3>
+    <p class="note">Wallet journal, classified by reference type. Transfers between wallets move ISK without creating or destroying it. The journal keeps the newest rows per character, so only these two windows are complete.</p>
+    {{if or .Economy.Faucets .Economy.Sinks}}
+    <table>
+      <tr><th>Line</th><th class="r">24h</th><th class="r">7d</th></tr>
+      {{if .Economy.Faucets}}
+      <tr class="grp"><td colspan="3">Created</td></tr>
+      {{range .Economy.Faucets}}
+      <tr><td title="{{.Rows.D7}} journal rows this week">{{.Label}}</td><td class="r in">{{formatISK .ISK.H24}}</td><td class="r in">{{formatISK .ISK.D7}}</td></tr>
+      {{end}}
+      <tr class="tot"><td>Faucets</td><td class="r in">{{formatISK .Economy.FaucetTotal.H24}}</td><td class="r in">{{formatISK .Economy.FaucetTotal.D7}}</td></tr>
+      {{end}}
+      {{if .Economy.Sinks}}
+      <tr class="grp"><td colspan="3">Destroyed</td></tr>
+      {{range .Economy.Sinks}}
+      <tr><td title="{{.Rows.D7}} journal rows this week">{{.Label}}</td><td class="r out">{{formatISK .ISK.H24}}</td><td class="r out">{{formatISK .ISK.D7}}</td></tr>
+      {{end}}
+      <tr class="tot"><td>Sinks</td><td class="r out">{{formatISK .Economy.SinkTotal.H24}}</td><td class="r out">{{formatISK .Economy.SinkTotal.D7}}</td></tr>
+      {{end}}
+      <tr class="grp"><td colspan="3">Balance</td></tr>
+      <tr class="tot"><td>Net ISK into the economy</td>
+        <td class="r {{if lt .Economy.Net.H24 0.0}}out{{else}}in{{end}}">{{formatISK .Economy.Net.H24}}</td>
+        <td class="r {{if lt .Economy.Net.D7 0.0}}out{{else}}in{{end}}">{{formatISK .Economy.Net.D7}}</td></tr>
+      <tr><td>Transfers between wallets</td><td class="r">{{formatISK .Economy.Transfers.H24}}</td><td class="r">{{formatISK .Economy.Transfers.D7}}</td></tr>
+      {{if .Economy.Unclassified.D7}}
+      <tr><td>Unclassified reference types</td><td class="r">{{formatISK .Economy.Unclassified.H24}}</td><td class="r">{{formatISK .Economy.Unclassified.D7}}</td></tr>
+      {{end}}
+    </table>
+    <div class="sx-chips">
+      <span class="sx-chip">Pilot wallets <b>{{formatISK .Population.PilotISK}}</b></span>
+      <span class="sx-chip">Corporation wallets <b>{{formatISK .Population.CorpISK}}</b></span>
+    </div>
+    {{else}}<div class="sx-empty">No wallet activity in the last seven days.</div>{{end}}
+  </div>
+
+  <div class="c6 sx-stack">
+  <div class="sx-p">
+    <h3>Market <span class="hint"><a href="/market/supply">NPC supply</a></span></h3>
+    <p class="note">Live order book and completed trades.</p>
+    <table class="kv">
+      <tr><td>Active orders</td><td class="r"><b>{{commas .Market.ActiveOrders}}</b></td></tr>
+      <tr><td>&nbsp;&nbsp;by pilots</td><td class="r">{{commas .Market.PlayerOrders}}</td></tr>
+      <tr><td>&nbsp;&nbsp;NPC seeded</td><td class="r">{{commas .Market.NPCOrders}}</td></tr>
+      <tr><td>Trades 24h / 7d</td><td class="r"><b>{{commas .Market.Trades.H24}}</b> / {{commas .Market.Trades.D7}}</td></tr>
+      <tr><td>Volume 24h</td><td class="r"><b>{{formatISK .Market.Volume.H24}}</b></td></tr>
+      <tr><td>Volume 7d</td><td class="r">{{formatISK .Market.Volume.D7}}</td></tr>
+      <tr><td><a href="/escrows">Escrows</a> posted</td><td class="r">{{.Market.Escrow.Posted}}</td></tr>
+      <tr><td><a href="/couriers">Couriers</a> open</td><td class="r">{{.Market.Courier.Posted}} posted &middot; {{.Market.Courier.Accepted}} accepted</td></tr>
+    </table>
+  </div>
+
+  <div class="sx-p">
+    <h3>Top traded <span class="hint">7 days, by ISK</span></h3>
+    <p class="note">Completed trades, NPC orders included.</p>
+    {{if .Market.TopTypes}}
+    <table>
+      <tr><th>Type</th><th class="r">ISK</th><th class="r">Units</th></tr>
+      {{range .Market.TopTypes}}
+      <tr><td class="name" title="{{.Name}}">{{.Name}}</td><td class="r"><b>{{formatISK .ISK}}</b></td><td class="r">{{commas .Units}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No trades this week.</div>{{end}}
+  </div>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Industry <span class="hint"><a href="/industry/factories">Science &amp; Industry</a></span></h3>
+    <p class="note">Assembly lines and the jobs on them.</p>
+    <div class="sx-meter" title="{{commas .Industry.Stats.BusyLines}} of {{commas .Industry.Stats.Lines}} lines busy"><div style="width:{{printf "%.3f" .Industry.LinesPct}}%"></div></div>
+    <table class="kv">
+      <tr><td>Lines in use</td><td class="r"><b>{{commas .Industry.Stats.BusyLines}}</b> / {{commas .Industry.Stats.Lines}} &middot; {{printf "%.1f" .Industry.LinesPct}}%</td></tr>
+      <tr><td>Running / ready</td><td class="r"><b>{{commas .Industry.Stats.Running}}</b> / {{commas .Industry.Stats.Ready}}</td></tr>
+      <tr><td>Manufacturing</td><td class="r">{{commas .Industry.Stats.MfgRunning}} running &middot; {{commas .Industry.Stats.MfgReady}} ready</td></tr>
+      <tr><td>Science</td><td class="r">{{commas .Industry.Stats.SciRunning}} running &middot; {{commas .Industry.Stats.SciReady}} ready</td></tr>
+      <tr><td>Delivered 24h / 7d</td><td class="r"><b>{{commas .Industry.Delivered.H24}}</b> / {{commas .Industry.Delivered.D7}}</td></tr>
+      <tr><td>Installers</td><td class="r">{{commas .Industry.Stats.Installers}}</td></tr>
+      <tr><td><a href="/industry/blueprints">Blueprints</a> in game</td><td class="r">{{commas .Industry.Blueprints.Instances}} &middot; {{commas .Industry.Blueprints.Copies}} copies</td></tr>
+      {{if .Industry.Stats.Overdue}}<tr><td class="out">Overdue, not swept</td><td class="r out">{{commas .Industry.Stats.Overdue}}</td></tr>{{end}}
+    </table>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Dungeons <span class="hint"><a href="/dungeon-spawners">Spawners</a></span></h3>
+    <p class="note">Open sites placed by the spawner rules.</p>
+    <table class="kv">
+      <tr><td>Open sites</td><td class="r"><b>{{commas .Sites.Open}}</b></td></tr>
+      <tr><td>Cleared, awaiting despawn</td><td class="r">{{commas .Sites.Cleared}}</td></tr>
+      {{if $live.Known}}
+      <tr><td>In loaded systems</td><td class="r">{{$live.Loaded}}</td></tr>
+      <tr><td>Site NPCs in space</td><td class="r">{{$live.LiveNPCs}}</td></tr>
+      {{else}}
+      <tr><td colspan="2" class="sub">No game server attached: live counts unavailable.</td></tr>
+      {{end}}
+    </table>
+    {{if .Sites.ByRegion}}
+    <div class="sx-chips">
+      {{range .Sites.ByRegion}}<span class="sx-chip">{{.Name}} <b>{{commas .N}}</b></span>{{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Combat <span class="hint"><a href="/killboard">Killboard</a></span></h3>
+    <p class="note">Kill reports with at least one capsuleer attacker; rat kills counted apart.</p>
+    <table class="kv">
+      <tr><td>Kills 24h / 7d</td><td class="r"><b>{{commas .Combat.Kills.H24}}</b> / {{commas .Combat.Kills.D7}}</td></tr>
+      <tr><td>Pods 24h / 7d</td><td class="r">{{commas .Combat.PodKills.H24}} / {{commas .Combat.PodKills.D7}}</td></tr>
+      <tr><td>ISK destroyed 24h</td><td class="r"><b>{{formatISK .Combat.ISKDestroyed.H24}}</b></td></tr>
+      <tr><td>ISK destroyed 7d</td><td class="r">{{formatISK .Combat.ISKDestroyed.D7}}</td></tr>
+      <tr><td>Killed by rats 24h / 7d</td><td class="r">{{commas .Combat.NPCOnlyKills.H24}} / {{commas .Combat.NPCOnlyKills.D7}}</td></tr>
+    </table>
+    {{if .Combat.TopKillers}}
+    <table style="margin-top:8px">
+      <tr><th>Top killers, 7d</th><th class="r">Kills</th><th class="r">ISK</th></tr>
+      {{range .Combat.TopKillers}}
+      <tr><td class="name"><a href="/character/{{.CharID}}">{{.Name}}</a> <span class="sub">{{.CorpName}}</span></td><td class="r"><b>{{commas .Count}}</b></td><td class="r">{{formatISK .ISK}}</td></tr>
+      {{end}}
+    </table>
+    {{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Missions <span class="hint"><a href="/missions">Templates</a></span></h3>
+    <p class="note">Agent missions held by pilots.</p>
+    <table class="kv">
+      <tr><td>Offered, not yet accepted</td><td class="r">{{commas .Missions.Offered}}</td></tr>
+      <tr><td>In progress</td><td class="r"><b>{{commas .Missions.Accepted}}</b></td></tr>
+      <tr><td>Completed 24h / 7d</td><td class="r"><b>{{commas .Missions.Completed.H24}}</b> / {{commas .Missions.Completed.D7}}</td></tr>
+      <tr><td>Failed 24h / 7d</td><td class="r">{{commas .Missions.Failed.H24}} / {{commas .Missions.Failed.D7}}</td></tr>
+      <tr><td>Rewards paid 24h</td><td class="r"><b>{{formatISK .Missions.RewardISK.H24}}</b></td></tr>
+      <tr><td>Rewards paid 7d</td><td class="r">{{formatISK .Missions.RewardISK.D7}}</td></tr>
+    </table>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Mining <span class="hint"><a href="/industry/belts">Asteroid belts</a></span></h3>
+    <p class="note">Persistent belt fields and ore changing hands on the market.</p>
+    <table class="kv">
+      <tr><td>Systems with a field</td><td class="r"><b>{{commas .Mining.Asteroids.Fields}}</b></td></tr>
+      <tr><td>Fields due to regenerate</td><td class="r">{{commas .Mining.Asteroids.Expired}}{{if .Mining.RegenDays}} <span class="sub">every {{.Mining.RegenDays}} d</span>{{else}} <span class="sub">regeneration off</span>{{end}}</td></tr>
+      <tr><td>Rocks touched</td><td class="r">{{commas .Mining.Asteroids.DepletionRows}}</td></tr>
+      <tr><td>Rocks mined out</td><td class="r">{{commas .Mining.Asteroids.MinedOut}}</td></tr>
+      <tr><td>Ore sold 24h</td><td class="r"><b>{{formatISK .Mining.OreSold.H24}}</b> <span class="sub">{{commas .Mining.OreUnits.H24}} units</span></td></tr>
+      <tr><td>Ore sold 7d</td><td class="r">{{formatISK .Mining.OreSold.D7}} <span class="sub">{{commas .Mining.OreUnits.D7}} units</span></td></tr>
+    </table>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Sovereignty &amp; structures</h3>
+    <p class="note">Claimed space and what holds it.</p>
+    <table class="kv">
+      <tr><td><a href="/sov">Claimed systems</a></td><td class="r"><b>{{commas .Sovereignty.ClaimedSystems}}</b> by {{commas .Sovereignty.ClaimingAlliances}} alliance{{if ne .Sovereignty.ClaimingAlliances 1}}s{{end}}</td></tr>
+      <tr><td><a href="/starbases">Starbases</a></td><td class="r"><b>{{commas .Sovereignty.Towers}}</b></td></tr>
+      {{range .Sovereignty.TowersByState}}<tr><td>&nbsp;&nbsp;{{.Name}}</td><td class="r">{{commas .N}}</td></tr>{{end}}
+      <tr><td><a href="/outposts">Outposts</a></td><td class="r">{{commas .Sovereignty.Outposts}}</td></tr>
+      <tr><td>Player corporations</td><td class="r">{{commas .Population.PlayerCorps}}</td></tr>
+      <tr><td><a href="/alliances">Alliances</a></td><td class="r">{{commas .Population.Alliances}}</td></tr>
+    </table>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Skills</h3>
+    <p class="note">Pilots with a skill in training.</p>
+    <table class="kv">
+      <tr><td>Training now</td><td class="r"><b>{{commas .Skills.Training}}</b> of {{commas .Population.Pilots}} pilots</td></tr>
+      <tr><td>Finishing within 24h</td><td class="r">{{commas .Skills.FinishingIn24h}}</td></tr>
+      <tr><td>Idle, nothing training</td><td class="r">{{commas .Skills.Idle}}</td></tr>
+      <tr><td>Queued skills</td><td class="r">{{commas .Skills.QueueRows}}</td></tr>
+    </table>
+    {{if .Skills.TopSkills}}
+    <div class="sx-chips">
+      {{range .Skills.TopSkills}}<span class="sx-chip">{{.Name}} <b>{{commas .Units}}</b></span>{{end}}
+    </div>
+    {{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Server vitals <span class="hint">live</span></h3>
+    <p class="note">Process and database pool, read as the page loads.</p>
+    <table class="kv">
+      <tr><td>Uptime</td><td class="r"><b>{{formatDuration $v.Uptime}}</b></td></tr>
+      <tr><td>Systems loaded</td><td class="r">{{$v.LoadedSystems}}</td></tr>
+      <tr><td>NPCs in space</td><td class="r">{{$v.NPCsInSpace}}</td></tr>
+      <tr><td>Goroutines</td><td class="r">{{$v.Goroutines}}</td></tr>
+      <tr><td>Heap in use</td><td class="r">{{printf "%.1f" $v.HeapMB}} MB</td></tr>
+      <tr><td>Database connections</td><td class="r">{{$v.DBOpen}} open &middot; {{$v.DBInUse}} in use</td></tr>
+      <tr><td>Connection waits</td><td class="r">{{commas $v.DBWaits}}</td></tr>
+      <tr><td>Go</td><td class="r">{{$v.GoVersion}}</td></tr>
+      {{if not $v.HasServer}}<tr><td colspan="2" class="sub">No game server attached.</td></tr>{{end}}
+    </table>
+  </div>
+</div>
+{{end}}
+{{end}}
+</div>
+{{end}}
+
+{{template "layout" .}}

@@ -1,0 +1,279 @@
+{{define "content"}}
+{{$c := .Corp}}
+<style>
+.logo-stack { position:relative; width:64px; height:64px; display:inline-block; vertical-align:middle; }
+.logo-stack i { position:absolute; inset:0; display:block;
+  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; }
+.shape-grid { display:flex; flex-wrap:wrap; gap:4px; max-height:260px; overflow-y:auto; margin-top:6px; }
+.shape-grid button { width:44px; height:44px; padding:0; background:#1a1010; border:1px solid var(--line); cursor:pointer; }
+/* The atlas art is a black glyph with an alpha mask, so a plain <img> is
+   near-invisible on this background — draw it as a mask instead. */
+.shape-thumb { display:block; width:40px; height:40px; margin:1px auto; background:#cbd5e1;
+  -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  -webkit-mask-position:center; mask-position:center; }
+.swatch { display:inline-block; width:12px; height:12px; border:1px solid #000; vertical-align:middle; margin-right:4px; }
+</style>
+
+<h2>
+  <span class="logo-stack" id="preview">
+    <i data-layer="1"></i><i data-layer="2"></i><i data-layer="3"></i>
+  </span>
+  {{$c.CorporationName}} &lt;{{$c.TickerName}}&gt;
+</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  Corporation {{$c.CorporationID}}{{if $c.IsNPC}} &mdash; NPC corporation, static content{{end}}.
+  A logo is not an image: it is three shape IDs and three colour IDs the client composites
+  itself (<code>uix.GetCorpLogo</code>). Nothing here can hand the client a picture.
+</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+{{if .Extra}}<p style="margin-bottom:12px;font-size:13px">
+  {{range .Extra}}<a href="{{.Href}}">{{.Label}}</a>{{if .Note}} <span style="color:#9ca3af">{{.Note}}</span>{{end}}&nbsp;&nbsp;{{end}}
+</p>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Pilots</div><div class="value">{{$c.Pilots}}</div></div>
+  <div class="stat"><div class="label">Stored count</div><div class="value">{{$c.StoredMembers}}</div></div>
+  <div class="stat"><div class="label">Member limit</div><div class="value">{{$c.MemberLimit}}</div></div>
+  <div class="stat"><div class="label">Balance</div><div class="value">{{formatISK $c.Balance}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Details</h3>
+  <form method="POST" action="{{.Self}}">
+    <input type="hidden" name="action" value="details">
+    <table>
+      <tr><td style="width:180px;color:#6b7280">Name</td>
+          <td><input type="text" name="corporationName" value="{{$c.CorporationName}}" required style="width:340px">
+              <span style="font-size:11px;color:#6b7280">also rewrites eveNames / eveStaticOwners, which is where the client resolves owner names</span></td></tr>
+      <tr><td style="color:#6b7280">Ticker</td>
+          <td><input type="text" name="tickerName" value="{{$c.TickerName}}" maxlength="8" style="width:100px"></td></tr>
+      <tr><td style="color:#6b7280">Description</td>
+          <td><textarea name="description" rows="3" style="width:100%">{{$c.Description}}</textarea></td></tr>
+      <tr><td style="color:#6b7280">URL</td>
+          <td><input type="text" name="url" value="{{$c.URL}}" style="width:340px"></td></tr>
+      <tr><td style="color:#6b7280">Tax rate</td>
+          <td><input type="number" name="taxRate" step="0.1" min="0" max="10" value="{{printf "%.1f" $c.TaxPct}}" style="width:90px;text-align:right"> %
+              <span style="font-size:11px;color:#6b7280">stored as a fraction; the client's own edit box caps at 10%</span></td></tr>
+      <tr><td style="color:#6b7280">CEO</td>
+          <td><input type="number" name="ceoID" value="{{$c.CEOID}}" style="width:140px">
+              {{if $c.CEOID}}<a href="/character/{{$c.CEOID}}">{{$c.CEOName}}</a>{{end}}</td></tr>
+      <tr><td style="color:#6b7280">HQ station</td>
+          <td><input type="number" name="stationID" value="{{$c.StationID}}" style="width:140px">
+              {{if $c.StationName}}<span style="color:#9ca3af">{{$c.StationName}}</span>{{end}}</td></tr>
+      <tr><td style="color:#6b7280">Member limit</td>
+          <td><input type="number" name="memberLimit" value="{{$c.MemberLimit}}" style="width:100px">
+              <span style="font-size:11px;color:#6b7280">recomputed from the CEO's leadership skills whenever the client calls UpdateCorporationAbilities</span></td></tr>
+      <tr><td style="color:#6b7280">Allowed races</td>
+          <td><input type="number" name="allowedMemberRaceIDs" value="{{$c.AllowedRaces}}" style="width:100px">
+              <span style="font-size:11px;color:#6b7280">race bitmask; 63 = all</span></td></tr>
+      {{range $i, $d := $c.Divisions}}
+      <tr><td style="color:#6b7280">Division {{add $i 1}}</td>
+          <td><input type="text" name="division{{add $i 1}}" value="{{$d}}" style="width:240px"></td></tr>
+      {{end}}
+    </table>
+    <button type="submit" style="margin-top:10px">Save details</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Logo</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Three layers, each a shape and a colour from the client's paintshop library. The client
+    only draws a layer whose shape ID is set, and reads the colour's diffuse out of its own
+    asset &mdash; so a colour with no diffuse (Thin Black) leaves the layer unpainted.
+    {{if not .HasArt}}<br><b>No client art found.</b> Set <code>esp.clientPath</code> to a client
+    install to see the shapes; the IDs below still save correctly without it.{{end}}
+  </p>
+  <form method="POST" action="{{.Self}}">
+    <input type="hidden" name="action" value="logo">
+    <table>
+      {{range .Layers}}
+      <tr>
+        <td style="width:80px;color:#6b7280">Layer {{.Index}}</td>
+        <td>
+          <select name="shape{{.Index}}" class="shape-select" data-layer="{{.Index}}" style="width:150px">
+            <option value="0">— none —</option>
+            {{$sel := .Shape}}
+            {{range $.Shapes}}
+            <option value="{{.GraphicID}}" {{if eq .GraphicID $sel}}selected{{end}}>Shape {{.Name}} ({{.GraphicID}}){{if not .HasArt}} — no art{{end}}</option>
+            {{end}}
+          </select>
+          <select name="color{{.Index}}" class="colour-select" data-layer="{{.Index}}" style="width:200px">
+            <option value="0">— none —</option>
+            {{$csel := .Colour}}
+            {{range $.Colours}}
+            <option value="{{.GraphicID}}" data-hex="{{.Hex}}" {{if eq .GraphicID $csel}}selected{{end}}>
+              {{.Name}}{{if not .Hex}} (no diffuse — unusable){{end}}
+            </option>
+            {{end}}
+          </select>
+          <span class="logo-stack" style="width:40px;height:40px"><i data-preview="{{.Index}}"></i></span>
+          <details style="display:inline-block;vertical-align:middle">
+            <summary style="font-size:11px;color:#9ca3af;cursor:pointer">browse shapes</summary>
+            <div class="shape-grid" data-for="{{.Index}}">
+              {{range $.Shapes}}
+              {{if .HasArt}}
+              <button type="button" data-shape="{{.GraphicID}}" title="{{.Name}} ({{.GraphicID}})">
+                <span class="shape-thumb" style="-webkit-mask-image:url(/logoshape/{{.GraphicID}}.png);mask-image:url(/logoshape/{{.GraphicID}}.png)"></span>
+              </button>
+              {{end}}
+              {{end}}
+            </div>
+          </details>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    <button type="submit" style="margin-top:10px">Save logo</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Alliance</h3>
+  <form class="inline-form" method="POST" action="{{.Self}}">
+    <input type="hidden" name="action" value="alliance">
+    <select name="allianceID">
+      <option value="0">— no alliance —</option>
+      {{range .Alliances}}
+      <option value="{{.AllianceID}}" {{if eq .AllianceID $c.AllianceID}}selected{{end}}>{{.AllianceName}} &lt;{{.ShortName}}&gt;</option>
+      {{end}}
+    </select>
+    <button type="submit">Set alliance</button>
+    {{if $c.AllianceID}}<a href="/alliance/{{$c.AllianceID}}" style="margin-left:8px">open alliance</a>{{end}}
+  </form>
+  <p style="font-size:11px;color:#6b7280;margin-top:8px">
+    The client carries allianceid in its session, so a member who is already logged in keeps the
+    old value until relog.
+  </p>
+</div>
+
+{{if not $c.IsNPC}}
+<div class="card">
+  <h3>Shares ({{.Issued}} issued)</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    A shareholder is any owner, pilot or corporation. The corporation's own treasury is a real
+    holding &mdash; it is what the corp wallet's Shares tab lists and what management gives out
+    from. A ballot weighs the voter's shares plus every holding of a corporation they are CEO
+    of, so <b>the CEO votes the treasury</b>{{if $c.CEOID}} (currently {{.CEOWeight}} shares
+    behind the CEO's vote){{end}}. Open votes are re-weighed on every change; closed ones never.
+  </p>
+  {{if .Holders}}
+  <table>
+    <tr><th>Holder</th><th>Kind</th><th style="text-align:right">Shares</th><th style="text-align:right">% issued</th><th style="text-align:right">Ballot weight</th></tr>
+    {{range .Holders}}
+    <tr>
+      <td>{{if eq .Kind "treasury"}}<b>Treasury</b>{{else if eq .Kind "corporation"}}<a href="/corporation/{{.HolderID}}">{{.Name}}</a>{{else}}<a href="/character/{{.HolderID}}">{{.Name}}</a>{{end}}</td>
+      <td>{{.Kind}}</td>
+      <td style="text-align:right">{{.Shares}}</td>
+      <td style="text-align:right">{{printf "%.1f" .Pct}}</td>
+      <td style="text-align:right">{{if .Weight}}{{.Weight}}{{else}}&ndash;{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="font-size:12px;color:#9ca3af">Nobody holds any shares of this corporation.</p>
+  {{end}}
+  <form class="inline-form" method="POST" action="{{.Self}}" style="margin-top:10px">
+    <input type="hidden" name="action" value="grant-shares">
+    Grant <input type="number" name="qty" min="1" value="100" style="width:90px;text-align:right">
+    from the treasury to <input type="text" name="owner" placeholder="pilot / corp name or ID" style="width:200px" required>
+    <button type="submit">Grant</button>
+  </form>
+  <form class="inline-form" method="POST" action="{{.Self}}" style="margin-top:6px">
+    <input type="hidden" name="action" value="issue-shares">
+    Issue <input type="number" name="qty" min="1" value="1000" style="width:90px;text-align:right">
+    new shares into the treasury
+    <button type="submit">Issue</button>
+    <span style="font-size:11px;color:#6b7280">in game this takes a passed &ldquo;Create Shares&rdquo; vote</span>
+  </form>
+</div>
+{{end}}
+
+{{if .Members}}
+<div class="card">
+  <h3>Members ({{len .Members}})</h3>
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Station</th><th>Balance</th></tr>
+    {{range .Members}}
+    <tr>
+      <td>{{.CharacterID}}</td>
+      <td><a href="/character/{{.CharacterID}}">{{.CharacterName}}</a></td>
+      <td>{{.StationName}}</td>
+      <td>{{formatISK .Balance}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+{{if $c.IsNPC}}
+<div class="card">
+  <h3>Delete corporation</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    NPC corporation &mdash; static content. Agents, stations, standings and the NPC market all
+    hang off it, so it cannot be deleted.
+  </p>
+</div>
+{{else if $c.Deleted}}
+<div class="card">
+  <h3>Delete corporation</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Already closed. The row is kept so employment history and killmails still resolve the name.
+  </p>
+</div>
+{{else}}
+<div class="card" style="border-left:3px solid var(--accent)">
+  <h3>Delete corporation</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Moves every pilot back to their previous NPC corp (members online now get the session change
+    immediately), leaves the alliance, finishes its wars, writes off its unpaid bills, and drops
+    its offices, applications, shares, titles, votes, sovereignty claims and chat channel.
+    The corporation row and its name are kept and marked closed, so employment history and
+    killmails still resolve &mdash; the same state the in-game close leaves behind.
+    {{if $c.Balance}}The {{formatISK $c.Balance}} in its wallet is forfeited.{{end}}
+    Starbases must be removed first; the delete refuses while any exist.
+  </p>
+  <form class="inline-form" method="POST" action="{{.Self}}">
+    <input type="hidden" name="action" value="delete">
+    <input type="text" name="confirm" placeholder="type DELETE" style="width:140px">
+    <button type="submit">Delete</button>
+  </form>
+</div>
+{{end}}
+
+<script>
+function paint() {
+  for (var layer = 1; layer <= 3; layer++) {
+    var shape = document.querySelector('.shape-select[data-layer="' + layer + '"]');
+    var colour = document.querySelector('.colour-select[data-layer="' + layer + '"]');
+    var hex = colour.options[colour.selectedIndex].getAttribute('data-hex') || '#9ca3af';
+    var url = shape.value > 0 ? 'url(/logoshape/' + shape.value + '.png)' : 'none';
+    var targets = [
+      document.querySelector('#preview i[data-layer="' + layer + '"]'),
+      document.querySelector('i[data-preview="' + layer + '"]')
+    ];
+    targets.forEach(function (el) {
+      if (!el) return;
+      el.style.webkitMaskImage = url;
+      el.style.maskImage = url;
+      el.style.background = shape.value > 0 ? hex : 'transparent';
+    });
+  }
+}
+document.querySelectorAll('.shape-select, .colour-select').forEach(function (el) {
+  el.addEventListener('change', paint);
+});
+document.querySelectorAll('.shape-grid button').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var layer = b.closest('.shape-grid').getAttribute('data-for');
+    document.querySelector('.shape-select[data-layer="' + layer + '"]').value = b.getAttribute('data-shape');
+    paint();
+  });
+});
+paint();
+</script>
+{{end}}
+
+{{template "layout" .}}

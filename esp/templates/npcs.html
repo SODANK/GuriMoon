@@ -1,0 +1,78 @@
+{{define "content"}}
+<h2 style="display:flex;align-items:center;gap:12px">
+  <span style="flex:1">NPC Browser</span>
+  <a href="/npcs/new" style="font-size:13px;padding:6px 12px;border:1px solid var(--accent);border-radius:4px;text-decoration:none;color:var(--accent)">+ Create NPC</a>
+</h2>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+{{if .Custom}}
+<div class="card">
+  <h3>Created NPC Types ({{len .Custom}})</h3>
+  <table>
+    <tr><th style="width:40px"></th><th>TypeID</th><th>Name</th><th>Group</th><th>Bounty</th><th>Published</th></tr>
+    {{range .Custom}}
+    <tr>
+      <td><img src="/typeicon/{{.TypeID}}.png" data-thumb-type="{{.TypeID}}" width="32" height="32" style="vertical-align:middle;border-radius:3px;background:var(--bg)"></td>
+      <td>{{.TypeID}}</td>
+      <td><a href="/npc/{{.TypeID}}">{{.TypeName}}</a></td>
+      <td>{{.GroupName}}</td>
+      <td>{{if gt .Bounty 0.0}}{{formatISK .Bounty}}{{else}}-{{end}}</td>
+      <td>{{if .Published}}Yes{{else}}No{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Search NPC Types</h3>
+  <form class="inline-form" method="GET" action="/npcs">
+    <input type="text" name="q" placeholder="Search by name..." value="{{.Query}}" style="width:250px">
+    <select name="group">
+      <option value="">All Groups</option>
+      {{range .Groups}}
+      <option value="{{.GroupID}}" {{if eq .GroupID $.GroupID}}selected{{end}}>{{.GroupName}}</option>
+      {{end}}
+    </select>
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+{{if .NPCs}}
+<div class="card">
+  <table>
+    <tr>
+      <th style="width:40px"></th>
+      <th>TypeID</th>
+      <th><a href="/npcs?q={{.Query}}&group={{.GroupID}}">Name{{if ne .Sort "bounty"}} &#9650;{{end}}</a></th>
+      <th>Group</th>
+      <th>Race</th>
+      <th><a href="/npcs?q={{.Query}}&group={{.GroupID}}&sort=bounty">Bounty{{if eq .Sort "bounty"}} &#9660;{{end}}</a></th>
+      <th>Published</th>
+    </tr>
+    {{range .NPCs}}
+    <tr>
+      <td><img src="/typeicon/{{.TypeID}}.png" data-thumb-type="{{.TypeID}}" width="32" height="32" style="vertical-align:middle;border-radius:3px;background:var(--bg)"></td>
+      <td>{{.TypeID}}</td>
+      <td><a href="/npc/{{.TypeID}}">{{.TypeName}}</a></td>
+      <td>{{.GroupName}}</td>
+      <td>{{.RaceID}}</td>
+      <td>{{if gt .Bounty 0.0}}{{formatISK .Bounty}}{{else}}-{{end}}</td>
+      <td>{{if .Published}}Yes{{else}}No{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{if ge (len .NPCs) 100}}<p style="margin-top:8px;color:#6b7280;font-size:12px">Results limited to 100.</p>{{end}}
+</div>
+{{else if or .Query (gt .GroupID 0)}}
+<div class="card"><p>No NPC types found.</p></div>
+{{end}}
+
+{{if .HasModels}}
+<script src="/static/npc_viewer.js"></script>
+<script src="/static/typethumb.js"></script>
+{{end}}
+{{end}}
+
+{{template "layout" .}}

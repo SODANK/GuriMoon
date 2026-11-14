@@ -1,0 +1,82 @@
+{{define "content"}}
+<h2>Escrow Listings</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  Item exchange listings. A player posts items at a station with a price tag;
+  another player pays and gets the items. Bots list researched BPOs and
+  surplus fitted ships.
+  {{if .ClosedKeepDays}}Counts cover every open listing and the closed ones
+  from the last {{.ClosedKeepDays}} days; older closed listings are pruned
+  (<code>escrow.closedKeepDays</code>).{{end}}
+</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Total</div><div class="value">{{.Stats.Total}}</div></div>
+  <div class="stat"><div class="label">Listed</div><div class="value">{{.Stats.Posted}}</div></div>
+  <div class="stat"><div class="label">Claimed</div><div class="value">{{.Stats.Claimed}}</div></div>
+  <div class="stat"><div class="label">Expired</div><div class="value">{{.Stats.Expired}}</div></div>
+  <div class="stat"><div class="label">Cancelled</div><div class="value">{{.Stats.Cancelled}}</div></div>
+  <div class="stat"><div class="label">ISK traded</div><div class="value">{{formatISK .Stats.TotalVolume}}</div></div>
+  <div class="stat"><div class="label">Bot issued</div><div class="value">{{.Stats.BotIssued}}</div></div>
+</div>
+
+<!-- Filter -->
+<div class="card" style="padding:8px 16px">
+  <span style="color:#6b7280;font-size:13px">Filter by state:</span>
+  <a href="/escrows" {{if eq .StateFilter -1}}style="font-weight:bold"{{end}}>All</a> &middot;
+  <a href="/escrows?state=0" {{if eq .StateFilter 0}}style="font-weight:bold"{{end}}>Listed</a> &middot;
+  <a href="/escrows?state=2" {{if eq .StateFilter 2}}style="font-weight:bold"{{end}}>Claimed</a> &middot;
+  <a href="/escrows?state=4" {{if eq .StateFilter 4}}style="font-weight:bold"{{end}}>Expired</a> &middot;
+  <a href="/escrows?state=5" {{if eq .StateFilter 5}}style="font-weight:bold"{{end}}>Cancelled</a>
+</div>
+
+<table class="table" style="margin-top:12px">
+<thead>
+<tr>
+  <th>ID</th>
+  <th>State</th>
+  <th>Issuer</th>
+  <th>Buyer</th>
+  <th>Station</th>
+  <th style="text-align:right">Price</th>
+  <th>Listed</th>
+  <th>Expires</th>
+  <th>Description</th>
+  <th>Actions</th>
+</tr>
+</thead>
+<tbody>
+{{range .Listings}}
+<tr>
+  <td>{{.MissionID}}</td>
+  <td>{{.StateLabel}}</td>
+  <td>
+    {{if .IssuerID}}<a href="/character/{{.IssuerID}}">{{.IssuerName}}</a>{{end}}
+    {{if .IssuerIsBot}}<span style="color:#6b7280;font-size:11px">[bot]</span>{{end}}
+  </td>
+  <td>{{if .AcceptorID}}<a href="/character/{{.AcceptorID}}">{{.AcceptorName}}</a>{{end}}</td>
+  <td>{{.StationName}}</td>
+  <td style="text-align:right">{{formatISK .Price}}</td>
+  <td style="font-size:12px">{{unixTime .DateIssued}}</td>
+  <td style="font-size:12px">{{unixTime .DateExpires}}</td>
+  <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+      title="{{.Description}}">{{.Description}}</td>
+  <td>
+    {{if eq .State 0}}
+    <form method="POST" style="display:inline">
+      <input type="hidden" name="missionID" value="{{.MissionID}}">
+      <button name="action" value="cancel" class="btn btn-sm btn-danger"
+              onclick="return confirm('Cancel this escrow listing?')">Cancel</button>
+      <button name="action" value="expire" class="btn btn-sm btn-warning"
+              onclick="return confirm('Force-expire this escrow listing?')">Expire</button>
+    </form>
+    {{end}}
+  </td>
+</tr>
+{{else}}
+<tr><td colspan="10" style="text-align:center;color:#6b7280">No escrow listings.</td></tr>
+{{end}}
+</tbody>
+</table>
+{{end}}

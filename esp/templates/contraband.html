@@ -1,0 +1,406 @@
+{{define "content"}}
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+
+<style>
+/* Two-up panels, same shape as the NPC supply/demand editor. */
+.cb-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:16px; align-items:start; margin-bottom:16px; }
+.panel { background:var(--win); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+              padding:9px 14px; border-bottom:1px solid var(--line); font-size:12px;
+              text-transform:uppercase; letter-spacing:1.5px; }
+.panel-head .meta { font-size:11px; letter-spacing:0; text-transform:none; color:#6b7280; }
+.panel-seize  .panel-head { background:#1a1610; color:#fcd34d; border-bottom-color:#3a2f14; }
+.panel-attack .panel-head { background:#1a1114; color:#fca5a5; border-bottom-color:#3a1c1c; }
+.cb-legend { display:flex; gap:6px; padding:3px 14px; background:var(--win-deep); color:#4b5563;
+             font-size:10px; text-transform:uppercase; letter-spacing:1px;
+             border-bottom:1px solid var(--line-soft); }
+.cb-legend .nm { flex:1; }
+.cb-legend span.f { width:58px; text-align:right; }
+.cb-legend span.f0 { width:92px; text-align:right; }
+.grp { display:flex; justify-content:space-between; padding:4px 14px; background:var(--win-deep);
+       color:#9ca3af; font-size:10px; text-transform:uppercase; letter-spacing:1px;
+       border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); }
+.grp .cat { color:#4b5563; }
+.cb-row { display:flex; align-items:center; gap:6px; padding:3px 14px;
+          border-bottom:1px solid var(--line-soft); font-size:12px; }
+.cb-row:hover { background:var(--win-hover); }
+.cb-row .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e0e4ec; }
+.cb-row .nm .tid { color:#4b5563; font-size:11px; }
+.cb-row .fine { width:92px; text-align:right; color:#6b7280; font-size:11px; white-space:nowrap; }
+.cb-row form { display:flex; gap:4px; margin:0; }
+.cb-row input[type="text"] { width:58px; padding:3px 5px; font-size:12px; text-align:right; }
+.cb-row input.off { color:#4b5563; }
+.warn { color:#fbbf24; cursor:help; }
+.btn-xs { padding:2px 7px !important; font-size:11px !important; }
+.btn-danger { background:var(--btn) !important; border-color:var(--btn-hi) !important; }
+.btn-danger:hover { background:#7e2a2a !important; }
+.empty { padding:14px; color:#4b5563; font-size:12px; }
+.pill-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; font-size:12px; }
+.pill { background:var(--win); border:1px solid var(--line); border-radius:4px; padding:5px 10px; color:#9ca3af; }
+.pill b { color:#e0e4ec; font-weight:600; }
+details.help { margin-bottom:16px; }
+details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
+.picker-results { max-height:140px; overflow-y:auto; margin-bottom:6px; }
+.picker-results div { font-size:12px; padding:3px 6px; cursor:pointer; color:#9ca3af; border-radius:3px; }
+.picker-results div:hover { background:var(--btn); color:#e0e4ec; }
+</style>
+
+{{if not .Faction}}
+{{/* ── Faction picker ──────────────────────────────────────────────────── */}}
+<h2>Contraband</h2>
+
+<div class="cb-cols">
+  <div class="card" style="margin:0">
+    <h3>Choose a Faction</h3>
+    <form method="GET" action="/market/contraband" class="inline-form" style="margin-bottom:0">
+      <input type="text" name="q" placeholder="search faction name" value="{{.NameFilter}}" style="flex:1;min-width:200px">
+      <button type="submit">Search</button>
+      {{if .NameFilter}}<a href="/market/contraband" style="margin-left:4px">Clear</a>{{end}}
+    </form>
+  </div>
+  <div class="card" style="margin:0">
+    <h3>Look up a Type</h3>
+    <form method="GET" action="/market/contraband" class="inline-form" style="margin-bottom:0">
+      <input type="number" name="type" placeholder="typeID" value="{{if .DrillType}}{{.DrillType}}{{end}}" style="width:110px">
+      <button type="submit">Who bans it?</button>
+      <span style="color:#6b7280;font-size:12px;flex:1">Every faction's rule for one item.</span>
+    </form>
+  </div>
+</div>
+
+<details class="help">
+  <summary>What this page controls</summary>
+  <div class="card" style="margin-top:8px">
+    <p style="color:#9ca3af;font-size:12px;margin:0 0 6px">
+      <code>invcontrabandtypes</code> — the per-faction ban list. Customs officers
+      spawn at stargates in systems the faction claims at security
+      {{printf "%.2f" .CustomsMinSec}} and above, scan nearby ships' cargo, and act
+      on any row that matches: confiscate the item, fine the pilot, or open fire.
+      Pick a faction to see and edit its list.
+    </p>
+    <p style="color:#6b7280;font-size:12px;margin:0">
+      A rule only bites where that faction holds space, so the highsec column is
+      the real reach of its list — a faction with no highsec systems never scans
+      anyone.
+    </p>
+  </div>
+</details>
+
+{{if .DrillType}}
+<div class="card">
+  <h3>Type {{.DrillType}}{{if .DrillName}} — {{.DrillName}}{{end}}
+    <span style="color:#6b7280;font-size:12px;font-weight:400">banned by {{len .DrillEntries}} faction{{if ne (len .DrillEntries) 1}}s{{end}}</span></h3>
+  {{if .DrillEntries}}
+  <table>
+    <thead>
+      <tr><th>Faction</th><th>Standing loss</th><th>Seize at sec</th><th>Fine ×value</th><th>Attack at sec</th><th>Effect</th></tr>
+    </thead>
+    <tbody>
+      {{range .DrillEntries}}
+      <tr>
+        <td><a href="/market/contraband?faction={{.FactionID}}">{{.FactionName}}</a>
+            <span style="color:#4b5563">#{{.FactionID}}</span></td>
+        <td>{{printf "%.2f" .StandingLoss}}</td>
+        <td>{{printf "%.2f" .ConfiscateMinSec}}</td>
+        <td>{{printf "%.2f" .FineByValue}}</td>
+        <td>{{printf "%.2f" .AttackMinSec}}</td>
+        <td>
+          {{if .Confiscates}}<span style="color:#fcd34d">seize</span> {{end}}
+          {{if and .Fines (gt .BasePrice 0.0)}}<span style="color:#fdc593">fine {{formatISK .FinePerUnit}}/unit</span> {{end}}
+          {{if .Attacks}}<span style="color:#fca5a5">attack</span> {{end}}
+          {{if .WarnLabel}}<span class="warn" title="{{.WarnDetail}}">&#9888; {{.WarnLabel}}</span>{{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:13px">No faction bans this type.</p>
+  {{end}}
+</div>
+{{end}}
+
+<div class="card">
+  <table>
+    <thead>
+      <tr>
+        <th>Faction</th><th>Patrols</th><th>Systems</th><th>Highsec</th>
+        <th>Banned types</th><th>Seize</th><th>Fine</th><th>Attack</th><th>Never fires</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{$patrols := .Patrols}}
+      {{range .Factions}}
+      <tr>
+        <td><a href="/market/contraband?faction={{.FactionID}}"><strong>{{.FactionName}}</strong></a>
+            <span style="color:#4b5563">#{{.FactionID}}</span></td>
+        <td>{{if not $patrols}}<span style="color:#4b5563">?</span>
+            {{else if index $patrols .FactionID}}<span style="color:#6ee7b7">yes</span>
+            {{else}}<span style="color:#6b7280">none</span>{{end}}</td>
+        <td>{{.Systems}}</td>
+        <td>{{if eq .HighsecSystems 0}}<span style="color:#f87171">0</span>{{else}}{{.HighsecSystems}}{{end}}</td>
+        <td>{{if eq .Rows 0}}<span style="color:#4b5563">0</span>{{else}}<strong>{{.Rows}}</strong>{{end}}</td>
+        <td><span style="color:#fcd34d">{{.ConfiscateRows}}</span></td>
+        <td><span style="color:#fdc593">{{.FineRows}}</span></td>
+        <td><span style="color:#fca5a5">{{.AttackRows}}</span></td>
+        <td>{{if gt .InertRows 0}}<span class="warn">&#9888; {{.InertRows}}</span>{{else}}0{{end}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+<details class="help">
+  <summary>Bulk paste (factionID typeID standingLoss confiscateMinSec fineByValue attackMinSec per line)</summary>
+  <div class="card" style="margin-top:8px">
+    <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
+      Six values per line, for importing in bulk. Lines starting with
+      <code>#</code> are ignored. Existing faction/type pairs are replaced.
+    </p>
+    <form method="POST" action="/market/contraband">
+      <input type="hidden" name="action" value="bulkAdd">
+      <textarea name="bulk" rows="5" placeholder="500001 3898 0.04 0.45 0.25 0"></textarea>
+      <button type="submit" style="margin-top:6px">Apply</button>
+    </form>
+  </div>
+</details>
+
+{{else}}
+{{/* ── Per-faction detail ──────────────────────────────────────────────── */}}
+<h2><a href="/market/contraband" style="color:#6b7280">Contraband</a> &rsaquo; {{.Faction.FactionName}}</h2>
+
+<div class="pill-row">
+  <span class="pill">Highsec systems
+    <b {{if eq .Faction.HighsecSystems 0}}style="color:#f87171"{{end}}>{{.Faction.HighsecSystems}}</b>
+    <span style="color:#4b5563">of {{.Faction.Systems}}</span></span>
+  <span class="pill">Banned types <b>{{.Faction.Rows}}</b></span>
+  <span class="pill">Seize <b style="color:#fcd34d">{{.Faction.ConfiscateRows}}</b></span>
+  <span class="pill">Fine <b style="color:#fdc593">{{.Faction.FineRows}}</b></span>
+  <span class="pill">Attack <b style="color:#fca5a5">{{.Faction.AttackRows}}</b></span>
+  {{if gt .Faction.InertRows 0}}<span class="pill" title="Scanned and let through — see the warning on each row">Never fires <b class="warn">{{.Faction.InertRows}}</b></span>{{end}}
+  {{if gt .Faction.MissingTypeRows 0}}<span class="pill" title="typeID has no invTypes row on this server">Missing types <b class="warn">{{.Faction.MissingTypeRows}}</b></span>{{end}}
+  <span style="color:#4b5563;font-size:11px">#{{.Faction.FactionID}}</span>
+</div>
+
+{{if eq .Faction.HighsecSystems 0}}
+<div class="alert alert-error">
+  This faction claims no system at security {{printf "%.2f" .CustomsMinSec}} or above,
+  so it fields no customs officers and <strong>nothing below is ever enforced</strong>.
+</div>
+{{else if and .PatrolsKnown (not .Patrolled)}}
+<div class="alert alert-error">
+  This faction has highsec space but no customs officer corp or ship types wired
+  up in <code>customs.go</code>, so no officers spawn for it and
+  <strong>nothing below is ever enforced</strong>.
+</div>
+{{end}}
+
+{{if gt .Faction.InertRows 0}}
+<div class="alert alert-error">
+  {{.Faction.InertRows}} of {{.Faction.Rows}} rows do nothing when scanned — a
+  threshold above {{printf "%.1f" .MaxSystemSec}} (no system is that safe), a
+  negative threshold, or no penalty at all. The shipped CCP data ships
+  <code>attackMinSec = 1.1</code> on every row, so attack is off everywhere until
+  you set it. Use <em>Clamp unreachable thresholds</em> below to make that
+  explicit, then set the numbers you want.
+</div>
+{{end}}
+
+<div class="cb-cols">
+  <div class="card" style="margin:0">
+    <h3>Ban a Type</h3>
+    <form method="POST" action="/market/contraband" id="addForm">
+      <input type="hidden" name="action" value="save">
+      <input type="hidden" name="factionID" value="{{.Faction.FactionID}}">
+      <div class="inline-form">
+        <input type="text" id="typeSearch" placeholder="search item name…" style="flex:1;min-width:160px">
+        <button type="button" onclick="searchTypes()">Find</button>
+        <input type="number" name="typeID" id="typeID" placeholder="typeID" required style="width:100px">
+        <span id="typeLabel" style="color:#6ee7b7;font-size:12px"></span>
+      </div>
+      <div id="typeResults" class="picker-results"></div>
+      <div class="inline-form" style="margin-bottom:0">
+        <input type="text" name="standingLoss" value="0.1" style="width:60px" title="Faction standing lost per offence (not yet enforced by customs.go)">
+        <span style="color:#6b7280;font-size:12px">loss</span>
+        <input type="text" name="confiscateMinSec" value="{{printf "%.2f" .CustomsMinSec}}" style="width:60px" title="Seize the item in systems at this security and above. 0 = never.">
+        <span style="color:#6b7280;font-size:12px">seize&nbsp;sec&ge;</span>
+        <input type="text" name="fineByValue" value="2" style="width:60px" title="Fine = quantity × item basePrice × this. 0 = no fine.">
+        <span style="color:#6b7280;font-size:12px">fine&nbsp;&times;</span>
+        <input type="text" name="attackMinSec" value="0" style="width:60px" title="Open fire in systems at this security and above. 0 = never.">
+        <span style="color:#6b7280;font-size:12px">atk&nbsp;sec&ge;</span>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin:0">
+    <h3>Set One Field on All {{.Faction.Rows}} Rows</h3>
+    <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
+      Rewrites that column on every one of this faction's rows at once — the fast
+      way to make a whole ban list actually enforce, or to switch it off.
+    </p>
+    <form method="POST" action="/market/contraband" class="inline-form" style="margin-bottom:6px">
+      <input type="hidden" name="action" value="factionField">
+      <input type="hidden" name="factionID" value="{{.Faction.FactionID}}">
+      <select name="field">
+        <option value="confiscate">Seize at security &ge;</option>
+        <option value="fine">Fine × item value</option>
+        <option value="attack">Attack at security &ge;</option>
+        <option value="standing">Standing loss</option>
+      </select>
+      <input type="text" name="value" value="{{printf "%.2f" .CustomsMinSec}}" style="width:70px">
+      <button type="submit" onclick="return confirm('Rewrite this field on all {{.Faction.Rows}} rows?')">Apply</button>
+    </form>
+    <form method="POST" action="/market/contraband" class="inline-form" style="margin-bottom:6px">
+      <input type="hidden" name="action" value="clampThresholds">
+      <input type="hidden" name="factionID" value="{{.Faction.FactionID}}">
+      <button type="submit" onclick="return confirm('Rewrite unreachable thresholds to 0 (off)?')">Clamp unreachable thresholds</button>
+      <span style="color:#6b7280;font-size:12px;flex:1">Negative or above
+        {{printf "%.1f" .MaxSystemSec}} &rarr; 0. Same behaviour, readable numbers.</span>
+    </form>
+    {{if gt .Faction.MissingTypeRows 0}}
+    <form method="POST" action="/market/contraband" class="inline-form" style="margin:0">
+      <input type="hidden" name="action" value="purgeMissing">
+      <input type="hidden" name="factionID" value="{{.Faction.FactionID}}">
+      <button type="submit" class="btn-danger" onclick="return confirm('Delete {{.Faction.MissingTypeRows}} rows whose typeID does not exist here?')">Purge {{.Faction.MissingTypeRows}} missing types</button>
+    </form>
+    {{end}}
+  </div>
+
+  <details class="help card" style="margin:0">
+    <summary>How the numbers work</summary>
+    <p style="color:#9ca3af;font-size:12px;margin:8px 0 6px">
+      <strong>Seize sec</strong> and <strong>atk sec</strong> are minimum system
+      securities: customs.go acts when the system's security is at or above the
+      value, and treats 0 or a negative as off. Officers only exist at
+      {{printf "%.2f" .CustomsMinSec}} and above, so anything at or below that
+      figure applies in <em>all</em> of this faction's policed space, and anything
+      above {{printf "%.1f" .MaxSystemSec}} never applies anywhere.
+    </p>
+    <p style="color:#9ca3af;font-size:12px;margin-bottom:6px">
+      <strong>Fine &times;</strong> multiplies the item's <code>basePrice</code>:
+      the pilot pays quantity &times; basePrice &times; this, with no security
+      gate, so any scan that finds the item charges it. An item with no basePrice
+      yields no fine at all.
+    </p>
+    <p style="color:#6b7280;font-size:12px;margin:0">
+      <strong>Loss</strong> is the faction standing penalty from the CCP data.
+      customs.go does not apply it yet — confiscation, fines and attack are wired,
+      standing loss is not, so the column is stored and displayed but inert.
+    </p>
+  </details>
+</div>
+
+<div class="cb-cols">
+  {{$faction := .Faction}}
+  {{range .Panels}}
+  <div class="panel {{.Class}}">
+    <div class="panel-head">
+      <span>{{.Title}}</span>
+      <span class="meta">
+        {{.RowCount}} type{{if ne .RowCount 1}}s{{end}} &middot; {{.Sub}}
+        {{if gt .InertRows 0}}&middot; <span class="warn" title="Scanned and let through">&#9888; {{.InertRows}} never fire</span>{{end}}
+      </span>
+    </div>
+    {{if .Groups}}
+    <div class="cb-legend">
+      <span class="nm">item</span><span class="f0">fine/unit</span>
+      <span class="f">loss</span><span class="f">seize&ge;</span><span class="f">fine&times;</span><span class="f">atk&ge;</span>
+    </div>
+      {{range .Groups}}
+      <div class="grp">
+        <span><span class="cat">{{.CategoryName}} /</span> {{.GroupName}}</span>
+        <span>{{len .Rows}}</span>
+      </div>
+        {{range .Rows}}
+        <div class="cb-row">
+          <span class="nm" title="{{.TypeName}} (#{{.TypeID}}) — basePrice {{formatISK .BasePrice}}">
+            {{if .WarnLabel}}<span class="warn" title="{{.WarnDetail}}">&#9888;</span> {{end}}
+            {{if .TypeName}}{{.TypeName}}{{else}}<em style="color:#6b7280">not in invTypes</em>{{end}}
+            <a class="tid" href="/market/contraband?type={{.TypeID}}" title="Which factions ban this type">#{{.TypeID}}</a>
+            {{if .WarnLabel}}<span class="tid" style="color:#fbbf24">{{.WarnLabel}}</span>
+            {{else if .SeizeEverywhere}}<span class="tid" style="color:#fcd34d">all policed space</span>{{end}}
+          </span>
+          <span class="fine" title="quantity × basePrice × fineByValue">
+            {{if and .Fines (gt .BasePrice 0.0)}}{{formatISK .FinePerUnit}}{{else}}&mdash;{{end}}</span>
+          <form method="POST" action="/market/contraband">
+            <input type="hidden" name="action" value="save">
+            <input type="hidden" name="factionID" value="{{.FactionID}}">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <input type="text" name="standingLoss" value="{{printf "%.2f" .StandingLoss}}"
+                   class="{{if eq .StandingLoss 0.0}}off{{end}}"
+                   title="Faction standing lost per offence — stored, but customs.go does not apply it yet">
+            <input type="text" name="confiscateMinSec" value="{{printf "%.2f" .ConfiscateMinSec}}"
+                   class="{{if not .Confiscates}}off{{end}}"
+                   title="Seize the item at this system security and above. 0 = never; above {{printf "%.1f" $.MaxSystemSec}} never fires.">
+            <input type="text" name="fineByValue" value="{{printf "%.2f" .FineByValue}}"
+                   class="{{if not .Fines}}off{{end}}"
+                   title="Fine = quantity × basePrice ({{formatISK .BasePrice}}) × this">
+            <input type="text" name="attackMinSec" value="{{printf "%.2f" .AttackMinSec}}"
+                   class="{{if not .Attacks}}off{{end}}"
+                   title="Open fire at this system security and above. 0 = never.">
+            <button type="submit" class="btn-xs" title="Save this row">Set</button>
+          </form>
+          <form method="POST" action="/market/contraband" style="margin:0">
+            <input type="hidden" name="action" value="toggleAttack">
+            <input type="hidden" name="factionID" value="{{.FactionID}}">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <input type="hidden" name="value" value="{{printf "%.2f" .ToggleAttackTarget}}">
+            <button type="submit" class="btn-xs" title="{{if .Attacks}}Stop shooting — seize and fine only{{else}}Make shoot-on-sight from security {{printf "%.2f" $.CustomsMinSec}} up{{end}}">&#8644;</button>
+          </form>
+          <form method="POST" action="/market/contraband" style="margin:0">
+            <input type="hidden" name="action" value="delete">
+            <input type="hidden" name="factionID" value="{{.FactionID}}">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <button type="submit" class="btn-xs btn-danger" title="Unban"
+                    onclick="return confirm('Unban {{.TypeName}} (#{{.TypeID}}) for {{$faction.FactionName}}?')">&times;</button>
+          </form>
+        </div>
+        {{end}}
+      {{end}}
+    {{else}}
+      <div class="empty">Nothing in this panel yet.</div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<details class="help">
+  <summary>Bulk paste (factionID typeID standingLoss confiscateMinSec fineByValue attackMinSec per line)</summary>
+  <div class="card" style="margin-top:8px">
+    <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
+      Six values per line. Existing faction/type pairs are replaced, so this is
+      also the way to re-import a whole edited list.
+    </p>
+    <form method="POST" action="/market/contraband">
+      <input type="hidden" name="action" value="bulkAdd">
+      <textarea name="bulk" rows="6" placeholder="{{.Faction.FactionID}} 3898 0.10 0.45 2 0&#10;{{.Faction.FactionID}} 3695 0.20 0.45 5 0.90"></textarea>
+      <button type="submit" style="margin-top:6px">Apply</button>
+    </form>
+  </div>
+</details>
+
+<script>
+function searchTypes(){
+  var box=document.getElementById('typeResults');
+  fetch('/api/types/search?scope=all&q='+encodeURIComponent(document.getElementById('typeSearch').value))
+    .then(function(r){return r.json();}).then(function(rows){
+      box.innerHTML='';
+      if(!rows||!rows.length){box.innerHTML='<div style="color:#6b7280">No item matches that name.</div>';return;}
+      rows.forEach(function(t){
+        var d=document.createElement('div');
+        d.textContent=t.typeID+' — '+t.typeName+(t.groupName?' ('+t.groupName+')':'');
+        d.onclick=function(){
+          document.getElementById('typeID').value=t.typeID;
+          document.getElementById('typeLabel').textContent='✓ '+t.typeName;
+          box.innerHTML='';
+        };
+        box.appendChild(d);
+      });
+    });
+}
+</script>
+{{end}}
+{{end}}

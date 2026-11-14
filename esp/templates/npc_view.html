@@ -1,0 +1,135 @@
+{{define "content"}}
+<h2 style="display:flex;align-items:center;gap:12px">
+  {{if and .HasIcons .NPC.Icon}}<img src="{{iconPath .NPC.Icon}}" width="32" height="32" style="border-radius:4px;background:var(--win);border:1px solid var(--line)" onerror="this.style.display='none'">{{end}}
+  <span>{{.NPC.TypeName}} <span style="color:#6b7280;font-size:14px;font-weight:normal">({{.NPC.TypeID}})</span></span>
+  {{if .IsCustom}}<span style="font-size:11px;padding:2px 7px;border-radius:3px;background:#14331f;color:#5fbf7f">custom</span>{{end}}
+</h2>
+
+{{if .Result}}<div class="alert alert-{{if contains .Result "Error"}}error{{else}}success{{end}}">{{.Result}}</div>{{end}}
+
+{{if not .IsCustom}}
+<div class="alert alert-error" style="background:#3a2a10;border-color:#6b4a1a;color:#fbbf24">
+  This is a stock game type. Saving rewrites every value this menu manages, and anything left at 0 is removed.
+  To make a variant, <a href="/npcs/new?clone={{.NPC.TypeID}}">clone it into a new NPC</a> instead.
+</div>
+{{end}}
+
+{{if .Created}}
+<div class="card">
+  <h3>Finish setup</h3>
+  <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.9">
+    <li><b>Loot:</b> it inherits its group's table ({{with index .GroupLoot .Spec.GroupID}}{{if .Entries}}{{.Entries}} entries{{else}}empty{{end}}{{end}}).
+      <a href="/loot/group/{{.Spec.GroupID}}">Group loot</a> &middot; <a href="/loot/npc/{{.NPC.TypeID}}">Extra loot for this NPC only</a></li>
+    <li><b>Spawning:</b> add it to belts on <a href="/region-spawns">Region Spawns</a>, or place it in a room in the <a href="/dungeons">dungeon editor</a>.</li>
+    <li><b>Test it:</b> undock and type <code>/spawn {{.NPC.TypeID}}</code>. Players logging in from now on see the new type.</li>
+  </ol>
+</div>
+{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Type ID</div><div class="value" style="display:flex;align-items:center;gap:8px"><img src="/typeicon/{{.NPC.TypeID}}.png" data-thumb-type="{{.NPC.TypeID}}" width="28" height="28" style="border-radius:3px;background:var(--bg)">{{.NPC.TypeID}}</div></div>
+  <div class="stat"><div class="label">Group</div><div class="value">{{.NPC.GroupName}}</div></div>
+  <div class="stat"><div class="label">Category</div><div class="value">{{.NPC.CategoryName}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Resolved Weapon Profile</h3>
+  <p style="font-size:11px;color:#6b7280;margin:0 0 10px">
+    What <code>GetNPCWeaponProfile</code> actually produces for this type at spawn time, after the loader's defaults and floors.
+  </p>
+  {{if .Weapon.Unarmed}}
+  <p style="color:#6b7280">Unarmed — no damage attributes, so this type spawns as a passive target with no weapon cycle.</p>
+  {{else}}
+  <table>
+    <tr>
+      <td style="width:190px;color:#6b7280">Mode</td>
+      <td>{{if .Weapon.IsMissile}}Missile{{else}}Turret{{end}}</td>
+    </tr>
+    {{if .Weapon.IsMissile}}
+    <tr><td style="color:#6b7280">Missile</td><td>{{.Weapon.MissileName}}</td></tr>
+    <tr><td style="color:#6b7280">Missile range</td><td>{{printf "%.0f" .Weapon.MissileRange}} m <span style="color:#6b7280;font-size:11px">(velocity × flight time)</span></td></tr>
+    {{else}}
+    <tr>
+      <td style="color:#6b7280">Turret model</td>
+      <td>
+        {{if .Weapon.TurretTypeID}}
+          <img src="/typeicon/{{.Weapon.TurretTypeID}}.png" width="20" height="20" style="vertical-align:middle;border-radius:2px" onerror="this.style.display='none'">
+          {{.Weapon.TurretTypeName}} <span style="color:#6b7280">({{.Weapon.TurretTypeID}})</span> × {{.Weapon.TurretSlots}} hardpoints
+        {{else}}<span style="color:#bf8f5f">none resolved</span>{{end}}
+      </td>
+    </tr>
+    {{end}}
+    <tr><td style="color:#6b7280">Damage per cycle</td><td>{{printf "%.1f" .Weapon.TotalDamage}} <span style="color:#6b7280;font-size:11px">(after multiplier, before resists and hit roll)</span></td></tr>
+    <tr><td style="color:#6b7280">Nominal DPS</td><td>{{printf "%.1f" .Weapon.DPS}} <span style="color:#6b7280;font-size:11px">over a {{.Weapon.CycleTimeMs}} ms cycle</span></td></tr>
+    <tr><td style="color:#6b7280">Optimal</td><td>{{printf "%.0f" .Weapon.EffectiveRange}} m</td></tr>
+    <tr><td style="color:#6b7280">Effective attack range</td><td>{{printf "%.0f" .Weapon.AttackRange}} m</td></tr>
+  </table>
+  {{end}}
+  {{range .Weapon.Notes}}
+  <div style="margin-top:8px;font-size:11px;color:#bf8f5f">{{.}}</div>
+  {{end}}
+</div>
+
+<p style="font-size:13px;margin:0 0 10px">
+  <a href="/npcs/new?clone={{.NPC.TypeID}}">Clone into new NPC</a>
+  <a href="/loot/npc/{{.NPC.TypeID}}" style="margin-left:14px">Loot for this NPC</a>
+  <span style="font-size:11px;color:#6b7280;margin-left:14px">Saving rewrites the values this menu manages. Attributes outside it, under Advanced below, are left alone.</span>
+</p>
+
+<form method="POST">
+  <input type="hidden" name="action" value="save_spec">
+  {{template "npcform" .}}
+</form>
+
+<div class="card">
+  <h3 style="cursor:pointer" onclick="var a=document.getElementById('rawAttrs');a.style.display=a.style.display==='none'?'':'none'">
+    Advanced: raw attributes ({{len .Attributes}}) &#9662;
+  </h3>
+  <div id="rawAttrs" style="display:none">
+    {{if .Attributes}}
+    <table>
+      <tr><th>ID</th><th>Name</th><th>Value</th><th>Description</th><th>Actions</th></tr>
+      {{range .Attributes}}
+      <tr>
+        <td>{{.AttributeID}}</td>
+        <td>{{.AttributeName}}</td>
+        <td>
+          <form method="POST" style="display:inline-flex;gap:4px;align-items:center">
+            <input type="hidden" name="action" value="update_attr">
+            <input type="hidden" name="attributeID" value="{{.AttributeID}}">
+            <input type="number" name="value" value="{{.Value}}" step="any" style="width:120px">
+            <button type="submit" style="padding:4px 8px;font-size:11px">Save</button>
+          </form>
+        </td>
+        <td style="font-size:11px;color:#6b7280;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{.Description}}">{{.Description}}</td>
+        <td>
+          <form method="POST" style="display:inline">
+            <input type="hidden" name="action" value="delete_attr">
+            <input type="hidden" name="attributeID" value="{{.AttributeID}}">
+            <button type="submit" style="padding:4px 8px;font-size:11px;background:#4a1515;border-color:#6b2020" onclick="return confirm('Delete attribute {{.AttributeID}}?')">Del</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}
+    <p>No attributes defined.</p>
+    {{end}}
+
+    <h3 style="margin-top:16px">Add Attribute</h3>
+    <form class="inline-form" method="POST">
+      <input type="hidden" name="action" value="add_attr">
+      <input type="number" name="attributeID" placeholder="Attribute ID" required style="width:120px">
+      <input type="number" name="value" placeholder="Value" step="any" required style="width:120px">
+      <button type="submit">Add</button>
+    </form>
+  </div>
+</div>
+
+<p style="margin-top:16px"><a href="/npcs">&larr; Back to NPC Browser</a></p>
+
+{{if .HasModels}}<script src="/static/npc_viewer.js"></script>
+<script src="/static/typethumb.js"></script>{{end}}
+{{end}}
+
+{{template "layout" .}}

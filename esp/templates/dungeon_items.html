@@ -1,0 +1,58 @@
+{{define "content"}}
+<h2>Item Type Browser</h2>
+
+<div class="card">
+  <h3>Search by Name</h3>
+  <form class="search-form" method="GET" action="/dungeons/items">
+    {{if .DungeonVID}}<input type="hidden" name="dungeon" value="{{.DungeonVID}}">{{end}}
+    <input type="text" name="q" placeholder="Search item types..." value="{{.Query}}">
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Browse by Category</h3>
+  <form class="inline-form" method="GET" action="/dungeons/items">
+    {{if .DungeonVID}}<input type="hidden" name="dungeon" value="{{.DungeonVID}}">{{end}}
+    <select name="category" onchange="this.form.submit()">
+      <option value="">Select Category...</option>
+      {{range .Categories}}
+      <option value="{{.CategoryID}}" {{if eq .CategoryID $.CategoryID}}selected{{end}}>{{.CategoryName}}</option>
+      {{end}}
+    </select>
+    {{if .Groups}}
+    <select name="group" onchange="this.form.submit()">
+      <option value="">Select Group...</option>
+      {{range .Groups}}
+      <option value="{{.GroupID}}" {{if eq .GroupID $.GroupID}}selected{{end}}>{{.GroupName}}</option>
+      {{end}}
+    </select>
+    {{end}}
+  </form>
+</div>
+
+{{if .Items}}
+<div class="card">
+  <table>
+    <tr><th>Type ID</th><th>Name</th><th>Group</th><th>Category</th><th>Radius</th>{{if .DungeonVID}}<th>Action</th>{{end}}</tr>
+    {{range .Items}}
+    <tr>
+      <td>{{.TypeID}}</td>
+      <td>{{.TypeName}}</td>
+      <td>{{.GroupName}}</td>
+      <td>{{.CategoryName}}</td>
+      <td>{{printf "%.0f" .Radius}}</td>
+      {{if $.DungeonVID}}<td><a href="/dungeon/{{$.DungeonVID}}?prefillTypeID={{.TypeID}}">Use</a></td>{{end}}
+    </tr>
+    {{end}}
+  </table>
+  {{if gt (len .Items) 199}}<p style="margin-top:8px;color:#6b7280;font-size:12px">Results limited to 200. Refine your search.</p>{{end}}
+</div>
+{{else}}
+{{if or .Query (gt .GroupID 0)}}<div class="card"><p>No items found.</p></div>{{end}}
+{{end}}
+
+{{if .DungeonVID}}<p style="margin-top:16px"><a href="/dungeon/{{.DungeonVID}}">&larr; Back to Dungeon</a></p>{{end}}
+{{end}}
+
+{{template "layout" .}}

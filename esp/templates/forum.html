@@ -1,0 +1,160 @@
+{{define "content"}}
+<h2>Forum &mdash; Intergalactic Summit</h2>
+
+<p style="color:#9ca3af;font-size:12px;margin-bottom:12px">
+  The Summit is Galnet's open board (<code>/summit/</code> on the news server, read in the in-game browser).
+  Anyone reads it; a pilot speaks after presenting a key the Summit mails them. Nothing here deletes a row:
+  hidden topics and responses can be restored, and a hidden response drops out of its topic's reply count.
+</p>
+
+{{if .Msg}}<div class="alert {{if .MsgBad}}alert-error{{else}}alert-success{{end}}">{{.Msg}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Topics</div><div class="value">{{.Threads}}</div></div>
+  <div class="stat"><div class="label">Responses</div><div class="value">{{.Posts}}</div></div>
+  <div class="stat"><div class="label">Speakers</div><div class="value">{{.Pilots}}</div></div>
+</div>
+
+<p style="margin:12px 0">
+  <a href="/forum" {{if eq .View "list"}}style="font-weight:bold"{{end}}>Topics</a> &middot;
+  <a href="/forum?tab=posters" {{if eq .View "posters"}}style="font-weight:bold"{{end}}>Speakers &amp; keys</a>
+</p>
+
+{{if eq .View "list"}}
+<div class="card">
+  <h3>Topics</h3>
+  {{if .List}}
+  <table>
+    <thead><tr><th>#</th><th>Topic</th><th>Raised by</th><th>Responses</th><th>Last word</th><th>State</th><th>Actions</th></tr></thead>
+    <tbody>
+    {{range .List}}
+    <tr {{if .Deleted}}style="opacity:.5"{{end}}>
+      <td>{{.ThreadID}}</td>
+      <td><a href="/forum/thread/{{.ThreadID}}">{{.Title}}</a></td>
+      <td>{{.AuthorName}}<br><span style="color:#6b7280;font-size:11px">{{.AuthorCorpName}}</span></td>
+      <td>{{.ReplyCount}}</td>
+      <td>{{unixTime .LastPostAt}}<br><span style="color:#6b7280;font-size:11px">{{.LastPostName}}</span></td>
+      <td>{{if .Deleted}}<span style="color:#fca5a5">hidden</span> {{end}}{{if .Sticky}}<span style="color:#fbbf24">pinned</span> {{end}}{{if .Locked}}<span style="color:#f87171">closed</span>{{end}}</td>
+      <td><a href="/forum/thread/{{.ThreadID}}" class="btn-sm">Moderate</a></td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  <p style="margin-top:8px">
+    {{if gt .PageNo 0}}<a href="/forum?p={{.Prev}}">&laquo; Newer</a>{{end}}
+    Page {{add .PageNo 1}} of {{.Pages}}
+    {{if .HasNext}}<a href="/forum?p={{.Next}}">Older &raquo;</a>{{end}}
+  </p>
+  {{else}}
+  <p style="color:#6b7280">No topic has been raised yet.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{if eq .View "thread"}}
+{{$back := .Back}}
+<div class="card">
+  <h3>#{{.Thread.ThreadID}} {{.Thread.Title}}</h3>
+  <p style="color:#9ca3af;font-size:12px">
+    Raised by {{.Thread.AuthorName}} ({{.Thread.AuthorCorpName}}) on {{unixTime .Thread.CreatedAt}} &middot; {{.Thread.ReplyCount}} responses
+    {{if .Thread.Deleted}}&middot; <span style="color:#fca5a5">hidden</span>{{end}}
+    {{if .Thread.Sticky}}&middot; <span style="color:#fbbf24">pinned</span>{{end}}
+    {{if .Thread.Locked}}&middot; <span style="color:#f87171">closed</span>{{end}}
+  </p>
+<form method="POST" action="/forum" class="inline-form">
+  <input type="hidden" name="id" value="{{.Thread.ThreadID}}">
+  <input type="hidden" name="back" value="{{$back}}">
+  <input type="hidden" name="action" value="flags">
+  <input type="hidden" name="sticky" value="{{if .Thread.Sticky}}1{{else}}0{{end}}">
+  <input type="hidden" name="locked" value="{{if .Thread.Locked}}1{{else}}0{{end}}">
+  <button type="submit" class="btn-sm" onclick="this.form.sticky.value='{{if .Thread.Sticky}}0{{else}}1{{end}}'">{{if .Thread.Sticky}}Unpin{{else}}Pin{{end}}</button>
+  <button type="submit" class="btn-sm" onclick="this.form.locked.value='{{if .Thread.Locked}}0{{else}}1{{end}}'">{{if .Thread.Locked}}Reopen{{else}}Close{{end}}</button>
+</form>
+<form method="POST" action="/forum" class="inline-form">
+  <input type="hidden" name="id" value="{{.Thread.ThreadID}}">
+  <input type="hidden" name="back" value="{{$back}}">
+  {{if .Thread.Deleted}}
+  <button type="submit" name="action" value="restoreThread" class="btn-sm">Restore</button>
+  {{else}}
+  <button type="submit" name="action" value="hideThread" class="btn-sm btn-danger" onclick="return confirm('Hide this topic?')">Hide</button>
+  {{end}}
+</form>
+  <p style="margin-top:8px"><a href="/forum">&laquo; All topics</a></p>
+</div>
+
+{{range .PostList}}
+<div class="card" {{if .Deleted}}style="opacity:.55"{{end}}>
+  <div style="display:flex;justify-content:space-between;gap:12px">
+    <div><strong>{{.AuthorName}}</strong> <span style="color:#6b7280;font-size:12px">{{.AuthorCorpName}} &middot; char {{.AuthorCharID}}</span></div>
+    <div style="color:#6b7280;font-size:12px">#{{.PostID}} &middot; {{unixTime .CreatedAt}}{{if .EditedAt}} &middot; amended {{unixTime .EditedAt}}{{end}}{{if .Deleted}} &middot; <span style="color:#fca5a5">hidden</span>{{end}}</div>
+  </div>
+  <form method="POST" action="/forum" style="margin-top:8px">
+    <input type="hidden" name="action" value="editPost">
+    <input type="hidden" name="id" value="{{.PostID}}">
+    <input type="hidden" name="back" value="{{$back}}">
+    <textarea name="body" rows="6" style="width:100%">{{.Body}}</textarea>
+    <div style="margin-top:6px;display:flex;gap:6px">
+      <button type="submit" class="btn-sm">Save amendment</button>
+    </div>
+  </form>
+  <form method="POST" action="/forum" class="inline-form" style="margin-top:6px">
+    <input type="hidden" name="id" value="{{.PostID}}">
+    <input type="hidden" name="back" value="{{$back}}">
+    {{if .Deleted}}
+    <button type="submit" name="action" value="restorePost" class="btn-sm">Restore response</button>
+    {{else}}
+    <button type="submit" name="action" value="hidePost" class="btn-sm btn-danger" onclick="return confirm('Hide this response?')">Hide response</button>
+    {{end}}
+  </form>
+  <form method="POST" action="/forum" class="inline-form" style="margin-top:6px">
+    <input type="hidden" name="id" value="{{.AuthorCharID}}">
+    <input type="hidden" name="back" value="{{$back}}">
+    <input type="text" name="reason" placeholder="Reason (shown to the pilot)" style="width:260px">
+    <button type="submit" name="action" value="ban" class="btn-sm btn-danger" onclick="return confirm('Bar {{.AuthorName}} from the Summit?')">Bar speaker</button>
+  </form>
+</div>
+{{end}}
+{{end}}
+
+{{if eq .View "posters"}}
+<div class="card">
+  <h3>Speakers &amp; keys</h3>
+  <p style="color:#9ca3af;font-size:12px">Every pilot who has asked for a key or been barred. Voiding a key ends the pilot's sessions; they may ask for a new one. Barring survives a new key.</p>
+  <form method="POST" action="/forum" class="inline-form" style="margin-bottom:10px">
+    <input type="hidden" name="back" value="{{.Back}}">
+    <input type="number" name="id" placeholder="characterID" required style="width:140px">
+    <input type="text" name="reason" placeholder="Reason" style="width:260px">
+    <button type="submit" name="action" value="ban" class="btn-sm btn-danger">Bar pilot</button>
+  </form>
+  {{if .Accounts}}
+  {{$back := .Back}}
+  <table>
+    <thead><tr><th>Pilot</th><th>Key</th><th>Issued</th><th>Last used</th><th>Failed tries</th><th>Responses</th><th>Barred</th><th>Actions</th></tr></thead>
+    <tbody>
+    {{range .Accounts}}
+    <tr>
+      <td><a href="/character/{{.CharID}}">{{if .Name}}{{.Name}}{{else}}#{{.CharID}}{{end}}</a></td>
+      <td>{{if .HasKey}}yes{{else}}<span style="color:#6b7280">none</span>{{end}}</td>
+      <td>{{unixTime .IssuedAt}}</td>
+      <td>{{unixTime .LastUsedAt}}</td>
+      <td>{{.FailCount}}</td>
+      <td>{{.Posts}}</td>
+      <td>{{if .Banned}}<span style="color:#fca5a5">barred</span>{{if .BanReason}}<br><span style="font-size:11px;color:#9ca3af">{{.BanReason}}</span>{{end}}{{end}}</td>
+      <td>
+        <form method="POST" action="/forum" class="inline-form">
+          <input type="hidden" name="id" value="{{.CharID}}">
+          <input type="hidden" name="back" value="{{$back}}">
+          {{if .Banned}}<button type="submit" name="action" value="unban" class="btn-sm">Readmit</button>{{end}}
+          {{if .HasKey}}<button type="submit" name="action" value="revoke" class="btn-sm btn-danger" onclick="return confirm('Void this key?')">Void key</button>{{end}}
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="color:#6b7280">No pilot has asked for a key yet.</p>
+  {{end}}
+</div>
+{{end}}
+{{end}}

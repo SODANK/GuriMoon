@@ -1,0 +1,405 @@
+{{define "content"}}
+<p><a href="/stations">&larr; Back to station search</a></p>
+<h2>{{.D.StationName}}</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Station ID</div><div class="value">{{.D.StationID}}</div></div>
+  <div class="stat"><div class="label">Docked Chars</div><div class="value">{{.D.DockedCount}}</div></div>
+  <div class="stat"><div class="label">Agents</div><div class="value">{{len .Agents}}</div></div>
+  <div class="stat"><div class="label">Sell Orders</div><div class="value">{{.MarketStats.SellOrders}}</div></div>
+  <div class="stat"><div class="label">Buy Orders</div><div class="value">{{.MarketStats.BuyOrders}}</div></div>
+  <div class="stat"><div class="label">Services</div><div class="value">{{len .Services}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Location &amp; Identity</h3>
+  <table>
+    <tr><th>Type</th><td>{{.D.TypeName}} ({{.D.StationTypeID}}){{if .D.Conquerable}} — <b>conquerable</b>{{end}}</td>
+        <th>Office Slots</th><td>{{.D.OfficeSlots}}</td></tr>
+    <tr><th>Owner</th><td><a href="/corporation/{{.D.CorporationID}}">{{.D.CorpName}}</a> ({{.D.CorporationID}})</td>
+        <th>Operation</th><td>{{.D.OperationName}}</td></tr>
+    <tr><th>System</th><td><a href="/solarsystem/{{.D.SolarSystemID}}">{{.D.SystemName}}</a> ({{printf "%.1f" .D.SystemSecurity}})</td>
+        <th>Constellation</th><td>{{.D.ConstellationName}}</td></tr>
+    <tr><th>Region</th><td>{{.D.RegionName}}</td>
+        <th>Position</th><td>{{printf "%.0f, %.0f, %.0f" .D.X .D.Y .D.Z}}</td></tr>
+    <tr><th>Service Mask</th><td>{{.D.ServiceMask}}</td>
+        <th>Reproc. Hangar Flag</th><td>{{.D.ReprocHangarFlag}}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Station Model</h3>
+  <p class="model-hint">The hull is the station <em>type</em>: <code>staStations.stationTypeID</code> →
+     <code>invTypes.graphicID</code> → <code>eveGraphics.url3D</code>, the <code>.blue</code> the client draws.
+     The ball rendered in space is built from <code>mapDenormalize.typeID</code>, so swapping writes
+     both columns together. The hangar graphic and the undock offset/orientation are columns of the
+     <em>type</em> row too and follow on their own — nothing is copied per station, and a type with
+     no hangar graphic is refused because there would be nothing to dock into.
+     A client already loaded into this system keeps the old model until the system reloads.</p>
+
+  <div class="model-current">
+    {{if and .HasModels .CurrentType.HasModel}}
+    <div id="stationModelViewer" class="model-viewer"></div>
+    {{end}}
+    <table class="model-facts">
+      <tr><th>Type</th><td>{{.CurrentType.TypeName}} <span class="dim">({{.D.StationTypeID}})</span></td></tr>
+      <tr><th>Model</th><td>{{if .CurrentType.ModelName}}<b>{{.CurrentType.ModelName}}</b>
+          <span class="dim">{{.CurrentType.ModelFamily}}</span>{{else}}<span class="dim">no graphic</span>{{end}}</td></tr>
+      <tr><th>url3D</th><td><code>{{if .CurrentType.URL3D}}{{.CurrentType.URL3D}}{{else}}—{{end}}</code></td></tr>
+      <tr><th>Graphic</th><td>{{.CurrentType.GraphicID}}{{if not .CurrentType.HasModel}} <span class="warn">no converted .glb</span>{{end}}</td></tr>
+      <tr><th>Group</th><td>{{.CurrentType.GroupName}} <span class="dim">({{.CurrentType.GroupID}})</span></td></tr>
+      <tr><th>Conquerable</th><td>{{if .CurrentType.Conquerable}}yes{{else}}no{{end}}<span class="dim"> · {{.CurrentType.OfficeSlots}} office slots on the type</span></td></tr>
+      <tr><th>Hangar graphic</th><td>{{if .CurrentType.HangarGraphicID}}{{.CurrentType.HangarGraphicID}}{{else}}<span class="warn">none — the hangar will not render</span>{{end}}
+          <span class="dim"> · docking bay {{if .CurrentType.DockingBayGraphicID}}{{.CurrentType.DockingBayGraphicID}}{{else}}unset{{end}}</span></td></tr>
+      <tr><th>Undock offset</th><td>{{printf "%.0f, %.0f, %.0f" .CurrentType.DockEntryX .CurrentType.DockEntryY .CurrentType.DockEntryZ}} m
+          {{if and (eq .CurrentType.DockEntryX 0.0) (eq .CurrentType.DockEntryY 0.0) (eq .CurrentType.DockEntryZ 0.0)}}
+          <span class="warn">— zero: ships undock at the station's own position</span>{{end}}</td></tr>
+      <tr><th>Shared by</th><td>{{commas .CurrentType.InUse}} station{{if ne .CurrentType.InUse 1}}s{{end}}</td></tr>
+    </table>
+  </div>
+
+  <form method="POST" action="/station/{{.D.StationID}}" id="modelForm">
+    <input type="hidden" name="action" value="model">
+    <input type="hidden" name="stationTypeID" id="pickedType" value="{{.D.StationTypeID}}">
+    <div class="model-toolbar">
+      <input type="text" id="modelFilter" placeholder="Filter models — name, race or model file..." autocomplete="off">
+      <label class="chk"><input type="checkbox" id="stationsOnly" checked> Station group only</label>
+      <button type="submit" id="applyModel" disabled>Swap model</button>
+      <span class="dim" id="pickedLabel"></span>
+    </div>
+    <div class="model-grid" id="modelGrid">
+      {{$cur := .D.StationTypeID}}
+      {{range .StationTypes}}
+      <div class="model-card{{if eq .StationTypeID $cur}} current{{end}}"
+           data-id="{{.StationTypeID}}" data-group="{{.GroupID}}"
+           data-search="{{.TypeName}} {{.ModelFamily}} {{.ModelName}} {{.GroupName}}"
+           data-label="{{.TypeName}} ({{.ModelName}})"
+           data-gid="{{.GraphicID}}" data-hasmodel="{{.HasModel}}"
+           data-hangar="{{.HangarGraphicID}}"
+           title="{{.URL3D}}">
+        <img class="model-thumb" alt="" src="/gidicon/{{.GraphicID}}.png?size=64">
+        <div class="model-name">{{.TypeName}}</div>
+        <div class="model-sub">{{if .ModelName}}{{.ModelName}}{{else}}no graphic{{end}}
+          {{if .ModelFamily}}· {{.ModelFamily}}{{end}}</div>
+        <div class="model-meta">
+          <span>{{.InUse}} in use</span>
+          {{if .Conquerable}}<span class="tag-conq">conq</span>{{end}}
+          {{if ne .GroupID 15}}<span class="tag-off">{{.GroupName}}</span>{{end}}
+          {{if not .HasModel}}<span class="tag-off">no .glb</span>{{end}}
+          {{if not .HangarGraphicID}}<span class="tag-bad" title="staStationTypes.hangarGraphicID is NULL — nothing to dock into">no hangar</span>{{end}}
+          {{if and (eq .DockEntryX 0.0) (eq .DockEntryY 0.0) (eq .DockEntryZ 0.0)}}<span class="tag-off" title="ships would undock at the station's own position">undock 0,0,0</span>{{end}}
+        </div>
+      </div>
+      {{end}}
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Edit Station</h3>
+  <form method="POST" action="/station/{{.D.StationID}}">
+    <input type="hidden" name="action" value="edit">
+    <div class="form-group">
+      <label>Station Name</label>
+      <input type="text" name="stationName" value="{{.D.StationName}}" style="width: 100%; max-width: 600px;" required>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; max-width: 950px;">
+      <div class="form-group">
+        <label>Owner Corporation</label>
+        <select name="corporationID" style="width: 100%;">
+          {{$cur := .D.CorporationID}}
+          {{range .Corps}}<option value="{{.CorporationID}}" {{if eq .CorporationID $cur}}selected{{end}}>{{.CorpName}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Operation (defines services)</label>
+        <select name="operationID" style="width: 100%;" title="Changing the operation changes which services the station offers">
+          {{$op := .D.OperationID}}
+          {{range .Operations}}<option value="{{.OperationID}}" {{if eq .OperationID $op}}selected{{end}} title="{{.Services}}">{{.OperationName}}</option>{{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Security</label>
+        <input type="number" name="security" value="{{.D.Security}}" style="width: 100%;">
+      </div>
+      <div class="form-group">
+        <label>Docking Cost / Volume</label>
+        <input type="number" name="dockingCost" value="{{num .D.DockingCost}}" step="any" style="width: 100%;">
+      </div>
+      <div class="form-group">
+        <label>Max Dockable Ship Volume</label>
+        <input type="number" name="maxShipVolume" value="{{.D.MaxShipVolume}}" style="width: 100%;">
+      </div>
+      <div class="form-group">
+        <label>Office Rental Cost</label>
+        <input type="number" name="officeRental" value="{{.D.OfficeRental}}" style="width: 100%;">
+      </div>
+      <div class="form-group">
+        <label>Reprocessing Efficiency (%)</label>
+        <input type="number" name="reprocEfficiency" value="{{pct .D.ReprocEfficiency}}" step="any" min="0" max="100" style="width: 100%;">
+      </div>
+      <div class="form-group">
+        <label>Station Take (%)</label>
+        <input type="number" name="reprocTake" value="{{pct .D.ReprocTake}}" step="any" min="0" max="100" style="width: 100%;">
+      </div>
+    </div>
+    <button type="submit">Save Station</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Services ({{.D.OperationName}})</h3>
+  <p class="model-hint">A station does not own its services — its <em>operation</em> does, and
+     {{.OpInfo.SharedBy}} station{{if ne .OpInfo.SharedBy 1}}s{{end}} run this one. The client reads
+     the set as one bitmask (<code>serviceMask</code>, the sum of the ticked IDs) at the moment it
+     docks, and joins the same operation&nbsp;→&nbsp;service table itself for the S&amp;I window's
+     install gate and the star map's service overlay. So saving a set that differs from the
+     operation's moves <em>this station</em> onto its own copy of the operation rather than
+     rewriting the shipped row under every other station using it; the copy keeps the description
+     and activity, and is deleted again if the station is later moved off it.
+     {{if .OpInfo.Custom}}<br><b>This station already has its own operation ({{.OpInfo.OperationID}})</b>
+     — edits below rewrite it in place.{{end}}
+     <br>A pilot standing in the station keeps the old buttons until they undock and dock again.</p>
+
+  <form method="POST" action="/station/{{.D.StationID}}">
+    <input type="hidden" name="action" value="services">
+    <div class="svc-grid">
+      {{range .ServiceOpts}}
+      <label class="svc{{if .Enabled}} on{{end}}" title="{{if .Description}}{{.Description}}{{else}}bit {{.ServiceID}}{{end}}">
+        <input type="checkbox" name="serviceID" value="{{.ServiceID}}" {{if .Enabled}}checked{{end}}>
+        <span class="svc-name">{{.ServiceName}}</span>
+        <span class="svc-bit">{{.ServiceID}}</span>
+      </label>
+      {{end}}
+    </div>
+    <div class="svc-actions">
+      <button type="submit">Save Services</button>
+      <span class="dim">Mask now: <b id="svcMask">{{.D.ServiceMask}}</b>
+        · <a href="#" id="svcNone">clear all</a> · <a href="#" id="svcAll">tick all</a>
+        · at least one service must stay ticked — an operation with none is missing from the
+        list the client indexes by operationID, and it does not check</span>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Agents</h3>
+  {{if .Agents}}
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Type</th><th>Level</th><th>Quality</th><th>Corporation</th></tr>
+    {{range .Agents}}
+    <tr>
+      <td>{{.AgentID}}</td>
+      <td><a href="/agent/{{.AgentID}}">{{.AgentName}}</a></td>
+      <td>{{agentTypeName .AgentTypeID}}</td>
+      <td>{{.Level}}</td>
+      <td>{{.Quality}}</td>
+      <td>{{.CorpName}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>No agents at this station.</p>{{end}}
+</div>
+
+<div class="card">
+  <h3>Docked Characters</h3>
+  {{if .Docked}}
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Corporation</th><th>Balance</th><th>Status</th></tr>
+    {{range .Docked}}
+    <tr>
+      <td>{{.CharacterID}}</td>
+      <td><a href="/character/{{.CharacterID}}">{{.Name}}</a></td>
+      <td>{{.CorpName}}</td>
+      <td>{{formatISK .Balance}}</td>
+      <td>{{if .Online}}<span style="color:#6ee7b7;">online</span>{{else}}<span style="color:#6b7280;">offline</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>No characters docked here.</p>{{end}}
+</div>
+
+<div class="card">
+  <h3>Market Orders ({{.MarketStats.DistinctTypes}} types{{if .Orders}}, showing first {{len .Orders}}{{end}})</h3>
+  {{if .Orders}}
+  <table>
+    <tr><th>Type</th><th>Side</th><th>Price</th><th>Remaining</th><th>Owner</th></tr>
+    {{range .Orders}}
+    <tr>
+      <td>{{.TypeName}} ({{.TypeID}})</td>
+      <td>{{if .IsBuy}}<span style="color:#fca5a5;">buy</span>{{else}}<span style="color:#6ee7b7;">sell</span>{{end}}</td>
+      <td>{{formatISK .Price}}</td>
+      <td>{{.VolRemaining}} / {{.VolEntered}}</td>
+      <td>{{.OwnerName}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>No active orders at this station.</p>{{end}}
+</div>
+
+<div class="card">
+  <h3>Stored Assets by Owner</h3>
+  {{if .AssetOwners}}
+  <table>
+    <tr><th>Owner</th><th>Items</th></tr>
+    {{range .AssetOwners}}
+    <tr>
+      <td>{{if .IsChar}}<a href="/character/{{.OwnerID}}">{{.OwnerName}}</a>{{else}}{{.OwnerName}}{{end}} ({{.OwnerID}})</td>
+      <td>{{.ItemCount}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>No items stored at this station.</p>{{end}}
+</div>
+
+<style>
+.dim { color:#6b7280; font-size:12px; }
+.warn { color:#fbbf24; font-size:11px; }
+.model-hint { font-size:12px; color:#6b7280; margin-bottom:12px; line-height:1.5; }
+.model-hint code { color:#9ca3af; font-family:Consolas, monospace; }
+.model-current { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; margin-bottom:12px; }
+.model-viewer { width:340px; height:240px; background:var(--bg); border:1px solid var(--line); border-radius:4px; flex-shrink:0; }
+.model-facts { width:auto; min-width:380px; flex:1; }
+.model-facts th { width:130px; background:transparent; text-transform:none; font-size:12px; }
+.model-facts td { font-size:13px; }
+.model-facts code { font-family:Consolas, monospace; font-size:11px; color:#9ca3af; word-break:break-all; }
+.model-toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px; }
+/* The swap button starts disabled — without this it reads as armed when
+   nothing has been picked yet. */
+.model-toolbar button:disabled { background:var(--win-hover); border-color:var(--line); color:#6b7280; cursor:default; }
+#modelFilter { width:300px; }
+.chk { font-size:12px; color:#9ca3af; display:flex; align-items:center; gap:4px; }
+#pickedLabel.bad { color:#fca5a5; }
+.model-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px;
+              max-height:520px; overflow-y:auto; padding-right:4px; }
+.model-card { border:1px solid var(--line); border-radius:4px; padding:8px; cursor:pointer; background:var(--win-deep); }
+.model-card:hover { border-color:var(--btn-hi); background:var(--win-hover); }
+.model-card.current { border-color:#1a4731; }
+.model-card.picked { border-color:var(--accent); background:var(--win-sel); }
+.model-thumb { width:100%; height:76px; object-fit:contain; background:var(--bg); border-radius:3px; display:block; }
+.model-name { font-size:12px; color:#e0e4ec; margin-top:6px; line-height:1.3; }
+.model-sub { font-size:10px; color:#6b7280; margin-top:2px; word-break:break-word; }
+.model-meta { margin-top:4px; display:flex; gap:4px; flex-wrap:wrap; font-size:9px; color:#6b7280; }
+.model-meta span { border:1px solid var(--line); border-radius:3px; padding:0 4px; }
+.model-meta .tag-conq { border-color:var(--btn-hi); color:var(--accent-hi); }
+.model-meta .tag-off { border-color:var(--btn); color:#fbbf24; }
+.model-meta .tag-bad { border-color:#8e2d2d; color:#fca5a5; }
+.svc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:6px; margin-bottom:12px; }
+.svc { display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:4px;
+       padding:6px 8px; background:var(--win-deep); cursor:pointer; font-size:12px; color:#9ca3af; }
+.svc:hover { border-color:var(--btn-hi); }
+.svc.on { border-color:#1a4731; color:#e0e4ec; }
+.svc-name { flex:1; }
+.svc-bit { font-size:10px; color:#6b7280; font-family:Consolas, monospace; }
+.svc-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+</style>
+
+{{if .HasModels}}<script src="/static/npc_viewer.js"></script>{{end}}
+<script>
+// Services grid: the mask is the sum of the ticked bits, so it can be shown
+// live — an author ticking Factory should not have to save to learn what the
+// client will read.
+(function(){
+  var boxes = Array.from(document.querySelectorAll('.svc input[type=checkbox]'));
+  if (!boxes.length) return;
+  var out = document.getElementById('svcMask');
+  var save = document.querySelector('.svc-actions button');
+  function refresh(){
+    var mask = 0, on = 0;
+    boxes.forEach(function(b){
+      b.parentNode.classList.toggle('on', b.checked);
+      if (b.checked) { mask += parseInt(b.value, 10); on++; }
+    });
+    out.textContent = mask;
+    // The server refuses an empty set outright; say so before the round trip.
+    save.disabled = on === 0;
+  }
+  boxes.forEach(function(b){ b.addEventListener('change', refresh); });
+  function setAll(v){ return function(e){ e.preventDefault(); boxes.forEach(function(b){ b.checked = v; }); refresh(); }; }
+  document.getElementById('svcNone').addEventListener('click', setAll(false));
+  document.getElementById('svcAll').addEventListener('click', setAll(true));
+  refresh();
+})();
+
+(function(){
+  var grid = document.getElementById('modelGrid');
+  if (!grid) return;
+  var cards = Array.from(grid.querySelectorAll('.model-card'));
+  var picked = document.getElementById('pickedType');
+  var apply = document.getElementById('applyModel');
+  var label = document.getElementById('pickedLabel');
+  var filter = document.getElementById('modelFilter');
+  var only = document.getElementById('stationsOnly');
+  var currentID = picked.value;
+
+  cards.forEach(function(c){
+    c.addEventListener('click', function(){
+      cards.forEach(function(x){ x.classList.remove('picked'); });
+      c.classList.add('picked');
+      picked.value = c.dataset.id;
+      // A type with no hangar graphic has nothing to dock into — the server
+      // refuses it, so say so here rather than after a round trip.
+      var noHangar = c.dataset.hangar === '0';
+      label.textContent = noHangar
+        ? c.dataset.label + ' — no hangar graphic, cannot be docked into'
+        : c.dataset.label;
+      label.classList.toggle('bad', noHangar);
+      // Re-picking the model it already wears is a no-op, not a save.
+      apply.disabled = noHangar || c.dataset.id === currentID;
+    });
+  });
+
+  function applyFilter(){
+    var q = filter.value.trim().toLowerCase();
+    // A few staStationTypes rows are stargate models (group 10), which render
+    // as a gate rather than a station — hidden unless explicitly asked for.
+    var stationsOnly = only.checked;
+    cards.forEach(function(c){
+      var ok = (!q || c.dataset.search.toLowerCase().indexOf(q) !== -1) &&
+               (!stationsOnly || c.dataset.group === '15' || c.dataset.id === currentID);
+      c.style.display = ok ? '' : 'none';
+    });
+  }
+  filter.addEventListener('input', applyFilter);
+  only.addEventListener('change', applyFilter);
+  applyFilter();
+
+  // The client's own rendered snapshot (Gids cache) is the cheapest thumbnail,
+  // but it only holds the graphics that client has actually drawn. Anything it
+  // is missing falls back to an offscreen render of the converted .glb.
+  var HAS_MODELS = {{if .HasModels}}true{{else}}false{{end}};
+
+  function renderFallback(c, img){
+    if (c.dataset.thumbTried) return;
+    c.dataset.thumbTried = '1';
+    img.style.visibility = 'hidden';
+    if (!HAS_MODELS || c.dataset.hasmodel !== 'true' || !window.renderModelThumb) return;
+    window.renderModelThumb('/api/model/' + c.dataset.id + '.glb', 96).then(function(url){
+      if (!url) return;
+      img.src = url;
+      img.style.visibility = '';
+    });
+  }
+
+  cards.forEach(function(c){
+    var img = c.querySelector('.model-thumb');
+    img.addEventListener('error', function(){ renderFallback(c, img); });
+    // The gidicon 404 lands while the page is still parsing, long before this
+    // script runs — an error listener attached now would never hear it. A
+    // finished image with no intrinsic width is exactly that missed failure.
+    if (img.complete && img.naturalWidth === 0) renderFallback(c, img);
+  });
+
+  {{if and .HasModels .CurrentType.HasModel}}
+  if (window.initNPCViewer) {
+    initNPCViewer('stationModelViewer', '/api/model/{{.D.StationTypeID}}.glb');
+  }
+  {{end}}
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

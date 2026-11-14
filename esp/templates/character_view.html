@@ -1,0 +1,601 @@
+{{define "content"}}
+<style>
+/* Character profile ------------------------------------------------------ */
+.cv-head { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:14px }
+.cv-head h2 { margin:0 }
+.cv-head .sub { color:#6b7280; font-size:13px }
+.cv-head .sub a { color:#9ca3af }
+.cv-badge { font-size:11px; letter-spacing:.5px; text-transform:uppercase; padding:3px 9px;
+            border-radius:10px; border:1px solid var(--line); color:#6b7280; background:var(--win-deep) }
+.cv-badge.on { color:#6ee7b7; border-color:#1a4731; background:#0f2a1f }
+
+.cv-grid { display:grid; grid-template-columns:508px minmax(360px,1fr); gap:16px; align-items:start }
+@media (max-width:1180px) { .cv-grid { grid-template-columns:1fr } }
+
+/* Stat tiles: numbers stay compact, the name tiles (corp/location/ship) take
+   the width a station name needs and truncate rather than wrap the row. */
+.stats .stat { min-width:140px; padding:12px 16px }
+.stats .stat .value { font-size:18px }
+.stats .stat.wide { min-width:200px; max-width:320px }
+.stats .stat.wide .value { font-size:14px; font-weight:500; white-space:nowrap;
+                           overflow:hidden; text-overflow:ellipsis }
+.stats .stat .sub { color:#6b7280; font-size:11px; margin-top:3px; white-space:nowrap;
+                    overflow:hidden; text-overflow:ellipsis }
+
+/* Portrait panel */
+.cv-portrait { text-align:center }
+.cv-portrait img { width:484px; height:484px; max-width:100%; border-radius:6px;
+                   border:1px solid var(--line); background:var(--bg); display:block; margin:0 auto }
+.cv-noshot { width:484px; height:484px; max-width:100%; margin:0 auto; border-radius:6px;
+             border:1px dashed var(--line); background:var(--win-deep); color:#6b7280; font-size:13px;
+             display:flex; align-items:center; justify-content:center; text-align:center; padding:0 40px; line-height:1.6 }
+.cv-sizes { display:flex; flex-wrap:wrap; gap:5px; justify-content:center; margin-top:10px }
+.cv-chip { font-size:11px; padding:2px 8px; border-radius:9px; border:1px solid var(--line);
+           background:var(--win-deep); color:#9ca3af }
+.cv-chip.client { border-style:dashed; color:#6b7280 }
+.cv-src { color:#6b7280; font-size:11px; margin-top:8px; line-height:1.6; text-align:left }
+.cv-src code { color:#9ca3af; font-family:Consolas,monospace }
+.cv-ingest { margin-top:12px; border-top:1px solid var(--line-soft); padding-top:12px; text-align:left }
+.cv-ingest h4 { color:#e0e4ec; font-size:12px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px }
+.cv-ingest p { color:#6b7280; font-size:11px; line-height:1.6; margin-bottom:8px }
+.cv-ingest input[type=file] { color:#9ca3af; font-size:12px; width:100% }
+.cv-ingest .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px }
+
+/* Right column */
+.cv-now { background:var(--win-deep); border:1px solid var(--line); border-radius:5px; padding:10px 12px; margin-bottom:10px }
+.cv-now .lbl { color:#6b7280; font-size:11px; text-transform:uppercase; letter-spacing:.5px }
+.cv-now .rem { float:right; color:var(--accent); font-weight:600 }
+.cv-now .skill { color:#e0e4ec; font-size:15px; margin-top:2px }
+.cv-now .lvl { color:var(--accent) }
+.cv-now .end { color:#6b7280; font-size:11px }
+.cv-bar { height:3px; background:var(--line-soft); border-radius:2px; margin-top:8px; overflow:hidden }
+.cv-empty { color:#6b7280; font-size:13px; padding:8px 0 }
+.cv-qtable td { padding:5px 10px }
+.cv-qtable .pos { color:#6b7280; width:26px }
+.cv-qtable .lvl { color:var(--accent) }
+.cv-qtable .eta { color:#9ca3af; text-align:right; white-space:nowrap }
+.cv-kv td:first-child { color:#6b7280; width:150px; white-space:nowrap }
+.cv-pair { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; align-items:start }
+.cv-pair > .card:only-child { grid-column:1 / -1 }
+@media (max-width:1500px) { .cv-pair { grid-template-columns:1fr } }
+.cv-h3sub { color:#6b7280; font-size:11px; font-weight:400 }
+.cv-jtable td { padding:5px 10px; font-size:12px }
+.cv-jtable .date { color:#6b7280; white-space:nowrap }
+.cv-jtable .why { color:#6b7280; font-size:11px }
+.cv-jtable .num { text-align:right; white-space:nowrap }
+.cv-jtable .pos { color:#6ee7b7 }
+.cv-jtable .neg { color:#f87171 }
+.cv-jtable .bal { color:#9ca3af }
+.cv-cols { display:grid; grid-template-columns:1fr 1fr; gap:0 24px }
+@media (max-width:900px) { .cv-cols { grid-template-columns:1fr } }
+
+/* Appearance editor */
+.cv-app-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:10px 14px }
+.cv-app-grid label { display:block; font-size:11px; color:#6b7280; text-transform:uppercase;
+                     letter-spacing:.5px; margin-bottom:3px }
+.cv-app-grid select, .cv-app-grid input { width:100%; padding:6px 9px; font-size:12px }
+.cv-app-grid .req label::after { content:' *'; color:var(--accent) }
+.cv-sub { color:#9ca3af; font-size:12px; margin:16px 0 8px; text-transform:uppercase;
+          letter-spacing:.5px; border-top:1px solid var(--line-soft); padding-top:12px }
+.cv-num { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px 12px }
+.cv-num label { display:block; font-size:11px; color:#6b7280; margin-bottom:3px }
+.cv-num input { width:100%; padding:5px 8px; font-size:12px }
+.cv-hint { color:#6b7280; font-size:12px; line-height:1.65; margin-bottom:12px }
+details.cv-fold > summary { cursor:pointer; color:#9ca3af; font-size:12px; text-transform:uppercase;
+                            letter-spacing:.5px; padding:10px 0; user-select:none }
+details.cv-fold > summary:hover { color:#e0e4ec }
+
+/* Actions */
+.cv-actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:14px }
+.cv-act { background:var(--win-deep); border:1px solid var(--line); border-radius:5px; padding:12px 14px }
+.cv-act h4 { color:#e0e4ec; font-size:12px; text-transform:uppercase; letter-spacing:.5px; margin-bottom:4px }
+.cv-act p { color:#6b7280; font-size:11px; line-height:1.6; margin-bottom:8px }
+.cv-act .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+.cv-act input[type=text], .cv-act input[type=number], .cv-act select { padding:6px 9px; font-size:12px }
+.cv-act button { padding:6px 13px; font-size:12px }
+.cv-drop { position:relative }
+.cv-drop .list { position:absolute; z-index:20; left:0; right:0; top:100%; background:var(--win-deep);
+                 border:1px solid var(--line); border-radius:4px; max-height:260px; overflow-y:auto; display:none }
+</style>
+
+<div class="cv-head">
+  <h2>{{.Char.CharacterName}}</h2>
+  {{if .Online}}<span class="cv-badge on">online</span>{{else}}<span class="cv-badge">offline</span>{{end}}
+  <span class="sub">
+    #{{.Char.CharacterID}} &middot;
+    <a href="/corporation/{{.Char.CorporationID}}">{{.Char.CorpName}}</a>
+    {{if .Char.Title}}&middot; {{.Char.Title}}{{end}}
+    &middot; <a href="/skillwindow/{{.Char.CharacterID}}">skill window</a>
+  </span>
+</div>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">Balance</div>
+    <div class="value">{{formatISK .Char.Balance}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Skill points</div>
+    <div class="value">{{commas .Totals.TotalSP}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Skills</div>
+    <div class="value">{{.Totals.Known}} <span style="font-size:12px;color:#6b7280">known &middot; {{.Totals.AtFive}} at V</span></div>
+  </div>
+  <div class="stat">
+    <div class="label">Security</div>
+    <div class="value">{{printf "%.2f" .Char.SecurityRating}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Items owned</div>
+    <div class="value">{{.ItemCount}}</div>
+  </div>
+  <div class="stat wide">
+    <div class="label">Corporation</div>
+    <div class="value"><a href="/corporation/{{.Char.CorporationID}}">{{.Char.CorpName}}</a></div>
+    <div class="sub">{{.Char.CorporationID}}</div>
+  </div>
+  <div class="stat wide">
+    <div class="label">Location</div>
+    {{if .Char.StationID}}
+    <div class="value" title="{{.Char.StationName}} ({{.Char.StationID}})"><a href="/station/{{.Char.StationID}}">{{.Char.StationName}}</a></div>
+    <div class="sub">docked &middot; {{.Char.SolarSystemName}} &middot; {{.Char.RegionName}}</div>
+    {{else}}
+    <div class="value" title="solar system {{.Char.SolarSystemID}}"><a href="/solarsystem/{{.Char.SolarSystemID}}">{{.Char.SolarSystemName}}</a></div>
+    <div class="sub">in space &middot; {{.Char.RegionName}}</div>
+    {{end}}
+  </div>
+  <div class="stat wide">
+    <div class="label">Ship</div>
+    {{if .Ship}}
+    <div class="value" title="{{.Ship.Name}} — {{.Ship.TypeName}}, item {{.Ship.ItemID}}">{{.Ship.Name}}</div>
+    <div class="sub">{{.Ship.TypeName}} &middot; #{{.Ship.ItemID}}</div>
+    {{else}}
+    <div class="value" style="color:#6b7280">&mdash;</div>
+    <div class="sub">no hull on record</div>
+    {{end}}
+  </div>
+</div>
+
+<div class="cv-grid">
+
+  <div>
+  <!-- ── Portrait ──────────────────────────────────────────────────────── -->
+  <div class="card cv-portrait">
+    <h3 style="text-align:left">Portrait</h3>
+    {{if and .HasPortraits (or .Stored .ClientCached)}}
+      <img src="/portrait/{{.Char.CharacterID}}?size=484" width="484" height="484"
+           alt="portrait of {{.Char.CharacterName}}">
+    {{else}}
+      <div class="cv-noshot">
+        No render held for this pilot.<br>
+        The server has no face renderer &mdash; the client draws the portrait from the
+        numbers below and keeps the picture on its own disk. Hand one over to see it here.
+      </div>
+    {{end}}
+
+    <div class="cv-sizes">
+      {{range .Stored}}<span class="cv-chip" title="held by the server in {{$.StoreDir}}">{{if .Size}}{{.Size}}px{{else}}unsized{{end}}</span>{{end}}
+      {{range .ClientCached}}<span class="cv-chip client" title="only in this host's client cache, not handed over">{{if .Size}}{{.Size}}px{{else}}unsized{{end}} (client)</span>{{end}}
+      {{if not (or .Stored .ClientCached)}}<span class="cv-chip">none</span>{{end}}
+    </div>
+
+    <div class="cv-src">
+      Store: <code>{{.StoreDir}}</code><br>
+      {{if .ClientDir}}Client cache on this host: <code>{{.ClientDir}}</code>{{else}}
+      No client cache on this host &mdash; upload is the only way in.{{end}}
+    </div>
+
+    <div class="cv-ingest">
+      <h4>Hand over renders</h4>
+      <p>Pick this pilot's <code>&lt;charID&gt;_&lt;size&gt;.png</code> files &mdash; or the whole
+         <code>cache/Pictures/Portraits</code> folder &mdash; from a machine running the client.
+         Files are matched by name, so a whole-folder hand-over files every pilot at once.</p>
+      <form method="POST" action="/portrait/ingest" enctype="multipart/form-data">
+        <input type="hidden" name="redirect" value="{{.Self}}">
+        <input type="file" name="files" accept="image/png,image/jpeg" multiple>
+        <div class="row">
+          <button type="submit">Upload</button>
+          <label style="color:#6b7280;font-size:11px;display:flex;align-items:center;gap:5px">
+            <input type="checkbox" id="cv-dirmode"> whole folder
+          </label>
+        </div>
+      </form>
+      <div class="row">
+        {{if .ClientDir}}
+        <form method="POST" action="/portrait/sync" style="display:inline">
+          <input type="hidden" name="redirect" value="{{.Self}}">
+          <input type="hidden" name="char" value="{{.Char.CharacterID}}">
+          <button type="submit" title="Copy this pilot's renders out of {{.ClientDir}}">Import from client cache</button>
+        </form>
+        {{end}}
+        {{if .Stored}}
+        <form method="POST" action="{{.Self}}" style="display:inline"
+              onsubmit="return confirm('Delete the {{len .Stored}} stored render(s) for {{.Char.CharacterName}}? The client\'s own cache is not touched.')">
+          <input type="hidden" name="action" value="dropportraits">
+          <button type="submit" title="Delete the server's copies — use after an appearance change">Drop stored</button>
+        </form>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Administration ──────────────────────────────────────────────────
+       Under the portrait rather than across the page: these are pilot-level
+       operations, and the column would otherwise run out of content before
+       the appearance editor beside it does. -->
+  <div class="card">
+    <h3>Administration</h3>
+    <div class="cv-actions">
+
+      <div class="cv-act">
+        <h4>Wallet</h4>
+        <p>Credited straight to the balance with a refType-10 journal entry. Negative amounts debit.</p>
+        <form method="POST" action="{{.Self}}" class="row">
+          <input type="hidden" name="action" value="giveisk">
+          <input type="number" name="amount" placeholder="Amount" step="0.01" style="width:150px" required>
+          <button type="submit">Give ISK</button>
+        </form>
+      </div>
+
+      <div class="cv-act cv-drop">
+        <h4>Move to station</h4>
+        <p>Relocates the pilot and their current ship. The client caches its location, so a relog is required.</p>
+        <form method="POST" action="{{.Self}}" class="row">
+          <input type="hidden" name="action" value="moveto">
+          <input type="text" id="cv-stsearch" placeholder="Search station..." autocomplete="off" style="flex:1;min-width:150px">
+          <input type="number" name="stationID" id="cv-stid" placeholder="Station ID" style="width:110px" required>
+          <button type="submit">Move</button>
+          <div class="list" id="cv-stlist"></div>
+        </form>
+      </div>
+
+      <div class="cv-act">
+        <h4>Corporation</h4>
+        <p>Writes character_ and a chrEmployment record. Relog required.</p>
+        <form method="POST" action="{{.Self}}" class="row">
+          <input type="hidden" name="action" value="changecorp">
+          <select name="corporationID" style="flex:1;min-width:180px">
+            {{range .Corps}}
+            <option value="{{.CorporationID}}" {{if eq .CorporationID $.Char.CorporationID}}selected{{end}}>{{.CorpName}} ({{.CorporationID}})</option>
+            {{end}}
+          </select>
+          <button type="submit">Change</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+  </div>
+
+  <!-- ── Training + identity ───────────────────────────────────────────── -->
+  <div>
+    <div class="card">
+      <h3>Skill queue
+        <small style="font-weight:normal;color:#6b7280">&mdash;
+          <a href="/skillwindow/{{.Char.CharacterID}}">open skill window</a> to add, buy, grant or reorder</small>
+      </h3>
+
+      {{if .Training}}
+      <div class="cv-now">
+        <span class="lbl">Now training</span><span class="rem">{{.Training.Remaining}}</span>
+        <div class="skill">{{.Training.TypeName}} <span class="lvl">&rarr; {{.Training.TargetLevel}}</span></div>
+        <span class="end">done {{.Training.EndsAt}}</span>
+      </div>
+      {{else}}
+      <div class="cv-empty">Nothing training.</div>
+      {{end}}
+
+      {{if .Queue}}
+      <table class="cv-qtable">
+        <thead><tr><th>#</th><th>Skill</th><th style="text-align:right">Est. done</th></tr></thead>
+        <tbody>
+        {{range .Queue}}
+        <tr>
+          <td class="pos">{{.Position}}</td>
+          <td>{{.TypeName}} <span class="lvl">{{.TargetLevel}}</span></td>
+          <td class="eta">{{if .EstEnd}}{{.EstEnd}}{{else}}&mdash;{{end}}</td>
+        </tr>
+        {{end}}
+        </tbody>
+      </table>
+      {{else}}
+      <div class="cv-empty">Queue is empty. The 3913 client has no queue UI &mdash; it is managed here.</div>
+      {{end}}
+    </div>
+
+    <div class="card">
+      <h3>Identity</h3>
+      <div class="cv-cols">
+        <!-- Corporation, location and hull are the tiles at the top of the
+             page; this card carries what those tiles do not. -->
+        <table class="cv-kv">
+          <tr><td>Account</td><td>{{if .Char.AccountID}}<a href="/account/{{.Char.AccountID}}">{{.Char.AccountName}}</a> ({{.Char.AccountID}}){{else}}&mdash;{{end}}</td></tr>
+          <tr><td>Race</td><td>{{.Char.RaceName}} ({{.Char.RaceID}})</td></tr>
+          <tr><td>Bloodline</td><td>{{.Char.BloodlineName}} ({{.Char.BloodlineID}})</td></tr>
+          <tr><td>Gender</td><td>{{.Char.GenderName}}</td></tr>
+        </table>
+        <table class="cv-kv">
+          <tr><td>Title</td><td>{{if .Char.Title}}{{.Char.Title}}{{else}}&mdash;{{end}}</td></tr>
+          <tr><td>Bounty</td><td>{{formatISK .Char.Bounty}}</td></tr>
+          <tr><td>Time logged on</td><td>{{.Char.LogonMinutes}} min</td></tr>
+          <tr><td>Created</td><td>{{if .Created}}{{.Created}}{{else}}&mdash;{{end}}</td></tr>
+        </table>
+      </div>
+      {{if .Online}}
+      <p style="color:#6ee7b7;font-size:12px;margin-top:8px">
+        Connected from {{.Online.Addr}} since {{.Online.ConnectedAt.Format "2006-01-02 15:04"}}
+        &mdash; changes below that say "relog required" will not show until then.
+      </p>
+      {{end}}
+    </div>
+
+    <!-- ── Appearance ────────────────────────────────────────────────────
+         Sits in this column, beside the portrait it describes: the portrait
+         card is tall and the identity card is short, so the editor fills the
+         gap instead of pushing the actions a screen further down. -->
+    {{if .Appearance}}
+    <div class="card">
+      <h3>Portrait appearance</h3>
+    <p class="cv-hint">
+      These are the values the client renders the face from &mdash; the server stores numbers, not an image.
+      The lists hold only what <b>{{.Char.BloodlineName}} / {{.Char.GenderName}}</b> can wear
+      (the <code>chrBL*</code> tables); an ID from another bloodline renders as the wrong mesh or is
+      rejected by the foreign key. Slots marked <span style="color:var(--accent)">*</span> are required &mdash;
+      a face cannot render without them. Bloodline and gender are fixed at character creation.
+      A saved change only reaches a client that has no cached picture of this pilot yet.
+    </p>
+
+    <form method="POST" action="{{.Self}}">
+      <input type="hidden" name="action" value="appearance">
+
+      <div class="cv-app-grid">
+        <div class="req">
+          <label>Costume</label>
+          <select name="costumeID">
+            {{range index .AppearanceOpts "costume"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.CostumeID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Hair</label>
+          <select name="hairID">
+            {{range index .AppearanceOpts "hair"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.HairID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Skin</label>
+          <select name="skinID">
+            {{range index .AppearanceOpts "skin"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.SkinID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Eyes</label>
+          <select name="eyesID">
+            {{range index .AppearanceOpts "eyes"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.EyesID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Eyebrows</label>
+          <select name="eyebrowsID">
+            {{range index .AppearanceOpts "eyebrows"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.EyebrowsID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label>Beard</label>
+          <select name="beardID">
+            <option value="0">None</option>
+            {{range index .AppearanceOpts "beard"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.BeardID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label>Accessory</label>
+          <select name="accessoryID">
+            <option value="0">None</option>
+            {{range index .AppearanceOpts "accessory"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.AccessoryID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label>Deco</label>
+          <select name="decoID">
+            <option value="0">None</option>
+            {{range index .AppearanceOpts "deco"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.DecoID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label>Lipstick</label>
+          <select name="lipstickID">
+            <option value="0">None</option>
+            {{range index .AppearanceOpts "lipstick"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.LipstickID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div>
+          <label>Makeup</label>
+          <select name="makeupID">
+            <option value="0">None</option>
+            {{range index .AppearanceOpts "makeup"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.MakeupID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Background</label>
+          <select name="backgroundID">
+            {{range index .AppearanceOpts "background"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.BackgroundID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+        <div class="req">
+          <label>Light</label>
+          <select name="lightID">
+            {{range index .AppearanceOpts "light"}}<option value="{{.ID}}" {{if eq .ID $.Appearance.LightID}}selected{{end}}>{{.Name}} ({{.ID}})</option>{{end}}
+          </select>
+        </div>
+      </div>
+
+      <div class="cv-sub">Framing &mdash; head and eye rotation, camera position</div>
+      <div class="cv-num">
+        <div><label>Head rotation X</label><input type="number" step="any" name="headRotation1" value="{{.Appearance.HeadRotation1}}"></div>
+        <div><label>Head rotation Y</label><input type="number" step="any" name="headRotation2" value="{{.Appearance.HeadRotation2}}"></div>
+        <div><label>Head rotation Z</label><input type="number" step="any" name="headRotation3" value="{{.Appearance.HeadRotation3}}"></div>
+        <div><label>Eye rotation X</label><input type="number" step="any" name="eyeRotation1" value="{{.Appearance.EyeRotation1}}"></div>
+        <div><label>Eye rotation Y</label><input type="number" step="any" name="eyeRotation2" value="{{.Appearance.EyeRotation2}}"></div>
+        <div><label>Eye rotation Z</label><input type="number" step="any" name="eyeRotation3" value="{{.Appearance.EyeRotation3}}"></div>
+        <div><label>Camera X</label><input type="number" step="any" name="camPos1" value="{{.Appearance.CamPos1}}"></div>
+        <div><label>Camera Y</label><input type="number" step="any" name="camPos2" value="{{.Appearance.CamPos2}}"></div>
+        <div><label>Camera Z</label><input type="number" step="any" name="camPos3" value="{{.Appearance.CamPos3}}"></div>
+      </div>
+
+      <details class="cv-fold">
+        <summary>Face morphs &mdash; 4 blend targets &times; east/north/south/west</summary>
+        <div class="cv-num">
+          <div><label>Morph 1 E</label><input type="number" step="any" name="morph1e" value="{{.Appearance.Morph1e}}"></div>
+          <div><label>Morph 1 N</label><input type="number" step="any" name="morph1n" value="{{.Appearance.Morph1n}}"></div>
+          <div><label>Morph 1 S</label><input type="number" step="any" name="morph1s" value="{{.Appearance.Morph1s}}"></div>
+          <div><label>Morph 1 W</label><input type="number" step="any" name="morph1w" value="{{.Appearance.Morph1w}}"></div>
+          <div><label>Morph 2 E</label><input type="number" step="any" name="morph2e" value="{{.Appearance.Morph2e}}"></div>
+          <div><label>Morph 2 N</label><input type="number" step="any" name="morph2n" value="{{.Appearance.Morph2n}}"></div>
+          <div><label>Morph 2 S</label><input type="number" step="any" name="morph2s" value="{{.Appearance.Morph2s}}"></div>
+          <div><label>Morph 2 W</label><input type="number" step="any" name="morph2w" value="{{.Appearance.Morph2w}}"></div>
+          <div><label>Morph 3 E</label><input type="number" step="any" name="morph3e" value="{{.Appearance.Morph3e}}"></div>
+          <div><label>Morph 3 N</label><input type="number" step="any" name="morph3n" value="{{.Appearance.Morph3n}}"></div>
+          <div><label>Morph 3 S</label><input type="number" step="any" name="morph3s" value="{{.Appearance.Morph3s}}"></div>
+          <div><label>Morph 3 W</label><input type="number" step="any" name="morph3w" value="{{.Appearance.Morph3w}}"></div>
+          <div><label>Morph 4 E</label><input type="number" step="any" name="morph4e" value="{{.Appearance.Morph4e}}"></div>
+          <div><label>Morph 4 N</label><input type="number" step="any" name="morph4n" value="{{.Appearance.Morph4n}}"></div>
+          <div><label>Morph 4 S</label><input type="number" step="any" name="morph4s" value="{{.Appearance.Morph4s}}"></div>
+          <div><label>Morph 4 W</label><input type="number" step="any" name="morph4w" value="{{.Appearance.Morph4w}}"></div>
+        </div>
+      </details>
+
+      <button type="submit" style="margin-top:12px">Save appearance</button>
+    </form>
+    </div>
+    {{end}}
+
+    <!-- ── Wallet journal + account siblings ─────────────────────────────── -->
+    <div class="cv-pair">
+      <div class="card">
+        <h3>Wallet journal <span class="cv-h3sub">&middot; newest {{len .Journal}}</span></h3>
+        {{if .Journal}}
+        <table class="cv-jtable">
+          <thead><tr><th>Date</th><th>Type</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+          <tbody>
+          {{range .Journal}}
+          <tr>
+            <td class="date">{{.Date}}</td>
+            <td title="{{.Reason}}">{{.RefType}}{{if .Reason}} <span class="why">{{.Reason}}</span>{{end}}</td>
+            <td class="num {{if lt .Amount 0.0}}neg{{else}}pos{{end}}">{{formatISK .Amount}}</td>
+            <td class="num bal">{{formatISK .Balance}}</td>
+          </tr>
+          {{end}}
+          </tbody>
+        </table>
+        {{else}}
+        <div class="cv-empty">No journal entries.</div>
+        {{end}}
+      </div>
+
+      {{if .AccountChars}}
+      <div class="card">
+        <h3>Account characters</h3>
+        <table>
+          <thead><tr><th>Character</th><th>Corporation</th><th class="num" style="text-align:right">Balance</th></tr></thead>
+          <tbody>
+            {{range .AccountChars}}
+            <tr>
+              <td>{{if eq .CharacterID $.Char.CharacterID}}<strong>{{.CharacterName}}</strong>{{else}}<a href="/character/{{.CharacterID}}">{{.CharacterName}}</a>{{end}}</td>
+              <td>{{.CorpName}}</td>
+              <td style="text-align:right;white-space:nowrap">{{formatISK .Balance}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+    </div>
+  </div>
+</div>
+
+{{if .Skills}}
+<div class="card">
+  <details class="cv-fold">
+    <summary>Trained skills ({{len .Skills}}) &mdash; full list</summary>
+    <table>
+      <thead><tr><th>Type ID</th><th>Name</th><th>Level</th><th style="text-align:right">Skill points</th></tr></thead>
+      <tbody>
+      {{range .Skills}}
+      <tr>
+        <td>{{.TypeID}}</td>
+        <td>{{.TypeName}}</td>
+        <td>{{.Level}}</td>
+        <td style="text-align:right">{{commas .SkillPoints}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table>
+  </details>
+</div>
+{{end}}
+
+<script>
+(function(){
+  // Whole-folder hand-over: webkitdirectory is set from script because the
+  // attribute makes the picker directory-only, and a GM copying two files
+  // still wants the plain multi-file picker.
+  var dirBox = document.getElementById('cv-dirmode');
+  if (dirBox) {
+    var fileInput = dirBox.form ? dirBox.form.querySelector('input[type=file]')
+                                : document.querySelector('.cv-ingest input[type=file]');
+    dirBox.addEventListener('change', function(){
+      if (!fileInput) return;
+      if (dirBox.checked) {
+        fileInput.setAttribute('webkitdirectory', '');
+        fileInput.setAttribute('directory', '');
+      } else {
+        fileInput.removeAttribute('webkitdirectory');
+        fileInput.removeAttribute('directory');
+      }
+      fileInput.value = '';
+    });
+  }
+
+  // Station search for "Move to station" — same API the agent editor uses.
+  var input = document.getElementById('cv-stsearch');
+  var hidden = document.getElementById('cv-stid');
+  var list = document.getElementById('cv-stlist');
+  if (!input) return;
+  var timer = null;
+  input.addEventListener('input', function(){
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (q.length < 2) { list.style.display = 'none'; return; }
+    timer = setTimeout(function(){
+      fetch('/agents/stations/api?q=' + encodeURIComponent(q))
+        .then(function(r){ return r.json(); })
+        .then(function(rows){
+          if (!rows || !rows.length) { list.style.display = 'none'; return; }
+          list.innerHTML = '';
+          rows.forEach(function(st){
+            var el = document.createElement('div');
+            el.style.cssText = 'padding:6px 10px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--line-soft)';
+            el.innerHTML = '<div style="color:#e0e4ec"></div><div style="color:#6b7280;font-size:11px"></div>';
+            el.children[0].textContent = st.stationName;
+            el.children[1].textContent = st.systemName;
+            el.addEventListener('click', function(){
+              hidden.value = st.stationID;
+              input.value = st.stationName;
+              list.style.display = 'none';
+            });
+            list.appendChild(el);
+          });
+          list.style.display = 'block';
+        });
+    }, 250);
+  });
+  document.addEventListener('click', function(e){
+    if (e.target !== input && !list.contains(e.target)) list.style.display = 'none';
+  });
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

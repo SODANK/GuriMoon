@@ -1,0 +1,27 @@
+{{define "content"}}
+<h2>Item Search</h2>
+<form class="search-form" method="GET" action="/items">
+  <input type="text" name="q" placeholder="Search invTypes (regex ok)..." value="{{.Query}}">
+  <button type="submit">Search</button>
+</form>
+{{if .Items}}
+<div class="card">
+  <table>
+    <tr><th style="width:40px"></th><th>Type ID</th><th>Name</th><th>Group</th></tr>
+    {{range .Items}}
+    <tr>
+      <td><img src="/typeicon/{{.TypeID}}.png" width="32" height="32" style="vertical-align:middle;border-radius:3px;background:var(--bg)" onerror="this.style.display='none'"></td>
+      <td>{{.TypeID}}</td>
+      <td>{{.TypeName}}</td>
+      <td style="color:#6b7280">{{.GroupName}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{if gt (len .Items) 49}}<p style="margin-top:8px;color:#6b7280;font-size:12px">Results limited to 50. Refine your search.</p>{{end}}
+</div>
+{{else}}
+{{if .Query}}<div class="card"><p>No items found.</p></div>{{end}}
+{{end}}
+{{end}}
+
+{{template "layout" .}}

@@ -1,0 +1,243 @@
+{{define "content"}}
+{{with .BP}}
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+  <h2 style="margin-bottom:0">{{.BlueprintName}}</h2>
+  <span style="color:#6b7280;font-size:12px">typeID {{.BlueprintTypeID}} · {{.GroupName}}</span>
+  {{if eq .TechLevel 2}}<span style="color:#93c5fd;font-size:12px;font-weight:600">Tech II</span>{{end}}
+  {{if ne .Published 1}}<span style="color:#fbbf24;font-size:12px">unpublished — the market and Show Info hide it</span>{{end}}
+  <a href="/industry/blueprints" style="font-size:12px;margin-left:auto">← all blueprints</a>
+</div>
+{{end}}
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+
+{{with .BP}}
+<div class="card">
+  <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px">
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Builds</span><br>
+      {{if .ProductName}}<b>{{.ProductName}}</b> <span style="color:#6b7280">({{.ProductTypeID}})</span>
+      {{else}}<span style="color:#f87171">typeID {{.ProductTypeID}} does not exist</span>{{end}}</div>
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Per run</span><br><b>{{.PortionSize}}</b> unit{{if ne .PortionSize 1}}s{{end}}</div>
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Build time</span><br><b>{{secs .ProductionTime}}</b></div>
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Waste factor</span><br><b>{{.WasteFactor}}%</b> at ME 0</div>
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Max runs / copy</span><br><b>{{.MaxProductionLimit}}</b></div>
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Copies in game</span><br><b>{{len .Instances}}</b></div>
+    {{if .ParentBlueprintTypeID}}
+    <div><span style="color:#6b7280;font-size:11px;text-transform:uppercase">Invents from</span><br>
+      <a href="/industry/blueprint/{{.ParentBlueprintTypeID}}">{{if .ParentName}}{{.ParentName}}{{else}}type {{.ParentBlueprintTypeID}}{{end}}</a></div>
+    {{end}}
+  </div>
+  {{if .Variants}}
+  <div style="margin-top:10px;font-size:12px;color:#9ca3af">Invents into:
+    {{range .Variants}}<a href="/industry/blueprint/{{.BlueprintTypeID}}">{{.BlueprintName}}</a> {{end}}
+  </div>
+  {{end}}
+</div>
+
+<!-- ── Type fields ─────────────────────────────────────────────── -->
+<div class="card">
+  <h3>Blueprint type</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 10px">These are the <code>invBlueprintTypes</code> columns. They apply to every copy of this blueprint in the game. A job already running keeps the end time it was stamped with when it was installed — the change lands on the next install.</p>
+  <form method="POST">
+    <input type="hidden" name="action" value="saveType">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">
+      <div class="form-group"><label>Product typeID</label>
+        <input type="number" name="productTypeID" value="{{.ProductTypeID}}" style="width:100%"></div>
+      <div class="form-group"><label>Production time (seconds)</label>
+        <input type="number" name="productionTime" value="{{.ProductionTime}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">= {{secs .ProductionTime}} per run at PE 0</span></div>
+      <div class="form-group"><label>Tech level</label>
+        <input type="number" name="techLevel" value="{{.TechLevel}}" style="width:100%"></div>
+      <div class="form-group"><label>Waste factor (%)</label>
+        <input type="number" name="wasteFactor" value="{{.WasteFactor}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">extra materials at ME 0</span></div>
+      <div class="form-group"><label>Max production limit</label>
+        <input type="number" name="maxProductionLimit" value="{{.MaxProductionLimit}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">runs per BPC</span></div>
+      <div class="form-group"><label>Productivity modifier</label>
+        <input type="number" name="productivityModifier" value="{{.ProductivityModifier}}" style="width:100%"></div>
+      <div class="form-group"><label>Material modifier</label>
+        <input type="number" name="materialModifier" value="{{.MaterialModifier}}" style="width:100%"></div>
+      <div class="form-group"><label>ME research time (s)</label>
+        <input type="number" name="researchMaterialTime" value="{{.ResearchMaterialTime}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">{{secs .ResearchMaterialTime}} per level</span></div>
+      <div class="form-group"><label>PE research time (s)</label>
+        <input type="number" name="researchProductivityTime" value="{{.ResearchProductivityTime}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">{{secs .ResearchProductivityTime}} per level</span></div>
+      <div class="form-group"><label>Copy time (s)</label>
+        <input type="number" name="researchCopyTime" value="{{.ResearchCopyTime}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">{{secs .ResearchCopyTime}} per copy</span></div>
+      <div class="form-group"><label>Tech research time (s)</label>
+        <input type="number" name="researchTechTime" value="{{.ResearchTechTime}}" style="width:100%"></div>
+      <div class="form-group"><label>Parent blueprint typeID</label>
+        <input type="number" name="parentBlueprintTypeID" value="{{.ParentBlueprintTypeID}}" style="width:100%">
+        <span style="font-size:11px;color:#6b7280">0 = none</span></div>
+      <div class="form-group"><label>Reverse engineering chance</label>
+        <input type="text" name="chanceOfReverseEngineering" value="{{num .ChanceOfReverseEngineering}}" style="width:100%"></div>
+    </div>
+    <button type="submit">Save blueprint type</button>
+  </form>
+</div>
+
+<!-- ── Requirements ────────────────────────────────────────────── -->
+{{$bp := .}}
+{{range .Activities}}
+<div class="card">
+  <h3>{{.ActivityName}} requirements</h3>
+  {{if eq .ActivityID 1}}
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Manufacturing consumes these once per run, after ME waste and the assembly line's material multiplier. A row with <b>damage &lt; 1</b> must be present but survives the job; <b>recycle</b> rows are what the item gives back when reprocessed, never consumed. Skill rows (category 16) are shown separately — the client renders them under Required Skills and nothing eats them.</p>
+  {{end}}
+  <table class="compact">
+    <tr><th style="width:44%">Material</th><th>Group</th><th style="width:100px">Quantity</th><th style="width:100px">Damage/job</th><th style="width:70px">Recycle</th><th style="width:140px"></th></tr>
+    {{$act := .ActivityID}}
+    {{range .Materials}}
+    <tr>
+      <td style="font-weight:600;color:{{if .Consumed}}#e0e4ec{{else}}#9ca3af{{end}}">{{.TypeName}}
+          <span style="color:#4b5563;font-size:11px"> {{.RequiredTypeID}}</span></td>
+      <td style="color:#9ca3af;font-size:12px">{{.GroupName}}</td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="number" name="quantity" value="{{.Quantity}}" style="width:88px"></td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="text" name="damagePerJob" value="{{num .DamagePerJob}}" style="width:88px"></td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="checkbox" name="recycle" value="1" {{if eq .Recycle 1}}checked{{end}}></td>
+      <td class="actions">
+        <form id="mf{{$act}}_{{.RequiredTypeID}}" method="POST">
+          <input type="hidden" name="action" value="saveMaterial">
+          <input type="hidden" name="activity" value="{{$act}}">
+          <input type="hidden" name="requiredTypeID" value="{{.RequiredTypeID}}">
+          <button type="submit">Save</button>
+        </form>
+        <form method="POST" onsubmit="return confirm('Remove {{.TypeName}} from this activity?')">
+          <input type="hidden" name="action" value="deleteMaterial">
+          <input type="hidden" name="activity" value="{{$act}}">
+          <input type="hidden" name="requiredTypeID" value="{{.RequiredTypeID}}">
+          <button type="submit" style="background:#3a1414;border-color:#5f1e1e">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    {{range .Skills}}
+    <tr style="opacity:.75">
+      <td style="color:#93c5fd">🎓 {{.TypeName}} <span style="color:#4b5563;font-size:11px">{{.RequiredTypeID}}</span></td>
+      <td style="color:#9ca3af;font-size:12px">skill requirement</td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="number" name="quantity" value="{{.Quantity}}" style="width:88px" title="level required"></td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="text" name="damagePerJob" value="{{num .DamagePerJob}}" style="width:88px"></td>
+      <td><input form="mf{{$act}}_{{.RequiredTypeID}}" type="checkbox" name="recycle" value="1" {{if eq .Recycle 1}}checked{{end}}></td>
+      <td class="actions">
+        <form id="mf{{$act}}_{{.RequiredTypeID}}" method="POST">
+          <input type="hidden" name="action" value="saveMaterial">
+          <input type="hidden" name="activity" value="{{$act}}">
+          <input type="hidden" name="requiredTypeID" value="{{.RequiredTypeID}}">
+          <button type="submit">Save</button>
+        </form>
+        <form method="POST" onsubmit="return confirm('Remove skill {{.TypeName}}?')">
+          <input type="hidden" name="action" value="deleteMaterial">
+          <input type="hidden" name="activity" value="{{$act}}">
+          <input type="hidden" name="requiredTypeID" value="{{.RequiredTypeID}}">
+          <button type="submit" style="background:#3a1414;border-color:#5f1e1e">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+    {{if and (not .Materials) (not .Skills)}}
+    <tr><td colspan="6" style="color:#6b7280">Nothing authored for {{.ActivityName}}.{{if eq .ActivityID 1}} A manufacturing job on this blueprint consumes nothing.{{end}}</td></tr>
+    {{end}}
+  </table>
+
+  <form method="POST" class="inline-form" style="margin-top:10px;position:relative">
+    <input type="hidden" name="action" value="saveMaterial">
+    <input type="hidden" name="activity" value="{{.ActivityID}}">
+    <input type="text" class="typePicker" data-target="mat{{.ActivityID}}" placeholder="Search an item type…" autocomplete="off" style="width:240px">
+    <input type="number" id="mat{{.ActivityID}}" name="requiredTypeID" placeholder="typeID" style="width:110px" required>
+    <input type="number" name="quantity" placeholder="qty" value="1" style="width:90px" required>
+    <input type="text" name="damagePerJob" placeholder="damage" value="1" style="width:90px">
+    <label style="font-size:12px;color:#9ca3af"><input type="checkbox" name="recycle" value="1"> recycle</label>
+    <button type="submit">Add requirement</button>
+    <div class="typeSuggest" style="position:absolute;top:100%;left:0;width:360px;background:var(--win-deep);border:1px solid var(--line);border-radius:4px;z-index:20;display:none"></div>
+  </form>
+</div>
+{{end}}
+
+<!-- ── Instances ───────────────────────────────────────────────── -->
+<div class="card">
+  <h3>Copies in the game ({{len .Instances}})</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">One row per item. ME and PE live in <code>invBlueprints</code>; a blueprint with no row there behaves as ME 0 / PE 0 original. A blueprint locked inside a running job cannot be edited — cancel the job first, otherwise delivery would hand back something different from what was installed. Edits reach the owner's client on their next session refresh.</p>
+  <table class="compact">
+    <tr><th style="width:140px">Item</th><th>Owner</th><th>Location</th><th style="width:70px">ME</th><th style="width:70px">PE</th><th style="width:60px">Copy</th><th style="width:90px">Runs left</th><th style="width:90px"></th></tr>
+    {{range .Instances}}
+    <tr>
+      <td style="color:#9ca3af;font-size:12px">{{.BlueprintID}}{{if not .HasRow}} <span style="color:#fbbf24" title="no invBlueprints row — behaves as ME 0 / PE 0 original">⚠</span>{{end}}
+        {{if gt .Quantity 1}}<br><span style="color:#fbbf24" title="a packaged stack — these values apply to every unit in it">stack ×{{.Quantity}}</span>{{end}}</td>
+      <td>{{if .OwnerName}}{{.OwnerName}}{{else}}<span style="color:#6b7280">owner {{.OwnerID}}</span>{{end}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{if .LocationName}}{{.LocationName}}{{else}}location {{.LocationID}}{{end}}
+        {{if .InProduction}}<br><span style="color:#fbbf24">in job {{.JobID}}</span>{{end}}</td>
+      {{if .InProduction}}
+      <td>{{.MaterialLevel}}</td><td>{{.ProductivityLevel}}</td>
+      <td>{{if eq .Copy 1}}yes{{else}}—{{end}}</td>
+      <td>{{if eq .RunsRemaining -1}}∞{{else}}{{.RunsRemaining}}{{end}}</td>
+      <td class="actions"><a href="/industry/factories?status=active&amp;q={{.JobID}}" style="font-size:12px">view job</a></td>
+      {{else}}
+      <td><input form="bi{{.BlueprintID}}" type="number" name="materialLevel" value="{{.MaterialLevel}}" style="width:58px"></td>
+      <td><input form="bi{{.BlueprintID}}" type="number" name="productivityLevel" value="{{.ProductivityLevel}}" style="width:58px"></td>
+      <td><input form="bi{{.BlueprintID}}" type="checkbox" name="copy" value="1" {{if eq .Copy 1}}checked{{end}}></td>
+      <td><input form="bi{{.BlueprintID}}" type="number" name="runsRemaining" value="{{.RunsRemaining}}" style="width:78px" title="ignored for originals — they have unlimited runs"></td>
+      <td class="actions">
+        <form id="bi{{.BlueprintID}}" method="POST">
+          <input type="hidden" name="action" value="saveInstance">
+          <input type="hidden" name="blueprintID" value="{{.BlueprintID}}">
+          <button type="submit">Save</button>
+        </form>
+      </td>
+      {{end}}
+    </tr>
+    {{else}}
+    <tr><td colspan="8" style="color:#6b7280">Nobody holds a copy of this blueprint.</td></tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<script>
+// Item-type autocomplete for the "add requirement" rows. Picking a hit fills
+// the numeric typeID field the form actually submits.
+(function(){
+  document.querySelectorAll('.typePicker').forEach(function(box){
+    var form = box.closest('form');
+    var sug = form.querySelector('.typeSuggest');
+    var target = document.getElementById(box.dataset.target);
+    var t;
+    box.addEventListener('input', function(){
+      clearTimeout(t);
+      var q = box.value.trim();
+      if (q.length < 2) { sug.style.display = 'none'; return; }
+      t = setTimeout(function(){
+        fetch('/industry/types/api?q=' + encodeURIComponent(q))
+          .then(function(r){ return r.json(); })
+          .then(function(list){
+            if (!list || !list.length) { sug.style.display = 'none'; return; }
+            sug.innerHTML = '';
+            list.forEach(function(it){
+              var a = document.createElement('a');
+              a.href = '#';
+              a.style.cssText = 'display:block;padding:6px 10px;font-size:12px;border-bottom:1px solid var(--line-soft)';
+              a.textContent = it.name + '  (' + it.id + ' · ' + it.group + ')';
+              a.addEventListener('click', function(e){
+                e.preventDefault();
+                target.value = it.id;
+                box.value = it.name;
+                sug.style.display = 'none';
+              });
+              sug.appendChild(a);
+            });
+            sug.style.display = 'block';
+          });
+      }, 200);
+    });
+    document.addEventListener('click', function(e){
+      if (!sug.contains(e.target) && e.target !== box) sug.style.display = 'none';
+    });
+  });
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

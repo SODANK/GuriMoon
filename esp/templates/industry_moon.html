@@ -1,0 +1,94 @@
+{{define "content"}}
+{{with .Moon}}
+<p style="font-size:13px;margin:0 0 8px"><a href="/industry/moons">&laquo; Moons</a> · <a href="/industry/moons?system={{.SystemID}}">all moons in {{.SystemName}}</a></p>
+<h2>{{.MoonName}}</h2>
+
+{{if $.Msg}}<div class="alert alert-success">{{$.Msg}}</div>{{end}}
+{{if $.Err}}<div class="alert alert-error">{{$.Err}}</div>{{end}}
+
+<div class="card" style="border-left:4px solid {{$.SecColor}}">
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <span style="color:{{$.SecColor}};font-weight:600">{{printf "%.2f" .Security}} {{$.SecLabel}}</span>
+    <span style="color:#6b7280;font-size:12px">{{.RegionName}} › {{.ConstellationName}} › {{.SystemName}}</span>
+  </div>
+  <div style="font-size:13px;color:#c5c8d0;margin-top:8px">
+    Sovereignty: <b>{{if .SovFaction}}{{.SovFaction}}{{else}}none{{end}}</b>
+    · Belt rats: <b>{{if .RatFaction}}{{.RatFaction}}{{else}}unknown{{end}}</b>
+  </div>
+  <div style="font-size:13px;color:#c5c8d0;margin-top:4px">
+    Leans toward: R8 <b style="color:{{moonClassColor 1}}">{{if .HomeR8}}{{.HomeR8}}{{else}}none{{end}}</b>
+    · R16 <b style="color:{{moonClassColor 2}}">{{.VeinR16}}</b> (this constellation's vein)
+    · R32 <b style="color:{{moonClassColor 3}}">{{if .RatR32}}{{.RatR32}}{{else}}none{{end}}</b>
+  </div>
+  <div style="font-size:12px;color:#6b7280;margin-top:6px">
+    {{if .Surveyed}}Rolled by generator v{{.GenVersion}}, profile {{.Profile}}, seed {{.WorldSeed}}{{if $.GenAge}}, {{$.GenAge}} ago{{end}}{{if .Rerolls}}, re-rolled {{.Rerolls}}×{{end}}.{{if .Edited}} <span style="color:#fbbf24">Hand-edited — a rescramble that keeps edits leaves it alone.</span>{{end}}{{else}}Not rolled yet.{{end}}
+  </div>
+</div>
+
+<div class="card">
+  <h3>Materials</h3>
+  {{if .Resources}}
+  <table style="max-width:640px">
+    <tr><th>Class</th><th>Material</th><th>Batches / cycle</th><th></th></tr>
+    {{range .Resources}}
+    <tr>
+      <td><b style="color:{{moonClassColor .Class}}">{{moonClassName .Class}}</b></td>
+      <td>{{.Name}}</td>
+      <td>
+        <form method="POST" style="display:flex;gap:6px;margin:0">
+          <input type="hidden" name="typeID" value="{{.TypeID}}">
+          <input type="number" name="quantity" min="1" max="{{$.MaxQty}}" value="{{.Quantity}}" style="width:60px">
+          <button type="submit" name="action" value="set">Save</button>
+        </form>
+      </td>
+      <td>
+        <form method="POST" style="margin:0">
+          <input type="hidden" name="typeID" value="{{.TypeID}}">
+          <button type="submit" name="action" value="delete">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">This moon is empty — a harvester here yields nothing.</p>
+  {{end}}
+
+  <form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">
+    <label style="display:block;font-size:12px;color:#6b7280">Add material<br>
+      <select name="typeID">{{range $.Materials}}<option value="{{.TypeID}}">{{moonClassName .Class}} · {{.Name}}</option>{{end}}</select>
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">Batches / cycle<br>
+      <input type="number" name="quantity" min="1" max="{{$.MaxQty}}" value="1" style="width:60px">
+    </label>
+    <button type="submit" name="action" value="set">Add</button>
+  </form>
+  <form method="POST" style="display:flex;gap:10px;margin-top:12px">
+    <button type="submit" name="action" value="reroll">&#9851; Re-roll this moon</button>
+    <button type="submit" name="action" value="restore">Restore generated</button>
+  </form>
+  <p style="font-size:12px;color:#6b7280;margin:8px 0 0">A harvester takes min(its quality, batches) × 100 units per cycle; Moon Harvesting Array I has quality 1. Any edit or re-roll marks the moon hand-edited. Restore puts back what the current world seed generates and clears the mark.</p>
+</div>
+
+{{if .TowerID}}
+<div class="card">
+  <h3>Tower</h3>
+  <p style="font-size:13px">{{.TowerType}} · {{if .TowerOwner}}{{.TowerOwner}}{{else}}owner unknown{{end}} · {{.TowerState}} · <a href="/starbases">Starbases</a></p>
+  {{if .Harvesters}}
+  <table style="max-width:640px">
+    <tr><th>Harvester</th><th>State</th><th>Set to</th></tr>
+    {{range .Harvesters}}
+    <tr>
+      <td>{{.TypeName}} <span style="color:#6b7280;font-size:12px">{{.EntityID}}</span></td>
+      <td>{{.State}}</td>
+      <td>{{if .MaterialID}}{{.MaterialName}}{{if .OffPool}} <span style="color:#f87171">— not on this moon, yields nothing</span>{{end}}{{else}}<span style="color:#6b7280">nothing</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:13px">No harvesters anchored.</p>
+  {{end}}
+</div>
+{{end}}
+{{end}}
+{{end}}

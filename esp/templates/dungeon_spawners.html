@@ -1,0 +1,830 @@
+{{define "content"}}
+<style>
+  /* Visible overflow lets the table heads stick to the window while a long
+     list scrolls; the layout's default would pin them to .main instead. */
+  .main { overflow: visible; }
+  .ds-wrap { max-width: 1700px; }
+  .ds-wrap .sx-top { align-items: center; margin-bottom: 8px; }
+  .ds-setting { margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--win); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; white-space: nowrap; font-size: 12px; color: #9ca3af; }
+  .ds-help { margin-bottom: 12px; font-size: 12px; color: #8b909a; }
+  .ds-help > summary { cursor: pointer; color: #e6c27a; width: max-content; }
+  .ds-help p { margin: 8px 0 0; line-height: 1.55; max-width: 1200px; }
+  .ds-help p b { color: #c5c8d0; }
+
+  .ds-wrap .sx-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  @media (max-width: 1100px) { .ds-wrap .sx-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  a.sx-kpi { display: block; color: inherit; }
+  a.sx-kpi:hover { background: var(--win-hover); text-decoration: none; }
+  .sx-kpi .big.warn { color: #fbbf24; }
+
+  .ds-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); }
+  .ds-tabs button { background: none; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; color: #9ca3af; padding: 8px 16px; margin-bottom: -1px; }
+  .ds-tabs button:hover { background: var(--win); color: #e0e4ec; }
+  .ds-tabs button.on { background: var(--win); border-color: var(--line); color: #e0e4ec; font-weight: 600; }
+  .ds-tabs .n { color: #6b7280; font-size: 11px; margin-left: 4px; font-weight: 400; }
+  .ds-panel { background: var(--win); border: 1px solid var(--line); border-top: none; border-radius: 0 0 6px 6px; padding: 12px 14px 14px; }
+
+  .ds-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .ds-bar input[type="text"], .ds-bar select { padding: 5px 8px; height: 30px; font-size: 12px; background: var(--win-deep); }
+  .ds-bar .ds-q { width: 260px; }
+  .ds-bar select.set, .ds-bar input.set { border-color: var(--btn-hi); color: #fff; }
+  .ds-bar .ds-reset { font-size: 12px; }
+  .ds-count { font-size: 12px; color: #9ca3af; }
+  .ds-push { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .ds-small { padding: 5px 12px; font-size: 12px; }
+  .ds-danger { background: #4a1a1a; border-color: #6b2a2a; }
+  .ds-bad { color: #fca5a5; }
+  .ds-empty { color: #9ca3af; font-size: 13px; padding: 14px 4px; }
+
+  table.ds-tbl thead th { position: sticky; top: 0; z-index: 2; white-space: nowrap; padding: 6px 7px; }
+  table.ds-tbl td { padding: 4px 7px; }
+  /* Shrinkable columns: a zero max-width lets the cell give way and ellipsize,
+     and the head's percentage hands it the spare room. */
+  table.ds-tbl td.flex { max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  table.ds-tbl th.w-l { width: 20%; min-width: 140px; }
+  table.ds-tbl th.w-m { width: 15%; min-width: 100px; }
+  table.ds-tbl th.w-s { width: 10%; min-width: 80px; }
+  table.ds-tbl th.sortable { cursor: pointer; user-select: none; }
+  table.ds-tbl th.sortable:hover { color: #e0e4ec; }
+  /* Only the sorted column carries an arrow: an idle one on every head costs
+     a name column's width. */
+  table.ds-tbl th.sortable.asc, table.ds-tbl th.sortable.desc { color: #e0e4ec; }
+  table.ds-tbl th.sortable.asc::after { content: '\25B2'; margin-left: 4px; font-size: 9px; color: var(--accent); }
+  table.ds-tbl th.sortable.desc::after { content: '\25BC'; margin-left: 4px; font-size: 9px; color: var(--accent); }
+  table.ds-tbl th.num, table.ds-tbl td.num { text-align: right; }
+  table.ds-tbl tbody tr:nth-child(even) td { background: var(--win-deep); }
+  table.ds-tbl tbody tr:hover td { background: var(--win-hover); }
+  table.ds-tbl tr.off td { color: #6b7280; }
+  table.ds-tbl tr.off .ds-name { color: #9ca3af; }
+  table.ds-tbl td.actions { text-align: right; width: 1%; }
+  .ds-name { color: #e0e4ec; font-weight: 600; }
+  .ds-warn { display: inline-block; margin-right: 6px; width: 15px; height: 15px; line-height: 15px; text-align: center; border-radius: 50%; background: #5a3d0a; color: #fbbf24; font-size: 11px; font-weight: 700; cursor: help; }
+  .ds-sig { color: #e6c27a; }
+  .s-hi { color: #6ee7b7; } .s-lo { color: #fbbf24; } .s-nul { color: #f87171; }
+
+  /* Enabled switch. */
+  table.rows button.ds-sw { width: 30px; height: 16px; padding: 0; border-radius: 8px; background: var(--line); border: 1px solid var(--line); position: relative; vertical-align: middle; }
+  .ds-sw i { position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; border-radius: 50%; background: #6b7280; }
+  table.rows button.ds-sw.on { background: #14532d; border-color: #1a6b3a; }
+  .ds-sw.on i { left: 15px; background: #6ee7b7; }
+
+  /* Live sites against the target. */
+  .ds-live { color: inherit; white-space: nowrap; }
+  .ds-live:hover { text-decoration: none; color: #fff; }
+  .ds-live b { color: #e0e4ec; }
+  .ds-fill { display: inline-block; width: 46px; height: 6px; margin-right: 8px; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; overflow: hidden; vertical-align: middle; }
+  .ds-fill i { display: block; height: 100%; background: #6ee7b7; }
+  .ds-fill.low i { background: #fbbf24; }
+
+  .ds-st { font-weight: 600; }
+  .ds-st.waiting { color: #6ee7b7; } .ds-st.engaged { color: #f87171; } .ds-st.cleared { color: #fbbf24; }
+  .ds-pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12px; color: #9ca3af; }
+  .ds-pager select { padding: 4px 6px; font-size: 12px; }
+  .ds-pager button:disabled { opacity: .4; cursor: default; }
+  .ds-note { font-size: 12px; color: #6b7280; margin: 10px 0 0; max-width: 1200px; line-height: 1.5; }
+
+  /* Edit dialog. The layout's reset zeroes every margin, so the dialog asks
+     for its centring back. */
+  dialog.ds-dlg { margin: auto; padding: 0; width: min(900px, calc(100vw - 40px)); max-height: calc(100vh - 40px); background: var(--win); color: #c5c8d0; border: 1px solid var(--btn); border-radius: 8px; }
+  dialog.ds-dlg::backdrop { background: rgba(10, 4, 4, .72); }
+  .ds-dlg form { display: flex; flex-direction: column; max-height: calc(100vh - 42px); }
+  .ds-dlg-head { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .ds-dlg-head h3 { color: #e0e4ec; font-size: 15px; }
+  .ds-dlg-head .ds-x { margin-left: auto; background: none; border: none; font-size: 20px; line-height: 1; padding: 0 6px; color: #9ca3af; }
+  .ds-dlg-head .ds-x:hover { color: #fff; }
+  .ds-dlg-body { padding: 14px 16px; overflow-y: auto; }
+  .ds-dlg-foot { display: flex; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .ds-dlg-warn { background: #2a1f0a; border: 1px solid #5a3d0a; color: #fbbf24; border-radius: 4px; padding: 7px 10px; font-size: 12px; margin-bottom: 12px; }
+  .ds-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+  .ds-f { display: flex; flex-direction: column; gap: 3px; }
+  .ds-f > span { font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; white-space: nowrap; }
+  .ds-dlg input[type="text"], .ds-dlg input[type="number"], .ds-dlg select { padding: 6px 8px; box-sizing: border-box; height: 32px; background: var(--win-deep); }
+  .ds-grow { flex: 1; min-width: 220px; }
+  .ds-grow input, .ds-grow select { width: 100%; }
+  .ds-n { width: 68px; text-align: center; -moz-appearance: textfield; appearance: textfield; }
+  .ds-n::-webkit-outer-spin-button, .ds-n::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .ds-sec { display: flex; align-items: center; gap: 4px; color: #6b7280; font-size: 12px; }
+  .ds-on { display: flex; align-items: center; gap: 6px; height: 32px; font-size: 12px; color: #9ca3af; cursor: pointer; }
+  .ds-place { display: flex; gap: 6px; height: 32px; align-items: center; }
+  .ds-place label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #b8bcc6; cursor: pointer; padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--win-deep); white-space: nowrap; }
+  .ds-place label:has(input:checked) { background: var(--win-sel); border-color: var(--btn); color: #fff; }
+  .ds-ask > span { color: #e6c27a; }
+
+  /* Region picker: the selection is always visible as chips; the list opens below. */
+  .regpick { border: 1px solid var(--line); border-radius: 6px; background: var(--win-deep); }
+  .regpick > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 10px; }
+  .regpick > summary::-webkit-details-marker { display: none; }
+  .regpick > summary .lbl { font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 1px; margin-right: 4px; }
+  .regpick > summary .edit { margin-left: auto; font-size: 12px; color: #e6c27a; }
+  .regpick[open] > summary .edit::after { content: ' \25B4'; }
+  .regpick:not([open]) > summary .edit::after { content: ' \25BE'; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--win-sel); border: 1px solid var(--btn); color: #e0e4ec; border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 12px; }
+  .chip i { font-style: normal; cursor: pointer; color: #fca5a5; padding: 0 5px; border-radius: 8px; }
+  .chip i:hover { background: var(--btn); }
+  .chip-all { background: none; border-style: dashed; color: #9ca3af; padding-right: 10px; }
+  .regpanel { border-top: 1px solid var(--line); padding: 10px; }
+  .regtools { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .regtools input { width: 220px; }
+  .regtools .count { font-size: 12px; color: #9ca3af; margin-left: auto; }
+  .reggrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 2px 10px; max-height: 210px; overflow-y: auto; }
+  .reggrid label { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 6px; border-radius: 4px; cursor: pointer; color: #b8bcc6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .reggrid label:hover { background: var(--win-hover); }
+  .reggrid label.on { background: var(--win-sel); color: #fff; }
+</style>
+
+<div class="ds-wrap sx">
+<div class="sx-top">
+  <h2>Dungeon Spawners</h2>
+  <form method="POST" action="/dungeon-spawners" class="ds-setting" autocomplete="off">
+    <input type="hidden" name="action" value="clearMinutes">
+    Despawn
+    <input type="number" name="clearMinutes" value="{{.ClearMinutes}}" min="1" max="1440" class="ds-n" title="Applies to every spawner">
+    min after clear
+    <button type="submit" class="ds-small">Save</button>
+  </form>
+</div>
+<details class="ds-help">
+  <summary>How spawners work</summary>
+  <p>Each spawner keeps <b>target</b> sites of one dungeon alive across the systems that match its filters, never more than <b>max / system</b> in one system.
+  A site is a beacon on every overview in its system that any pilot can warp to — or, with <b>Beacon on overview</b> unticked, a hidden cosmic signature that shows on no overview, no directional scan and no DED report, found only by analyzing scanner probes for <b>Cosmic Signature</b> (warp needs full probe coverage). The beacon setting is copied onto each site when it spawns, so changing it affects new sites only. Everyone who warps in shares one copy of the site. Each spawner places its sites either <b>in orbit of a planet</b>, at the distance that system's belts keep from theirs, or out in <b>deadspace</b>, open space between the planets' orbits at least a quarter AU from every celestial.
+  A site despawns after its whole complex is cleared: every NPC in every room, plus any wave a trigger released. A site nobody clears stays.
+  No regions picked means every region except Jove space and rogue-drone space; pick a drone region explicitly to spawn there. Security is the value the client displays.</p>
+</details>
+
+{{if .Result}}<div class="alert {{if .ResultErr}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
+{{if not .Attached}}<div class="alert alert-error">No game server attached. You can edit rules, but nothing is placed or despawned until the server runs.</div>{{end}}
+
+{{with .Summary}}
+<div class="sx-kpis">
+  <a href="#" class="sx-kpi" data-jump="sp:">
+    <div class="label">Spawners</div>
+    <div class="big">{{.Spawners}}</div>
+    <div class="split"><b>{{.Enabled}}</b> enabled · <b>{{sub .Spawners .Enabled}}</b> off</div>
+  </a>
+  <a href="#" class="sx-kpi" data-jump="si:">
+    <div class="label">Live sites</div>
+    <div class="big">{{.Sites}} <small>/ {{.Target}} target</small></div>
+    <div class="sx-meter"><div style="width:{{.FillPct}}%"></div></div>
+  </a>
+  <a href="#" class="sx-kpi" data-jump="sp:under">
+    <div class="label">Under target</div>
+    <div class="big">{{.Under}}</div>
+    <div class="split">enabled spawners still filling</div>
+  </a>
+  <a href="#" class="sx-kpi" data-jump="sp:warn">
+    <div class="label">Warnings</div>
+    <div class="big{{if .Issues}} warn{{end}}">{{.Issues}}</div>
+    <div class="split">spawners that cannot work as set</div>
+  </a>
+  <a href="#" class="sx-kpi" data-jump="si:engaged">
+    <div class="label">Engaged</div>
+    <div class="big">{{.Engaged}}</div>
+    <div class="split">sites with NPCs in space</div>
+  </a>
+  <a href="#" class="sx-kpi" data-jump="si:cleared">
+    <div class="label">Cleared</div>
+    <div class="big">{{.Cleared}}</div>
+    <div class="split">waiting to despawn · <b>{{.Signatures}}</b> probe-only</div>
+  </a>
+</div>
+{{end}}
+
+<div class="ds-tabs">
+  <button type="button" data-tab="spawners" class="on">Spawners <span class="n">{{len .Spawners}}</span></button>
+  <button type="button" data-tab="sites">Live sites <span class="n">{{len .SiteRows}}</span></button>
+</div>
+
+<div class="ds-panel" data-panel="spawners">
+  <div class="ds-bar">
+    <input type="text" id="dsSpQ" class="ds-q" placeholder="Filter by name, dungeon or region" autocomplete="off">
+    <select id="dsSpStatus">
+      <option value="">Any status</option>
+      <option value="on">Enabled</option>
+      <option value="off">Disabled</option>
+      <option value="under">Under target</option>
+      <option value="warn">Has a warning</option>
+    </select>
+    <select id="dsSpSec">
+      <option value="">Any security</option>
+      <option value="high">Reaches high sec</option>
+      <option value="low">Reaches low sec</option>
+      <option value="null">Reaches null sec</option>
+    </select>
+    <select id="dsSpPlace">
+      <option value="">Any placement</option>
+      <option value="planet">Planet orbit</option>
+      <option value="deadspace">Deadspace</option>
+    </select>
+    <select id="dsSpVis">
+      <option value="">Beacon or signature</option>
+      <option value="1">Overview beacon</option>
+      <option value="0">Probe-only signature</option>
+    </select>
+    <a href="#" class="ds-reset" id="dsSpReset">Reset</a>
+    <span class="ds-count" id="dsSpCount"></span>
+    <span class="ds-push">
+      {{if not .Dungeons}}<span class="ds-bad" style="font-size:12px">No dungeons are authored yet. Build one in the <a href="/editor/">3D editor</a> first.</span>{{end}}
+      <button type="button" id="dsNew" {{if not .Dungeons}}disabled{{end}}>New spawner</button>
+    </span>
+  </div>
+  {{if .Spawners}}
+  <table class="rows ds-tbl">
+    <thead>
+      <tr id="dsSpHead">
+        <th class="sortable" data-type="num" title="Enabled">On</th>
+        <th class="sortable num" data-type="num">#</th>
+        <th class="sortable w-l" data-type="text">Name</th>
+        <th class="sortable w-m" data-type="text">Dungeon</th>
+        <th class="sortable" data-type="num" title="Security band, as the client displays it">Sec</th>
+        <th class="sortable" data-type="text" title="Where a site is placed">Place</th>
+        <th class="sortable" data-type="text" title="Overview beacon, or a probe-only cosmic signature">Marker</th>
+        <th class="sortable" data-type="text">Regions</th>
+        <th class="sortable" data-type="num">Live / target</th>
+        <th class="sortable num" data-type="num" title="Most sites in one system">Max</th>
+        <th class="sortable num" data-type="num" title="Minutes before a despawned site is replaced">Respawn</th>
+        <th class="sortable num" data-type="num" title="Systems matching the filters">Systems</th>
+        <th class="sortable num" data-type="num" title="Every NPC of the dungeon, waves included">NPCs</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="dsSpRows">
+      {{range .Spawners}}
+      <tr class="{{if not .Enabled}}off{{end}}" data-id="{{.SpawnerID}}" data-name="{{.Name}}" data-dungeon="{{.DungeonVID}}"
+          data-secmin="{{printf "%.1f" .SecMin}}" data-secmax="{{printf "%.1f" .SecMax}}"
+          data-placement="{{if .IsDeadspace}}deadspace{{else}}planet{{end}}" data-target="{{.TargetActive}}"
+          data-maxsys="{{.MaxPerSystem}}" data-respawn="{{.RespawnDelayMinutes}}"
+          data-beacon="{{if .BeaconVisible}}1{{else}}0{{end}}" data-enabled="{{if .Enabled}}1{{else}}0{{end}}"
+          data-regions="{{.RegionCSV}}" data-regionnames="{{.RegionNames}}" data-live="{{.Live}}"
+          data-under="{{if .Under}}1{{else}}0{{end}}" data-warn="{{.Warn}}">
+        <td data-v="{{if .Enabled}}1{{else}}0{{end}}"><button type="button" class="ds-sw{{if .Enabled}} on{{end}}" data-act="toggle" title="{{if .Enabled}}Enabled. Click to disable: no new sites, live sites stay until cleared{{else}}Disabled. Click to enable{{end}}"><i></i></button></td>
+        <td class="num sub">{{.SpawnerID}}</td>
+        <td class="flex">{{if .Warn}}<span class="ds-warn" title="{{.Warn}}">!</span>{{end}}<a href="#" class="ds-name" data-act="edit" title="Edit {{.Name}}">{{.Name}}</a></td>
+        <td class="flex" title="{{.DungeonName}}">{{if .DungeonName}}{{.DungeonName}}{{else}}<span class="ds-bad">missing dungeon {{.DungeonVID}}</span>{{end}}</td>
+        <td data-v="{{printf "%.1f" .SecMin}}">{{template "dsSec" .SecMin}} <span class="sub">to</span> {{template "dsSec" .SecMax}}</td>
+        <td>{{if .IsDeadspace}}Deadspace{{else}}Planet{{end}}</td>
+        <td>{{if .BeaconVisible}}Overview{{else}}<span class="ds-sig" title="New sites are hidden cosmic signatures, found only by scanner probes">Signature</span>{{end}}</td>
+        <td title="{{.RegionNames}}">{{if .RegionFirst}}{{.RegionFirst}}{{if .RegionMore}} <span class="sub">+{{.RegionMore}}</span>{{end}}{{else}}<span class="sub">All</span>{{end}}</td>
+        <td data-v="{{.Live}}"><a href="#" class="ds-live" data-act="sites" title="Show this spawner's live sites"><span class="ds-fill{{if .Under}} low{{end}}"><i style="width:{{.FillPct}}%"></i></span><b>{{.Live}}</b> / {{.TargetActive}}</a></td>
+        <td class="num">{{.MaxPerSystem}}</td>
+        <td class="num" data-v="{{.RespawnDelayMinutes}}">{{.RespawnDelayMinutes}}<span class="sub">m</span></td>
+        <td class="num" data-v="{{.Systems}}">{{if .CheckErr}}<span class="ds-bad" title="{{.CheckErr}}">error</span>{{else}}{{.Systems}}{{end}}</td>
+        <td class="num" data-v="{{.NPCs}}" title="{{.BaseNPCs}} with the rooms, {{sub .NPCs .BaseNPCs}} in waves">{{.NPCs}}</td>
+        <td class="actions"><button type="button" data-act="spawn" title="Place one site now, ignoring the target and the respawn delay">Spawn</button><button type="button" data-act="edit">Edit</button></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <p class="ds-empty" id="dsSpNone" style="display:none">No spawner matches these filters.</p>
+  {{else}}
+  <p class="ds-empty">No spawners yet. Add the first one with New spawner.</p>
+  {{end}}
+</div>
+
+<div class="ds-panel" data-panel="sites" style="display:none">
+  {{if .SiteRows}}
+  <div class="ds-bar">
+    <input type="text" id="dsSiQ" class="ds-q" placeholder="Filter by system, planet, dungeon or site #" autocomplete="off">
+    <select id="dsSiSpawner"><option value="">Any spawner</option></select>
+    <select id="dsSiRegion"><option value="">Any region</option></select>
+    <select id="dsSiSec">
+      <option value="">Any security</option>
+      <option value="high">High sec</option>
+      <option value="low">Low sec</option>
+      <option value="null">Null sec</option>
+    </select>
+    <select id="dsSiState">
+      <option value="">Any state</option>
+      <option value="waiting">Waiting</option>
+      <option value="engaged">Engaged</option>
+      <option value="cleared">Cleared</option>
+    </select>
+    <select id="dsSiVis">
+      <option value="">Beacon or signature</option>
+      <option value="1">Overview beacon</option>
+      <option value="0">Probe-only signature</option>
+    </select>
+    <a href="#" class="ds-reset" id="dsSiReset">Reset</a>
+    <span class="ds-count" id="dsSiCount"></span>
+  </div>
+  <table class="rows ds-tbl">
+    <thead>
+      <tr id="dsSiHead">
+        <th class="sortable num" data-key="id">#</th>
+        <th class="sortable w-l" data-key="sp">Spawner</th>
+        <th class="sortable w-m" data-key="dun">Dungeon</th>
+        <th class="sortable w-s" data-key="sys">System</th>
+        <th class="sortable w-s" data-key="reg">Region</th>
+        <th class="sortable num" data-key="sec">Sec</th>
+        <th class="sortable w-s" data-key="loc">Location</th>
+        <th class="sortable" data-key="vis">Marker</th>
+        <th class="sortable num" data-key="age">Age</th>
+        <th class="sortable" data-key="npcs">NPCs dead</th>
+        <th class="sortable" data-key="state">State</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="dsSiRows"></tbody>
+  </table>
+  <p class="ds-empty" id="dsSiNone" style="display:none">No live site matches these filters.</p>
+  <div class="ds-pager">
+    <button type="button" class="ds-small" id="dsSiPrev">&lsaquo; Prev</button>
+    <span id="dsSiPage"></span>
+    <button type="button" class="ds-small" id="dsSiNext">Next &rsaquo;</button>
+    <span class="ds-push">Rows per page
+      <select id="dsSiSize"><option>50</option><option selected>100</option><option>250</option><option>1000</option></select>
+    </span>
+  </div>
+  <p class="ds-note">"NPCs dead" counts every NPC of the site, rooms nobody has entered and every wave group included. A wave nobody has released yet never spawned, so it does not hold the site open. A site's NPCs exist in space only after someone warps in. Kill progress is kept in memory, so a site half-cleared before a restart comes back at full strength.</p>
+  {{else}}
+  <p class="ds-empty">No live sites.</p>
+  {{end}}
+</div>
+</div>
+
+<dialog class="ds-dlg" id="dsDlg">
+  <form method="POST" action="/dungeon-spawners" autocomplete="off" id="dsForm">
+    <input type="hidden" name="action" value="save">
+    <input type="hidden" name="spawnerID" value="0">
+    <div class="ds-dlg-head">
+      <h3 id="dsDlgTitle">New spawner</h3>
+      <button type="button" class="ds-x" data-close title="Close without saving">&times;</button>
+    </div>
+    <div class="ds-dlg-body">
+      <div class="ds-dlg-warn" id="dsDlgWarn" style="display:none"></div>
+      <div class="ds-row">
+        <label class="ds-f ds-grow"><span>Name</span><input type="text" name="name" required></label>
+        <label class="ds-f ds-grow"><span>Dungeon</span>
+          <select name="dungeonVID" required>
+            {{range .Dungeons}}<option value="{{.DungeonVID}}">{{.Name}} · {{.RoomCount}} room{{if ne .RoomCount 1}}s{{end}}</option>{{end}}
+          </select>
+        </label>
+      </div>
+      <div class="ds-row">
+        <div class="ds-f"><span>Security</span>
+          <div class="ds-sec"><input type="number" name="secMin" value="-1.0" class="ds-n" step="0.1" min="-1" max="1"> to <input type="number" name="secMax" value="1.0" class="ds-n" step="0.1" min="-1" max="1"></div>
+        </div>
+        <div class="ds-f ds-ask"><span>Spawn the site where?</span>
+          <div class="ds-place">
+            <label title="Open space between the planets' orbits, a quarter AU or more from every celestial"><input type="radio" name="placement" value="deadspace" required> In deadspace</label>
+            <label title="Beside a random planet, at the distance that system's belts keep from theirs"><input type="radio" name="placement" value="planet" required> In orbit of a planet</label>
+          </div>
+        </div>
+        <label class="ds-f"><span>Target</span><input type="number" name="targetActive" value="5" min="0" class="ds-n"></label>
+        <label class="ds-f"><span>Max / sys</span><input type="number" name="maxPerSystem" value="1" min="1" class="ds-n"></label>
+        <label class="ds-f"><span>Respawn (min)</span><input type="number" name="respawnDelayMinutes" value="30" min="0" class="ds-n"></label>
+      </div>
+      <div class="ds-row">
+        <label class="ds-on" title="Unticked: new sites are hidden cosmic signatures, found only by scanner probes"><input type="checkbox" name="beaconVisible" value="1" checked> Beacon on overview</label>
+        <label class="ds-on" title="Unticked: no new sites; live sites stay until cleared"><input type="checkbox" name="enabled" value="1" checked> Enabled</label>
+      </div>
+      {{template "dsRegionPicker" .NewPick}}
+    </div>
+    <div class="ds-dlg-foot">
+      <button type="button" class="ds-small ds-danger" id="dsDelete">Delete spawner</button>
+      <span class="ds-push">
+        <button type="button" data-close>Cancel</button>
+        <button type="submit" id="dsSave">Save</button>
+      </span>
+    </div>
+  </form>
+</dialog>
+
+<form method="POST" action="/dungeon-spawners" id="dsAct" style="display:none">
+  <input type="hidden" name="action"><input type="hidden" name="spawnerID">
+  <input type="hidden" name="siteID"><input type="hidden" name="enabled">
+</form>
+
+<script>
+(function () {
+  // Live sites arrive as data and are rendered a page at a time, so the table
+  // stays quick with thousands of them.
+  var SITES = {{.SiteRows}} || [];
+
+  // Tab, filters and sort survive the POST and re-render every action causes.
+  var KEY = 'espDungeonSpawners';
+  var st = { tab: 'spawners', sp: {}, si: {} };
+  try {
+    var saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+    if (saved) { st.tab = saved.tab || st.tab; st.sp = saved.sp || {}; st.si = saved.si || {}; }
+  } catch (e) {}
+  function keep() { try { sessionStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
+
+  function $(id) { return document.getElementById(id); }
+  function list(nodes) { return Array.prototype.slice.call(nodes); }
+  function esc(s) {
+    return String(s).split('&').join('&amp;').split('<').join('&lt;').split('>').join('&gt;').split('"').join('&quot;');
+  }
+  function compare(x, y) {
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x).localeCompare(String(y), undefined, { numeric: true, sensitivity: 'base' });
+  }
+  // Security bands follow the value the client displays (one decimal).
+  function secShown(v) { var r = Math.round(v * 10) / 10; return r === 0 ? 0 : r; }
+  function secClass(v) { var r = secShown(v); return r >= 0.5 ? 'high' : (r >= 0.1 ? 'low' : 'null'); }
+
+  // Binds a toolbar's inputs to one filter object: ctl maps a filter key to
+  // its control. sync() pushes the filter back into the controls.
+  function bindBar(ctl, filter, changed) {
+    Object.keys(ctl).forEach(function (k) {
+      var el = ctl[k];
+      if (!el) return;
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', function () {
+        filter()[k] = el.value;
+        changed();
+      });
+      el.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+    });
+    return function sync() {
+      Object.keys(ctl).forEach(function (k) {
+        var el = ctl[k];
+        if (!el) return;
+        el.value = filter()[k] || '';
+        // A saved pick that no longer exists (a deleted spawner) falls back to "any".
+        if (el.value !== (filter()[k] || '')) { el.value = ''; filter()[k] = ''; }
+        el.classList.toggle('set', el.value !== '');
+      });
+    };
+  }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────
+  var tabs = list(document.querySelectorAll('.ds-tabs button'));
+  var panels = list(document.querySelectorAll('.ds-panel'));
+  function showTab(name) {
+    st.tab = name;
+    tabs.forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+    panels.forEach(function (p) { p.style.display = p.dataset.panel === name ? '' : 'none'; });
+    keep();
+  }
+  tabs.forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tab); }); });
+
+  // ── One hidden form posts every row action ──────────────────────────────
+  var act = $('dsAct');
+  function post(action, fields) {
+    ['spawnerID', 'siteID', 'enabled'].forEach(function (k) { act.elements[k].value = fields[k] || ''; });
+    act.elements['action'].value = action;
+    // requestSubmit fires the submit event the layout saves the scroll position on.
+    if (act.requestSubmit) act.requestSubmit(); else act.submit();
+  }
+
+  // ── Spawners table ──────────────────────────────────────────────────────
+  var spBody = $('dsSpRows');
+  var spHeads = list(document.querySelectorAll('#dsSpHead th.sortable'));
+  var spItems = spBody ? list(spBody.rows).map(function (tr, i) {
+    return {
+      tr: tr,
+      seq: i, // server order: the tie-break, and the order Reset returns to
+      hay: (tr.textContent + ' ' + tr.dataset.regionnames).toLowerCase().replace(/\s+/g, ' '),
+      // data-v carries the sort value where the cell text is not it.
+      keys: list(tr.cells).map(function (td) { return td.dataset.v !== undefined ? td.dataset.v : td.textContent.trim(); })
+    };
+  }) : [];
+
+  function applySp() {
+    var f = st.sp, q = (f.q || '').trim().toLowerCase(), shown = 0;
+    spItems.forEach(function (it) {
+      var d = it.tr.dataset, lo = parseFloat(d.secmin), hi = parseFloat(d.secmax);
+      var ok = !q || it.hay.indexOf(q) !== -1;
+      if (ok && f.status === 'on') ok = d.enabled === '1';
+      if (ok && f.status === 'off') ok = d.enabled !== '1';
+      if (ok && f.status === 'under') ok = d.under === '1';
+      if (ok && f.status === 'warn') ok = d.warn !== '';
+      if (ok && f.sec === 'high') ok = hi >= 0.45;
+      if (ok && f.sec === 'low') ok = lo < 0.45 && hi >= 0.05;
+      if (ok && f.sec === 'null') ok = lo < 0.05;
+      if (ok && f.place) ok = d.placement === f.place;
+      if (ok && f.vis) ok = d.beacon === f.vis;
+      it.tr.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    if ($('dsSpCount')) {
+      $('dsSpCount').textContent = spItems.length ? 'Showing ' + shown + ' of ' + spItems.length : '';
+    }
+    if ($('dsSpNone')) $('dsSpNone').style.display = shown ? 'none' : '';
+    keep();
+  }
+
+  function sortSp() {
+    if (!spBody) return;
+    var col = st.sp.sort, dir = st.sp.dir === -1 ? -1 : 1, numeric = false;
+    spHeads.forEach(function (h) {
+      h.classList.remove('asc', 'desc');
+      if (h.cellIndex === col) { h.classList.add(dir > 0 ? 'asc' : 'desc'); numeric = h.dataset.type === 'num'; }
+    });
+    spItems.sort(function (a, b) {
+      var c = 0;
+      if (col !== undefined && col !== null) {
+        c = numeric ? (parseFloat(a.keys[col]) || 0) - (parseFloat(b.keys[col]) || 0) : compare(a.keys[col], b.keys[col]);
+      }
+      return c ? c * dir : a.seq - b.seq;
+    });
+    var frag = document.createDocumentFragment();
+    spItems.forEach(function (it) { frag.appendChild(it.tr); });
+    spBody.appendChild(frag);
+  }
+
+  spHeads.forEach(function (th) {
+    th.addEventListener('click', function () {
+      st.sp.dir = st.sp.sort === th.cellIndex && st.sp.dir !== -1 ? -1 : 1;
+      st.sp.sort = th.cellIndex;
+      sortSp();
+      keep();
+    });
+  });
+  var syncSp = bindBar(
+    { q: $('dsSpQ'), status: $('dsSpStatus'), sec: $('dsSpSec'), place: $('dsSpPlace'), vis: $('dsSpVis') },
+    function () { return st.sp; },
+    function () { syncSp(); applySp(); });
+  function resetSp(filter) {
+    st.sp = filter || {};
+    syncSp(); sortSp(); applySp();
+  }
+  $('dsSpReset').addEventListener('click', function (e) { e.preventDefault(); resetSp(); });
+
+  if (spBody) {
+    spBody.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (!b) return;
+      e.preventDefault();
+      var d = b.closest('tr').dataset;
+      if (b.dataset.act === 'edit') openEdit(d);
+      if (b.dataset.act === 'toggle') post('toggle', { spawnerID: d.id, enabled: d.enabled === '1' ? '0' : '1' });
+      if (b.dataset.act === 'spawn') post('spawnNow', { spawnerID: d.id });
+      if (b.dataset.act === 'sites') { resetSi({ spawner: d.id }); showTab('sites'); }
+    });
+  }
+
+  // ── Live sites table ────────────────────────────────────────────────────
+  var siBody = $('dsSiRows');
+  var siHeads = list(document.querySelectorAll('#dsSiHead th.sortable'));
+  var stateRank = { waiting: 0, engaged: 1, cleared: 2 };
+  var siKey = {
+    id: function (s) { return s.id; },
+    sp: function (s) { return s.sp || '#' + s.spid; },
+    dun: function (s) { return s.dun; },
+    sys: function (s) { return s.sys; },
+    reg: function (s) { return s.reg; },
+    sec: function (s) { return s.sec; },
+    loc: function (s) { return s.loc || 'Deadspace'; },
+    vis: function (s) { return s.vis ? 0 : 1; },
+    age: function (s) { return -s.at; },
+    npcs: function (s) { return s.known ? s.dead : -1; },
+    state: function (s) { return stateRank[s.state] + (s.inSpace ? 0.5 : 0); }
+  };
+  SITES.forEach(function (s) {
+    s.hay = [s.id, s.sp, s.dun, s.sys, s.reg, s.loc || 'deadspace'].join(' ').toLowerCase();
+  });
+
+  // Spawner and region pickers list only what has a live site, with counts.
+  function fillSelect(sel, value, label) {
+    if (!sel) return;
+    var seen = {}, opts = [];
+    SITES.forEach(function (s) {
+      var v = String(value(s));
+      if (!v) return;
+      if (!seen[v]) { seen[v] = { v: v, label: label(s), n: 0 }; opts.push(seen[v]); }
+      seen[v].n++;
+    });
+    opts.sort(function (a, b) { return compare(a.label, b.label); });
+    opts.forEach(function (o) {
+      var el = document.createElement('option');
+      el.value = o.v;
+      el.textContent = o.label + ' (' + o.n + ')';
+      sel.appendChild(el);
+    });
+  }
+  fillSelect($('dsSiSpawner'), function (s) { return s.spid; }, function (s) { return s.sp || '#' + s.spid; });
+  fillSelect($('dsSiRegion'), function (s) { return s.reg; }, function (s) { return s.reg; });
+
+  function siteRow(s) {
+    var npcs = '<span class="sub">&mdash;</span>';
+    if (s.known) {
+      npcs = s.dead + ' / ' + s.total;
+      if (s.waves) npcs += ' <span class="sub" title="NPCs in waves no trigger has released; they do not hold the site open">' + s.waves + ' in unreleased waves</span>';
+      if (s.inSpace) npcs += ' <span class="sub">' + s.inSpace + ' in space</span>';
+    }
+    var state = '<span class="ds-st waiting">Waiting</span>';
+    if (s.state === 'engaged') state = '<span class="ds-st engaged">Engaged</span>';
+    if (s.state === 'cleared') state = '<span class="ds-st cleared">Cleared' + (s.left ? ', despawn in ' + esc(s.left) : '') + '</span>';
+    if (s.loaded) state += ' <span class="sub">&middot; loaded</span>';
+    var cls = secClass(s.sec);
+    return '<tr>' +
+      '<td class="num sub">' + s.id + '</td>' +
+      '<td class="flex" title="' + esc(s.sp) + '">' + (s.sp ? esc(s.sp) : '<span class="sub">#' + s.spid + '</span>') + '</td>' +
+      '<td class="flex" title="' + esc(s.dun) + '">' + (s.dun === s.sp ? '<span class="sub">' + esc(s.dun) + '</span>' : esc(s.dun)) + '</td>' +
+      '<td class="flex">' + esc(s.sys) + '</td>' +
+      '<td class="flex">' + esc(s.reg) + '</td>' +
+      '<td class="num ' + (cls === 'high' ? 's-hi' : (cls === 'low' ? 's-lo' : 's-nul')) + '">' + secShown(s.sec).toFixed(1) + '</td>' +
+      '<td class="flex">' + (s.loc ? esc(s.loc) : '<span class="sub">Deadspace</span>') + '</td>' +
+      '<td>' + (s.vis ? 'Overview' : '<span class="ds-sig" title="Found only by scanner probes (Cosmic Signature)">Signature</span>') + '</td>' +
+      '<td class="num">' + esc(s.age) + '</td>' +
+      '<td>' + npcs + '</td>' +
+      '<td>' + state + '</td>' +
+      '<td class="actions"><button type="button" class="ds-danger" data-despawn="' + s.id + '" data-sys="' + esc(s.sys) + '">Despawn</button></td>' +
+      '</tr>';
+  }
+
+  function renderSi() {
+    if (!siBody) return;
+    var f = st.si, q = (f.q || '').trim().toLowerCase();
+    var rows = SITES.filter(function (s) {
+      if (q && s.hay.indexOf(q) === -1) return false;
+      if (f.spawner && String(s.spid) !== f.spawner) return false;
+      if (f.region && s.reg !== f.region) return false;
+      if (f.sec && secClass(s.sec) !== f.sec) return false;
+      if (f.state && s.state !== f.state) return false;
+      if (f.vis && (s.vis ? '1' : '0') !== f.vis) return false;
+      return true;
+    });
+    var key = siKey[f.sort], dir = f.dir === -1 ? -1 : 1;
+    siHeads.forEach(function (h) {
+      h.classList.remove('asc', 'desc');
+      if (key && h.dataset.key === f.sort) h.classList.add(dir > 0 ? 'asc' : 'desc');
+    });
+    if (key) {
+      rows.sort(function (a, b) {
+        var c = compare(key(a), key(b));
+        return c ? c * dir : b.id - a.id; // ties keep the server order, newest first
+      });
+    }
+    var size = parseInt(f.size, 10) || 100;
+    var pages = Math.max(1, Math.ceil(rows.length / size));
+    var page = Math.min(Math.max(parseInt(f.page, 10) || 0, 0), pages - 1);
+    f.page = page;
+    var from = page * size, slice = rows.slice(from, from + size);
+    siBody.innerHTML = slice.map(siteRow).join('');
+    $('dsSiNone').style.display = rows.length ? 'none' : '';
+    $('dsSiCount').textContent = rows.length === SITES.length
+      ? SITES.length + ' sites'
+      : rows.length + ' of ' + SITES.length + ' sites';
+    $('dsSiPage').textContent = rows.length
+      ? (from + 1) + ' to ' + (from + slice.length) + ' of ' + rows.length + ' · page ' + (page + 1) + ' of ' + pages
+      : '';
+    $('dsSiPrev').disabled = page <= 0;
+    $('dsSiNext').disabled = page >= pages - 1;
+    $('dsSiSize').value = String(size);
+    keep();
+  }
+
+  var syncSi = bindBar(
+    { q: $('dsSiQ'), spawner: $('dsSiSpawner'), region: $('dsSiRegion'), sec: $('dsSiSec'), state: $('dsSiState'), vis: $('dsSiVis') },
+    function () { return st.si; },
+    function () { st.si.page = 0; syncSi(); renderSi(); });
+  function resetSi(filter) {
+    var size = st.si.size;
+    st.si = filter || {};
+    st.si.size = size;
+    syncSi(); renderSi();
+  }
+  if (siBody) {
+    siHeads.forEach(function (th) {
+      th.addEventListener('click', function () {
+        st.si.dir = st.si.sort === th.dataset.key && st.si.dir !== -1 ? -1 : 1;
+        st.si.sort = th.dataset.key;
+        st.si.page = 0;
+        renderSi();
+      });
+    });
+    $('dsSiReset').addEventListener('click', function (e) { e.preventDefault(); resetSi(); });
+    $('dsSiPrev').addEventListener('click', function () { st.si.page = (st.si.page || 0) - 1; renderSi(); });
+    $('dsSiNext').addEventListener('click', function () { st.si.page = (st.si.page || 0) + 1; renderSi(); });
+    $('dsSiSize').addEventListener('change', function () { st.si.size = this.value; st.si.page = 0; renderSi(); });
+    siBody.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-despawn]');
+      if (!b) return;
+      if (confirm('Despawn site ' + b.dataset.despawn + ' in ' + b.dataset.sys + ' now?')) post('despawnSite', { siteID: b.dataset.despawn });
+    });
+  }
+
+  // ── Figure strip: each tile opens the list it counts ────────────────────
+  list(document.querySelectorAll('[data-jump]')).forEach(function (a) {
+    a.addEventListener('click', function (e) {
+      e.preventDefault();
+      var jump = a.dataset.jump.split(':'), what = jump[1];
+      if (jump[0] === 'sp') { resetSp(what ? { status: what } : {}); showTab('spawners'); }
+      if (jump[0] === 'si') { resetSi(what ? { state: what } : {}); showTab('sites'); }
+    });
+  });
+
+  // ── Edit dialog: one form, filled from the row that opened it ───────────
+  var dlg = $('dsDlg'), form = $('dsForm'), pick = dlg.querySelector('.regpick');
+  var chips = pick.querySelector('.regchips');
+  var boxes = list(pick.querySelectorAll('.reggrid input[type=checkbox]'));
+  var regFilter = pick.querySelector('.regfilter');
+  var editing = null;
+
+  function renderRegions() {
+    var picked = boxes.filter(function (b) { return b.checked; });
+    boxes.forEach(function (b) { b.parentNode.classList.toggle('on', b.checked); });
+    chips.innerHTML = '';
+    if (!picked.length) {
+      var all = document.createElement('span');
+      all.className = 'chip chip-all';
+      all.textContent = 'All but Jove & drone space';
+      chips.appendChild(all);
+    }
+    picked.forEach(function (b) {
+      var c = document.createElement('span');
+      c.className = 'chip';
+      c.textContent = b.parentNode.textContent.trim();
+      var x = document.createElement('i');
+      x.textContent = '×';
+      x.title = 'Remove';
+      x.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); b.checked = false; renderRegions(); });
+      c.appendChild(x);
+      chips.appendChild(c);
+    });
+    pick.querySelector('.count').textContent = picked.length ? picked.length + ' selected' : 'none selected = all but Jove & drone space';
+  }
+  function filterRegions() {
+    var q = regFilter.value.trim().toLowerCase();
+    boxes.forEach(function (b) {
+      b.parentNode.style.display = !q || b.parentNode.textContent.toLowerCase().indexOf(q) >= 0 ? '' : 'none';
+    });
+  }
+  boxes.forEach(function (b) { b.addEventListener('change', renderRegions); });
+  regFilter.addEventListener('input', filterRegions);
+  regFilter.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+  pick.querySelector('.regclear').addEventListener('click', function () {
+    boxes.forEach(function (b) { b.checked = false; });
+    renderRegions();
+  });
+
+  // d is a spawner row's dataset, or null for a new spawner.
+  function openEdit(d) {
+    editing = d;
+    form.reset(); // back to the new-spawner defaults
+    var el = form.elements, sel = el['dungeonVID'];
+    list(sel.querySelectorAll('option[data-missing]')).forEach(function (o) { sel.removeChild(o); });
+    el['spawnerID'].value = d ? d.id : '0';
+    $('dsDlgTitle').textContent = d ? 'Edit spawner #' + d.id : 'New spawner';
+    $('dsSave').textContent = d ? 'Save' : 'Add spawner';
+    $('dsDelete').style.display = d ? '' : 'none';
+    $('dsDlgWarn').textContent = d && d.warn ? 'Warning: ' + d.warn + '.' : '';
+    $('dsDlgWarn').style.display = d && d.warn ? '' : 'none';
+    if (d) {
+      el['name'].value = d.name;
+      if (!list(sel.options).some(function (o) { return o.value === d.dungeon; })) {
+        var gone = document.createElement('option');
+        gone.value = d.dungeon;
+        gone.textContent = '(missing dungeon ' + d.dungeon + ')';
+        gone.setAttribute('data-missing', '1');
+        sel.insertBefore(gone, sel.firstChild);
+      }
+      sel.value = d.dungeon;
+      el['secMin'].value = d.secmin;
+      el['secMax'].value = d.secmax;
+      el['placement'].value = d.placement;
+      el['targetActive'].value = d.target;
+      el['maxPerSystem'].value = d.maxsys;
+      el['respawnDelayMinutes'].value = d.respawn;
+      el['beaconVisible'].checked = d.beacon === '1';
+      el['enabled'].checked = d.enabled === '1';
+      var on = {};
+      (d.regions ? d.regions.split(',') : []).forEach(function (id) { on[id] = true; });
+      boxes.forEach(function (b) { b.checked = !!on[b.value]; });
+    }
+    pick.open = false;
+    filterRegions();
+    renderRegions();
+    dlg.showModal();
+    el['name'].focus();
+  }
+  $('dsNew').addEventListener('click', function () { openEdit(null); });
+  list(dlg.querySelectorAll('[data-close]')).forEach(function (b) {
+    b.addEventListener('click', function () { dlg.close(); });
+  });
+  $('dsDelete').addEventListener('click', function () {
+    if (!editing) return;
+    if (confirm('Delete spawner ' + editing.name + '? Its ' + editing.live + ' live site(s) despawn now, with any pilots in them.')) {
+      post('delete', { spawnerID: editing.id });
+    }
+  });
+
+  syncSp(); sortSp(); applySp();
+  syncSi(); renderSi();
+  showTab(st.tab === 'sites' ? 'sites' : 'spawners');
+})();
+</script>
+{{end}}
+
+{{define "dsSec"}}<span class="{{if ge . 0.45}}s-hi{{else if ge . 0.05}}s-lo{{else}}s-nul{{end}}">{{printf "%.1f" .}}</span>{{end}}
+
+{{define "dsRegionPicker"}}
+<details class="regpick">
+  <summary>
+    <span class="lbl">Regions</span>
+    <span class="regchips"><span class="chip chip-all">All but Jove &amp; drone space</span></span>
+    <span class="edit">Choose</span>
+  </summary>
+  <div class="regpanel">
+    <div class="regtools">
+      <input type="text" class="regfilter" placeholder="Filter regions" autocomplete="off">
+      <button type="button" class="ds-small regclear">Clear</button>
+      <span class="count"></span>
+    </div>
+    <div class="reggrid">
+      {{range .Options}}<label><input type="checkbox" name="regionIDs" value="{{.RegionID}}">{{.Name}}</label>{{end}}
+    </div>
+  </div>
+</details>
+{{end}}

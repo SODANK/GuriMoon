@@ -1,0 +1,271 @@
+{{define "content"}}
+<h2>Killboard</h2>
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  Every player ship and capsule destroyed, recorded at kill time into its own rows rather than
+  read back out of the CONCORD mail. Names and ISK values are <b>snapshotted</b> — a corp that
+  renames, an alliance that dissolves or a pilot that is deleted does not blank its own history,
+  and nothing here is re-priced against today's market. <b>NPC-only kills</b>
+  (where every attacker was an NPC) are hidden unless you ask for them.
+</p>
+
+<div class="stats">
+  <div class="stat"><div class="label">Kills (24h)</div><div class="value">{{commas .Kills24h}}</div></div>
+  <div class="stat"><div class="label">ISK destroyed (24h)</div><div class="value">{{formatISK .ISK24h}}</div></div>
+  <div class="stat"><div class="label">Kills ({{.Days}}d)</div><div class="value">{{commas .WindowKill}}</div></div>
+  <div class="stat"><div class="label">ISK destroyed ({{.Days}}d)</div><div class="value">{{formatISK .WindowISK}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Filter</h3>
+  <form method="GET" action="/killboard">
+    <table>
+      <tr>
+        <td style="width:120px;color:#6b7280">Pilot / corp</td>
+        <td><input type="text" name="q" value="{{.Query}}" style="width:280px" placeholder="victim, victim's corp, or final blow"></td>
+        <td style="width:90px;color:#6b7280">Window</td>
+        <td>
+          <select name="days">
+            <option value="1" {{if eq .Days 1}}selected{{end}}>Last 24 hours</option>
+            <option value="7" {{if eq .Days 7}}selected{{end}}>Last 7 days</option>
+            <option value="30" {{if eq .Days 30}}selected{{end}}>Last 30 days</option>
+            <option value="365" {{if eq .Days 365}}selected{{end}}>Last year</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280">Kind</td>
+        <td>
+          <select name="kind">
+            <option value="" {{if eq .Kind ""}}selected{{end}}>Ships and pods</option>
+            <option value="ship" {{if eq .Kind "ship"}}selected{{end}}>Ships only</option>
+            <option value="pod" {{if eq .Kind "pod"}}selected{{end}}>Pods only</option>
+          </select>
+        </td>
+        <td style="color:#6b7280">Min ISK</td>
+        <td><input type="text" name="minisk" value="{{.MinISK}}" style="width:120px" placeholder="0"></td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280">NPC kills</td>
+        <td colspan="3">
+          <input type="checkbox" name="npc" value="1" {{if .NPC}}checked{{end}}>
+          <span style="font-size:11px;color:#6b7280">also show kills where every attacker was an NPC (no player or bot involved)</span>
+        </td>
+      </tr>
+    </table>
+    <button type="submit" style="margin-top:10px">Apply</button>
+    <a href="/killboard" style="margin-left:10px;font-size:12px;color:#6b7280">reset</a>
+  </form>
+</div>
+
+{{if .TopValue}}
+<div class="card">
+  <h3>
+    Most valuable
+    <span style="font-weight:normal;font-size:12px;color:#6b7280;margin-left:8px">{{.TopValueLabel}}</span>
+  </h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Front page only. A highlight that survived every filter would stop being one &mdash; a board cut
+    to a single system wants that system, not the same five hulls pinned above every view. The
+    window widens until the panel fills, and says which one it settled on rather than showing a
+    month as though it were a day.
+  </p>
+  <table class="rows">
+    <tr><th style="width:24px">#</th><th></th><th>Ship</th><th>Victim</th><th>Where</th><th style="text-align:right">Value</th><th>When</th></tr>
+    {{range $i, $k := .TopValue}}
+    <tr{{if eq $i 0}} style="background:#1f2a1a"{{end}}>
+      <td style="color:#6b7280;text-align:right">{{add $i 1}}</td>
+      <td style="width:36px"><img src="/typeicon/{{$k.ShipTypeID}}?size=32" width="32" height="32" alt="{{$k.ShipTypeName}}"></td>
+      <td>
+        <a href="/killmail/{{$k.KillID}}"><b>{{$k.ShipTypeName}}</b></a>
+        {{if $k.IsPod}}<span style="font-size:10px;color:#fca5a5"> POD</span>{{end}}
+      </td>
+      <td>
+        {{if $k.VictimCharID}}<a href="/character/{{$k.VictimCharID}}">{{if $k.VictimName}}{{$k.VictimName}}{{else}}Unknown pilot{{end}}</a>
+        {{else}}{{if $k.VictimName}}{{$k.VictimName}}{{else}}Unknown pilot{{end}}{{end}}
+        {{if $k.NPCOnly}}<span style="font-size:10px;color:#d97706"> [NPC kill]</span>{{end}}
+        <div class="sub">{{if $k.VictimCorpName}}{{$k.VictimCorpName}}{{else}}&mdash;{{end}}</div>
+      </td>
+      <td>
+        {{if $k.SolarSystemID}}<a href="/solarsystem/{{$k.SolarSystemID}}">{{$k.SystemName}}</a>{{else}}{{$k.SystemName}}{{end}}
+        <div class="sub">{{printf "%.1f" $k.Security}}</div>
+      </td>
+      <td style="text-align:right"><b>{{formatISK $k.TotalValue}}</b></td>
+      <td class="sub">{{formatDuration (since $k.KillTime)}} ago</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Kills ({{commas .Total}})</h3>
+  {{if .Kills}}
+  <table>
+    <tr><th></th><th>Victim</th><th>Ship</th><th>Where</th><th>Final blow</th><th style="text-align:right">Damage</th><th style="text-align:right">Value</th><th>When</th></tr>
+    {{range .Kills}}
+    <tr>
+      <td style="width:36px"><img src="/typeicon/{{.ShipTypeID}}?size=32" width="32" height="32" alt="{{.ShipTypeName}}"></td>
+      <td>
+        <a href="/killmail/{{.KillID}}"><b>{{if .VictimName}}{{.VictimName}}{{else}}Unknown pilot{{end}}</b></a>
+        {{if .NPCOnly}}<span style="font-size:10px;color:#d97706"> [NPC kill]</span>{{end}}
+        <div style="font-size:11px;color:#6b7280">
+          {{if .VictimCorpName}}{{.VictimCorpName}}{{else}}&mdash;{{end}}{{if .VictimAllianceName}} / {{.VictimAllianceName}}{{end}}
+        </div>
+      </td>
+      <td>
+        {{.ShipTypeName}}
+        {{if .IsPod}}<span style="font-size:10px;color:#fca5a5"> POD</span>{{end}}
+      </td>
+      <td>
+        {{if .SolarSystemID}}<a href="/solarsystem/{{.SolarSystemID}}">{{.SystemName}}</a>{{else}}{{.SystemName}}{{end}}
+        <div style="font-size:11px;color:#6b7280">{{printf "%.1f" .Security}}</div>
+      </td>
+      <td>
+        {{if .FinalName}}{{.FinalName}}{{else}}&mdash;{{end}}{{if .FinalIsNPC}}<span style="font-size:10px;color:#6b7280"> [NPC]</span>{{end}}
+        <div style="font-size:11px;color:#6b7280">{{.AttackerCount}} involved</div>
+      </td>
+      <td style="text-align:right">{{commasf .DamageTaken}}</td>
+      <td style="text-align:right"><b>{{formatISK .TotalValue}}</b></td>
+      <td style="font-size:11px;color:#6b7280">{{formatDuration (since .KillTime)}} ago</td>
+    </tr>
+    {{end}}
+  </table>
+  <div style="margin-top:10px;font-size:12px">
+    {{if gt .PageNum 0}}<a href="{{.Prev}}">&laquo; newer</a>{{end}}
+    <span style="color:#6b7280;margin:0 10px">page {{add .PageNum 1}} of {{if gt .PageCount 0}}{{.PageCount}}{{else}}1{{end}}</span>
+    {{if lt (add .PageNum 1) .PageCount}}<a href="{{.Next}}">older &raquo;</a>{{end}}
+  </div>
+  {{else}}
+  <p style="color:#6b7280">No kills match these filters.</p>
+  {{if gt .Unfiltered 0}}
+  <p style="color:#9ca3af">
+    <b>{{commas .Unfiltered}}</b> kill(s) are on the board outside this window or filter set.
+    {{if not .NPC}}NPC-only kills are hidden &mdash;
+    <a href="/killboard?npc=1&amp;days={{.Days}}">show those</a>. {{end}}
+    <a href="/killboard?days=365">Widen to a year</a>.
+  </p>
+  {{end}}
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Top killers ({{.Days}}d)</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    One credit per killmail a pilot appears on, not per hit &mdash; a board that only counts final
+    blows rewards whoever happened to be shooting when the armour ran out. ISK is that kill's
+    value split evenly across everyone involved.
+  </p>
+  {{if .TopKillers}}
+  <table>
+    <tr><th>#</th><th>Pilot</th><th>Corp</th><th style="text-align:right">Kills</th><th style="text-align:right">ISK</th></tr>
+    {{range $i, $l := .TopKillers}}
+    <tr>
+      <td style="color:#6b7280">{{add $i 1}}</td>
+      <td><a href="/character/{{$l.CharID}}">{{if $l.Name}}{{$l.Name}}{{else}}{{$l.CharID}}{{end}}</a></td>
+      <td style="color:#9ca3af">{{$l.CorpName}}</td>
+      <td style="text-align:right">{{commas $l.Count}}</td>
+      <td style="text-align:right">{{formatISK $l.ISK}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p style="color:#6b7280">Nobody has killed anything in this window.</p>{{end}}
+</div>
+
+<div class="card">
+  <h3>Top losses ({{.Days}}d)</h3>
+  {{if .TopLosses}}
+  <table>
+    <tr><th>#</th><th>Pilot</th><th>Corp</th><th style="text-align:right">Losses</th><th style="text-align:right">ISK lost</th></tr>
+    {{range $i, $l := .TopLosses}}
+    <tr>
+      <td style="color:#6b7280">{{add $i 1}}</td>
+      <td><a href="/character/{{$l.CharID}}">{{if $l.Name}}{{$l.Name}}{{else}}{{$l.CharID}}{{end}}</a></td>
+      <td style="color:#9ca3af">{{$l.CorpName}}</td>
+      <td style="text-align:right">{{commas $l.Count}}</td>
+      <td style="text-align:right">{{formatISK $l.ISK}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p style="color:#6b7280">Nobody has lost anything in this window.</p>{{end}}
+</div>
+
+{{if not .ShowPurge}}
+<div class="card">
+  <h3>Purge</h3>
+  <p style="font-size:12px;color:#9ca3af;max-width:900px">
+    Deleting killboard rows is permanent and there is nothing to restore them from.
+    <a href="/killboard?purge=1">Open the purge tools</a> &mdash; they count the tables first,
+    which is four unfiltered scans and so is not done on an ordinary board view.
+  </p>
+</div>
+{{else}}
+<div class="card">
+  <h3>Purge</h3>
+  <p style="font-size:12px;color:#9ca3af;max-width:900px">
+    The killboard is the only durable record of a destroyed ship &mdash; the CONCORD mail is a
+    copy in two inboxes that either pilot can delete. Nothing here is recoverable, and nothing
+    is written to <code>killboard_rollup</code> on the way out: the hourly retention sweep is
+    the operation that keeps the arithmetic, and this is the one that does not.
+  </p>
+
+  <table style="margin-bottom:12px">
+    <tr><th>Table</th><th style="text-align:right">Rows</th><th></th></tr>
+    <tr>
+      <td><code>killmails</code></td>
+      <td style="text-align:right">{{commas .RowsKills}}</td>
+      <td style="color:#6b7280;font-size:12px">
+        {{commas .RowsPlayer}} player &middot; {{commas .RowsBots}} synthetic
+      </td>
+    </tr>
+    <tr><td><code>killmail_attackers</code></td><td style="text-align:right">{{commas .RowsAtk}}</td><td></td></tr>
+    <tr><td><code>killmail_items</code></td><td style="text-align:right">{{commas .RowsItems}}</td><td></td></tr>
+    <tr>
+      <td><code>killboard_rollup</code></td>
+      <td style="text-align:right">{{commas .RowsRollup}}</td>
+      <td style="color:#6b7280;font-size:12px">
+        lifetime totals of synthetic kills the retention sweep already removed
+      </td>
+    </tr>
+  </table>
+
+  <form method="POST" action="/killboard"
+        onsubmit="return confirm('Delete killboard rows permanently? This cannot be undone.');">
+    <input type="hidden" name="action" value="purge">
+    <table>
+      <tr>
+        <td style="width:120px;color:#6b7280">Remove</td>
+        <td>
+          <!-- No pre-selected option. A destructive form that opens on a valid
+               scope is one stray Enter away from running it. -->
+          <select name="scope" required>
+            <option value="" selected disabled>&mdash; pick one &mdash;</option>
+            <option value="all">Everything &mdash; all {{commas .RowsKills}} killmails, players included</option>
+            <option value="bots">Synthetic only &mdash; {{commas .RowsBots}} bot victims, player losses kept</option>
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280">Rollup</td>
+        <td>
+          <input type="checkbox" name="rollup" value="1">
+          <span style="font-size:11px;color:#6b7280">
+            also empty <code>killboard_rollup</code> &mdash; leave unticked to keep lifetime kill,
+            loss and ISK totals on the profile pages after the mails behind them are gone
+          </span>
+        </td>
+      </tr>
+      <tr>
+        <td style="color:#6b7280">Confirm</td>
+        <td>
+          <input type="text" name="confirm" style="width:120px" placeholder="{{.PurgeWord}}" autocomplete="off">
+          <span style="font-size:11px;color:#6b7280">type <b>{{.PurgeWord}}</b> to arm the button</span>
+        </td>
+      </tr>
+    </table>
+    <button type="submit" class="btn-danger" style="margin-top:10px">Purge killboard</button>
+    <a href="/killboard" style="margin-left:10px;font-size:12px;color:#6b7280">cancel</a>
+  </form>
+</div>
+{{end}}
+{{end}}

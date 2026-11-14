@@ -1,0 +1,58 @@
+{{define "content"}}
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+  <h2 style="margin-bottom:0">Dungeons</h2>
+  <a href="/editor/" style="margin-left:auto;background:var(--btn);border:1px solid var(--btn-hi);color:#e0e4ec;padding:6px 14px;border-radius:4px;font-size:13px">Open 3D Editor</a>
+</div>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="card">
+  <h3>Create Dungeon</h3>
+  <form class="inline-form" method="POST" action="/dungeons">
+    <input type="text" name="name" placeholder="Dungeon name" required>
+    <select name="factionID">
+      <option value="0">No Faction</option>
+      {{range .AllFactions}}
+      <option value="{{.FactionID}}">{{.FactionName}}</option>
+      {{end}}
+    </select>
+    <button type="submit">Create</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Filter by Faction</h3>
+  <form class="inline-form" method="GET" action="/dungeons">
+    <select name="faction" onchange="this.form.submit()">
+      <option value="">All Factions</option>
+      {{range .FilterFactions}}
+      <option value="{{.FactionID}}" {{if eq .FactionID $.FilterFaction}}selected{{end}}>{{.FactionName}}</option>
+      {{end}}
+    </select>
+  </form>
+</div>
+
+{{if .Dungeons}}
+<div class="card">
+  <table>
+    <tr><th>VID</th><th>Name</th><th>Faction</th><th>Version</th><th>Status</th><th>Rooms</th><th></th></tr>
+    {{range .Dungeons}}
+    <tr>
+      <td>{{.DungeonVID}}</td>
+      <td><a href="/dungeon/{{.DungeonVID}}">{{.DungeonVName}}</a></td>
+      <td>{{if .FactionName}}{{.FactionName}}{{else}}{{.FactionID}}{{end}}</td>
+      <td>{{.Version}}</td>
+      <td>{{.Status}}</td>
+      <td>{{.RoomCount}}</td>
+      <td><a href="/editor/?dungeon={{.DungeonVID}}" title="Open in 3D editor">3D</a></td>
+    </tr>
+    {{end}}
+  </table>
+  {{if gt (len .Dungeons) 499}}<p style="margin-top:8px;color:#6b7280;font-size:12px">Results limited to 500.</p>{{end}}
+</div>
+{{else}}
+<div class="card"><p>No dungeons found.</p></div>
+{{end}}
+{{end}}
+
+{{template "layout" .}}

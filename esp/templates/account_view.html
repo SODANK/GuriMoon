@@ -1,0 +1,40 @@
+{{define "content"}}
+<h2>Account: {{.Account.AccountName}}</h2>
+<p style="margin-bottom:16px"><a href="/accounts">&larr; back to accounts</a></p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Account ID</div><div class="value">{{.Account.AccountID}}</div></div>
+  <div class="stat"><div class="label">Role</div><div class="value">{{.Account.Role}}</div></div>
+  <div class="stat"><div class="label">Characters</div><div class="value">{{.Account.CharCount}}</div></div>
+</div>
+
+{{if .Chars}}
+<div class="card">
+  <h3>Characters</h3>
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Corporation</th><th>Balance</th></tr>
+    {{range .Chars}}
+    <tr>
+      <td>{{.CharacterID}}</td>
+      <td><a href="/character/{{.CharacterID}}">{{.CharacterName}}</a></td>
+      <td>{{.CorpName}}</td>
+      <td>{{formatISK .Balance}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Actions</h3>
+  <form method="POST" action="/account/{{.Account.AccountID}}" style="display:inline" onsubmit="return confirm('Delete account {{.Account.AccountName}} and ALL its characters? This cannot be undone.');">
+    <input type="hidden" name="action" value="delete">
+    <button type="submit" style="background:var(--btn);border-color:var(--btn-hi)">Delete Account</button>
+  </form>
+</div>
+{{end}}
+
+{{template "layout" .}}

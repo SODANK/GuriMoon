@@ -1,0 +1,252 @@
+{{define "content"}}
+<h2>Stations</h2>
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">{{if .Stats.Filtered}}Matching Stations{{else}}Stations{{end}}</div>
+    <div class="value">{{commas .Stats.Shown}}</div>
+    {{if .Stats.Filtered}}<div class="sub">of {{commas .Stats.Total}} in New Eden</div>{{end}}
+  </div>
+  <div class="stat">
+    <div class="label">Regions</div>
+    <div class="value">{{.Stats.Regions}}</div>
+    <div class="sub">{{.Stats.Systems}} systems</div>
+  </div>
+  <div class="stat">
+    <div class="label">Pilots Berthed</div>
+    <div class="value">{{commas .Stats.Pilots}}</div>
+    <div class="sub">{{.Stats.Online}} online now</div>
+  </div>
+  <div class="stat">
+    <div class="label">Agents</div>
+    <div class="value">{{commas .Stats.Agents}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Live Orders</div>
+    <div class="value">{{commas .Stats.Orders}}</div>
+  </div>
+  <div class="stat">
+    <div class="label">Conquerable</div>
+    <div class="value">{{.Stats.Conquerable}}</div>
+  </div>
+</div>
+
+<div class="card">
+  <h3>Find a Station</h3>
+  <p class="hint">Type to filter the list below instantly — station, system, constellation, region or owner.
+     Click any column header to sort by it, again to reverse.
+     The dropdowns re-query the server, so a region or constellation pick narrows what gets loaded.</p>
+
+  <div class="filter-bar">
+    <input type="text" id="quickFilter" placeholder="Filter these results..." autocomplete="off" autofocus>
+    <form method="GET" action="/stations" id="filterForm">
+      <select name="region" id="regionSel" onchange="pickRegion()">
+        <option value="0">All regions</option>
+        {{$rid := .RegionID}}
+        {{range .Regions}}<option value="{{.ID}}" {{if eq .ID $rid}}selected{{end}}>{{.Name}} ({{.Stations}})</option>{{end}}
+      </select>
+      <select name="constellation" id="constSel" onchange="document.getElementById('filterForm').submit()">
+        <option value="0">All constellations</option>
+        {{$cid := .ConstellationID}}
+        {{range .Constellations}}<option value="{{.ID}}" data-region="{{.RegionID}}" {{if eq .ID $cid}}selected{{end}}>{{.Name}} ({{.Stations}})</option>{{end}}
+      </select>
+      <input type="text" name="q" placeholder="Server search..." value="{{.Query}}" style="width:220px">
+      <button type="submit">Search</button>
+      {{if .Stats.Filtered}}<a href="/stations" class="reset">Reset</a>{{end}}
+    </form>
+  </div>
+
+  <div class="alpha-bar" id="alphaBar">
+    <span class="alpha sel" data-letter="">All</span>
+    <span class="alpha" data-letter="A">A</span><span class="alpha" data-letter="B">B</span><span class="alpha" data-letter="C">C</span>
+    <span class="alpha" data-letter="D">D</span><span class="alpha" data-letter="E">E</span><span class="alpha" data-letter="F">F</span>
+    <span class="alpha" data-letter="G">G</span><span class="alpha" data-letter="H">H</span><span class="alpha" data-letter="I">I</span>
+    <span class="alpha" data-letter="J">J</span><span class="alpha" data-letter="K">K</span><span class="alpha" data-letter="L">L</span>
+    <span class="alpha" data-letter="M">M</span><span class="alpha" data-letter="N">N</span><span class="alpha" data-letter="O">O</span>
+    <span class="alpha" data-letter="P">P</span><span class="alpha" data-letter="Q">Q</span><span class="alpha" data-letter="R">R</span>
+    <span class="alpha" data-letter="S">S</span><span class="alpha" data-letter="T">T</span><span class="alpha" data-letter="U">U</span>
+    <span class="alpha" data-letter="V">V</span><span class="alpha" data-letter="W">W</span><span class="alpha" data-letter="X">X</span>
+    <span class="alpha" data-letter="Y">Y</span><span class="alpha" data-letter="Z">Z</span>
+    <span class="alpha" data-letter="#">0-9</span>
+  </div>
+  <div class="hint" id="showCount"></div>
+</div>
+
+{{if .Stations}}
+<div class="card">
+  <table class="station-table">
+    <thead>
+      <tr id="stationHead">
+        <th class="sortable asc" data-type="text">Station</th>
+        <th class="sortable" data-type="text">System</th>
+        <th class="sortable num" data-type="num">Sec</th>
+        <th class="sortable" data-type="text">Constellation</th>
+        <th class="sortable" data-type="text">Region</th>
+        <th class="sortable" data-type="text">Owner</th>
+        <th class="sortable" data-type="text">Operation</th>
+        <th class="sortable num" data-type="num">Agents</th>
+        <th class="sortable num" data-type="num">Orders</th>
+        <th class="sortable num" data-type="num">Pilots</th>
+      </tr>
+    </thead>
+    <tbody id="stationRows">
+      {{$online := .Online}}
+      {{range .Stations}}
+      <tr data-name="{{.StationName}}">
+        <td>
+          <a href="/station/{{.StationID}}">{{.StationName}}</a>
+          {{if .Conquerable}}<span class="tag tag-conq" title="Conquerable outpost">conq</span>{{end}}
+        </td>
+        <td><a href="/solarsystem/{{.SolarSystemID}}">{{.SystemName}}</a></td>
+        <td class="num sec {{if ge .Security 0.5}}sec-hi{{else if gt .Security 0.0}}sec-lo{{else}}sec-null{{end}}" data-v="{{num .Security}}">{{printf "%.1f" .Security}}</td>
+        <td>{{.ConstellationName}}</td>
+        <td>{{.RegionName}}</td>
+        <td>{{if .CorporationID}}<a href="/corporation/{{.CorporationID}}">{{if .CorpName}}{{.CorpName}}{{else}}Corp {{.CorporationID}}{{end}}</a>{{else}}<span class="dim">unowned</span>{{end}}</td>
+        <td class="dim">{{if .OperationName}}{{.OperationName}}{{else}}—{{end}}</td>
+        <td class="num" data-v="{{.AgentCount}}">{{if .AgentCount}}{{.AgentCount}}{{else}}<span class="dim">·</span>{{end}}</td>
+        <td class="num" data-v="{{.OrderCount}}">{{if .OrderCount}}{{commas .OrderCount}}{{else}}<span class="dim">·</span>{{end}}</td>
+        <td class="num" data-v="{{.DockedCount}}">
+          {{if .DockedCount}}{{.DockedCount}}{{else}}<span class="dim">·</span>{{end}}
+          {{with index $online .StationID}}<span class="tag tag-live" title="connected right now">{{.}} live</span>{{end}}
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  <p class="hint" id="noMatch" style="display:none">No station on this page matches that filter.</p>
+</div>
+{{else}}
+<div class="card"><p>No stations match this filter.</p></div>
+{{end}}
+
+<style>
+.hint { font-size:12px; color:#6b7280; margin-bottom:8px; }
+.dim { color:#6b7280; }
+.stat .sub { font-size:11px; color:#6b7280; margin-top:2px; }
+.filter-bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
+.filter-bar form { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:0; }
+#quickFilter { width:320px; }
+.reset { font-size:12px; align-self:center; }
+.alpha-bar { display:flex; flex-wrap:wrap; gap:2px; }
+.alpha { padding:3px 8px; font-size:12px; color:#9ca3af; border:1px solid var(--line); border-radius:3px;
+         cursor:pointer; user-select:none; }
+.alpha:hover { background:var(--win-hover); color:#e0e4ec; }
+.alpha.sel { background:var(--btn); border-color:var(--btn-hi); color:#e0e4ec; }
+.station-table thead th { position:sticky; top:0; z-index:2; }
+.station-table th.sortable { cursor:pointer; user-select:none; }
+.station-table th.sortable:hover { color:#e0e4ec; }
+.station-table th.sortable::after { content:'\2195'; margin-left:5px; font-size:10px; opacity:0.25; }
+.station-table th.sortable.asc::after { content:'\25B2'; opacity:1; color:var(--accent); }
+.station-table th.sortable.desc::after { content:'\25BC'; opacity:1; color:var(--accent); }
+.station-table td { padding:5px 12px; }
+.station-table td.num { text-align:right; white-space:nowrap; }
+.station-table th.num { text-align:right; }
+.sec-hi { color:#6ee7b7; }
+.sec-lo { color:#fbbf24; }
+.sec-null { color:#fca5a5; }
+.tag { display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:0.5px;
+       padding:0 5px; border-radius:3px; border:1px solid var(--line); color:#9ca3af; margin-left:6px; }
+.tag-conq { border-color:var(--btn-hi); color:var(--accent-hi); }
+.tag-live { border-color:#1a4731; color:#6ee7b7; }
+</style>
+
+<script>
+// Client-side narrowing of the rendered rows. The default page is the whole
+// game, so a round trip per keystroke would be unusable — the server filter
+// (the form above) is for cutting the payload, this is for reading it.
+(function(){
+  const body = document.getElementById('stationRows');
+  if (!body) return;
+  const input = document.getElementById('quickFilter');
+  const count = document.getElementById('showCount');
+  const noMatch = document.getElementById('noMatch');
+  const alphas = Array.from(document.querySelectorAll('.alpha'));
+  const heads = Array.from(document.querySelectorAll('#stationHead th.sortable'));
+  let letter = '';
+
+  // Everything a row is filtered or sorted by is derived once, into one record
+  // per row. Sorting reorders these, so parallel arrays indexed by row position
+  // would come apart on the first click — and re-reading textContent off 5000
+  // rows per keystroke is what makes a filter feel sluggish.
+  const items = Array.from(body.rows).map((tr, i) => ({
+    tr: tr,
+    seq: i, // server order — the tie-break, so equal keys stay alphabetical
+    hay: tr.textContent.toLowerCase().replace(/\s+/g, ' '),
+    first: (tr.dataset.name || '').charAt(0).toUpperCase(),
+    // data-v carries the sort value where the rendered cell is not it: the
+    // security column is rounded for display, and the counts sit beside a
+    // "3 live" badge that would poison a parse of the cell text.
+    keys: Array.from(tr.cells).map(td =>
+      td.dataset.v !== undefined ? td.dataset.v : td.textContent.trim())
+  }));
+
+  function apply(){
+    const q = input.value.trim().toLowerCase();
+    let shown = 0;
+    for (const it of items) {
+      let ok = !q || it.hay.indexOf(q) !== -1;
+      if (ok && letter) {
+        ok = letter === '#' ? !/[A-Z]/.test(it.first) : it.first === letter;
+      }
+      it.tr.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    }
+    count.textContent = 'Showing ' + shown.toLocaleString() + ' of ' +
+                        items.length.toLocaleString() + ' loaded stations.';
+    noMatch.style.display = shown ? 'none' : '';
+  }
+
+  // Click a column to sort by it, click again to reverse. Rows are re-appended
+  // through a fragment: one reflow instead of one per row.
+  function sortBy(th){
+    const col = th.cellIndex;
+    const numeric = th.dataset.type === 'num';
+    const desc = th.classList.contains('asc');
+    heads.forEach(h => h.classList.remove('asc', 'desc'));
+    th.classList.add(desc ? 'desc' : 'asc');
+    const dir = desc ? -1 : 1;
+    items.sort((a, b) => {
+      const x = a.keys[col], y = b.keys[col];
+      let c;
+      if (numeric) {
+        c = (parseFloat(x) || 0) - (parseFloat(y) || 0);
+      } else {
+        c = x.localeCompare(y, undefined, {numeric: true, sensitivity: 'base'});
+      }
+      return c ? c * dir : a.seq - b.seq;
+    });
+    const frag = document.createDocumentFragment();
+    for (const it of items) frag.appendChild(it.tr);
+    body.appendChild(frag);
+  }
+
+  input.addEventListener('input', apply);
+  alphas.forEach(a => a.addEventListener('click', () => {
+    alphas.forEach(x => x.classList.remove('sel'));
+    a.classList.add('sel');
+    letter = a.dataset.letter;
+    apply();
+  }));
+  heads.forEach(th => th.addEventListener('click', () => sortBy(th)));
+  apply();
+
+  // Constellation dropdown follows the region pick — the full list is every
+  // constellation in the game and is unreadable once a region is chosen.
+  const regionSel = document.getElementById('regionSel');
+  const constSel = document.getElementById('constSel');
+  Array.from(constSel.options).forEach(o => {
+    if (o.dataset.region) {
+      o.hidden = regionSel.value !== '0' && o.dataset.region !== regionSel.value;
+    }
+  });
+  // Changing region clears the constellation first: the old pick belongs to
+  // the old region, and submitting both together always returns nothing.
+  window.pickRegion = function(){
+    constSel.value = '0';
+    document.getElementById('filterForm').submit();
+  };
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

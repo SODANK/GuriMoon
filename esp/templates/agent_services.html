@@ -1,0 +1,184 @@
+{{define "content"}}
+<h2>Agent Services</h2>
+
+<p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
+  The non-mission services an agent offers: locating pilots, repairing negative security status,
+  and the gifts/rumours stubs. Distribution is <strong>by division</strong> &mdash; a ticked cell
+  grants the service to every agent of that division at or above the minimum level &mdash; with
+  per-agent overrides on top. The info window's Agent Info tab and the conversation choices are
+  built entirely from this page's data; the dialogue table below is every line the player can
+  read, with the choices that lead in and out of each.
+</p>
+
+{{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
+
+<style>
+.svcgrid td { white-space:nowrap }
+.svcgrid .cell { display:flex; align-items:center; gap:6px }
+.svcgrid select { width:60px; padding:2px }
+.svcgrid .off select { visibility:hidden }
+.svc-settings { display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap }
+.svc-settings label { display:block; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px }
+.svc-settings input { width:110px; text-align:right; padding:6px 8px; font-size:12px }
+.svc-note { font-size:11px; color:#6b7280 }
+.svc-count { font-size:11px; color:#9ca3af; font-weight:normal }
+.txtflow { font-size:11px; color:#9ca3af }
+.txtkey { font-family:monospace; font-size:11px; color:#e0a35b; white-space:nowrap }
+.txtrow textarea { width:100%; min-height:38px; font-size:12px; font-family:inherit }
+.txt-authored { color:#5bd58f; font-size:10px; border:1px solid #2a4a35; border-radius:3px; padding:0 4px; margin-left:6px }
+.stub-badge { color:#e0a35b; font-size:10px; border:1px solid #5c3a1a; border-radius:3px; padding:0 4px; margin-left:4px }
+.svc-two { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap }
+.svc-two .card { flex:1 1 420px }
+</style>
+
+<div class="svc-two">
+<div class="card">
+  <h3 style="margin-bottom:8px">Fees</h3>
+  <form method="post">
+    <input type="hidden" name="action" value="settings">
+    <div class="svc-settings">
+      <div>
+        <label>Locator base fee (ISK)</label>
+        <input type="number" name="locatorFeeBase" value="{{.LocatorFeeBase}}" min="0">
+      </div>
+      <div>
+        <label>Sec repair per 0.1 (ISK)</label>
+        <input type="number" name="secRepairPer01" value="{{.SecRepairPer01}}" min="0">
+      </div>
+      <button type="submit" class="btn">Save fees</button>
+    </div>
+  </form>
+  <p class="svc-note" style="margin-top:8px">
+    Locator fee is base &times; level&sup2;:
+    L1 {{commas (index .LocatorFees 0)}} &middot; L2 {{commas (index .LocatorFees 1)}} &middot;
+    L3 {{commas (index .LocatorFees 2)}} &middot; L4 {{commas (index .LocatorFees 3)}} ISK.
+    Range by level: solar system &rarr; constellation &rarr; region &rarr; galaxy.
+    Security repair only mends a <em>negative</em> status back to 0.0 &mdash; it never buffs a clean record.
+    Locator results arrive by EVE-mail after <b>{{.LocatorDelay}} min</b>
+    (<code>agents.locatorDelayMinutes</code> in config.json).
+  </p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">Agent lookup</h3>
+  <form method="get" style="display:flex;gap:8px">
+    <input type="text" name="q" value="{{.Query}}" placeholder="agent name or ID" style="flex:1;padding:6px 8px;font-size:12px">
+    <button type="submit" class="btn">Search</button>
+  </form>
+  {{if .Search}}
+  <table class="compact" style="margin-top:10px">
+    <tr><th>Agent</th><th>Corp</th><th>Division</th><th>L</th><th>Effective services</th></tr>
+    {{range .Search}}
+    <tr>
+      <td><a href="/agent/{{.AgentID}}">{{.AgentName}}</a></td>
+      <td>{{.CorpName}}</td>
+      <td>{{.DivisionName}}</td>
+      <td>{{.Level}}</td>
+      <td>{{if .Services}}{{range $i, $s := .Services}}{{if $i}}, {{end}}{{$s}}{{end}}{{else}}<span style="color:#6b7280">none</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else if .Query}}<p class="svc-note" style="margin-top:8px">No agents match &ldquo;{{.Query}}&rdquo;.</p>{{end}}
+
+  <h3 style="margin:14px 0 8px">Per-agent override</h3>
+  <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input type="hidden" name="action" value="override">
+    <input type="number" name="agentID" placeholder="agent ID" style="width:110px;padding:6px 8px;font-size:12px">
+    <select name="serviceKey">{{range .Services}}<option value="{{.Key}}">{{.Name}}</option>{{end}}</select>
+    <select name="mode">
+      <option value="on">force ON</option>
+      <option value="off">force OFF</option>
+      <option value="clear">clear (follow division)</option>
+    </select>
+    <button type="submit" class="btn">Apply</button>
+  </form>
+  {{if .Overrides}}
+  <table class="compact" style="margin-top:10px">
+    <tr><th>Agent</th><th>Service</th><th>Forced</th></tr>
+    {{range .Overrides}}
+    <tr>
+      <td><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}{{.AgentID}}{{end}}</a></td>
+      <td>{{.ServiceKey}}</td>
+      <td>{{if .Enabled}}<span style="color:#5bd58f">on</span>{{else}}<span style="color:var(--accent)">off</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+</div>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">Distribution by division</h3>
+  <p class="svc-note" style="margin-bottom:8px">
+    Tick = agents of this division offer the service from the chosen minimum level up.
+    The whole grid saves at once; unticking removes the grant. Effective agent counts fold the
+    per-agent overrides in.
+  </p>
+  <form method="post">
+    <input type="hidden" name="action" value="distribution">
+    <table class="compact svcgrid">
+      <tr>
+        <th>Division</th><th>Agents</th>
+        {{range .Services}}
+          <th>{{.Name}}{{if .Stub}}<span class="stub-badge">stub</span>{{end}}
+              <div class="svc-count">{{index $.Counts .Key}} agents</div></th>
+        {{end}}
+      </tr>
+      {{range .Rows}}
+      {{$div := .}}
+      <tr>
+        <td>{{.DivisionName}}</td>
+        <td>{{.Agents}}</td>
+        {{range .Cells}}
+        <td class="{{if not .Enabled}}off{{end}}">
+          <div class="cell">
+            <input type="checkbox" name="svc_{{.ServiceKey}}_{{$div.DivisionID}}" value="1"
+                   {{if .Enabled}}checked{{end}}
+                   onchange="this.closest('td').classList.toggle('off', !this.checked)">
+            <select name="lvl_{{.ServiceKey}}_{{$div.DivisionID}}" title="minimum agent level">
+              {{$lvl := .MinLevel}}
+              <option value="1" {{if eq $lvl 1}}selected{{end}}>L1+</option>
+              <option value="2" {{if eq $lvl 2}}selected{{end}}>L2+</option>
+              <option value="3" {{if eq $lvl 3}}selected{{end}}>L3+</option>
+              <option value="4" {{if eq $lvl 4}}selected{{end}}>L4</option>
+            </select>
+          </div>
+        </td>
+        {{end}}
+      </tr>
+      {{end}}
+    </table>
+    <button type="submit" class="btn" style="margin-top:10px">Save distribution</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">Dialogue &amp; window text</h3>
+  <p class="svc-note">
+    Everything an agent says outside a mission template — greetings, refusals, service pitches,
+    the player's choice captions, and the locator mails — is edited on
+    <a href="/agents/dialogue">Agents &rarr; Dialogue</a>, per division or for every agent at once.
+  </p>
+</div>
+
+{{if .Jobs}}
+<div class="card">
+  <h3 style="margin-bottom:8px">Locator jobs</h3>
+  <table class="compact">
+    <tr><th>#</th><th>Requested by</th><th>Agent</th><th>Target</th><th>Fee</th><th>Requested</th><th>Due</th><th>Status</th></tr>
+    {{range .Jobs}}
+    <tr>
+      <td>{{.JobID}}</td>
+      <td>{{.CharName}}</td>
+      <td>{{.AgentName}}</td>
+      <td>{{.TargetName}}</td>
+      <td>{{commas .Fee}}</td>
+      <td>{{.RequestedAt.Format "2006-01-02 15:04"}}</td>
+      <td>{{.DueAt.Format "15:04:05"}}</td>
+      <td>{{if .Delivered}}<span style="color:#5bd58f">delivered</span>{{else}}<span style="color:#e0a35b">pending</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+{{end}}

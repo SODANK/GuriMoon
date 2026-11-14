@@ -1,0 +1,56 @@
+{{define "content"}}
+<h2>Mission Templates</h2>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="card">
+  <h3>Create Template</h3>
+  <form class="inline-form" method="POST" action="/missions">
+    <input type="text" name="name" placeholder="Mission name" required>
+    <select name="missionType">
+      <option value="kill">Kill (Combat)</option>
+      <option value="courier">Courier</option>
+      <option value="trade">Trade</option>
+      <option value="mining">Mining</option>
+    </select>
+    <select name="storyline">
+      <option value="0">Regular deck</option>
+      <option value="1">Storyline deck</option>
+    </select>
+    <select name="agentLevel">
+      <option value="1">Level 1</option>
+      <option value="2">Level 2</option>
+      <option value="3">Level 3</option>
+      <option value="4">Level 4</option>
+      <option value="5">Level 5</option>
+    </select>
+    <button type="submit">Create</button>
+  </form>
+</div>
+
+<div style="margin-bottom:12px">
+  <a href="/agents/distribution" style="font-size:13px">Mission Distribution &mdash; division weights &amp; template coverage</a>
+</div>
+
+{{if .Templates}}
+<div class="card">
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Type</th><th>Level</th><th>Deck</th><th>Enabled</th></tr>
+    {{range .Templates}}
+    <tr>
+      <td>{{.TemplateID}}</td>
+      <td><a href="/mission/{{.TemplateID}}">{{.MissionName}}</a></td>
+      <td>{{.MissionType}}</td>
+      <td>{{.AgentLevel}}</td>
+      <td>{{if .Storyline}}<span style="color:#fcd37d">storyline</span>{{else}}<span style="color:#6b7280">regular</span>{{end}}</td>
+      <td>{{if .Enabled}}<span style="color:#6ee7b7">Yes</span>{{else}}<span style="color:#fca5a5">No</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{else}}
+<div class="card"><p>No mission templates found. Create one above or run sql/missions.sql to set up tables.</p></div>
+{{end}}
+{{end}}
+
+{{template "layout" .}}

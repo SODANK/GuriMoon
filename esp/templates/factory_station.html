@@ -1,0 +1,88 @@
+{{define "content"}}
+{{with .Station}}
+<div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+  <h2 style="margin-bottom:0">{{.StationName}}</h2>
+  <span style="color:#6b7280;font-size:12px">{{.SystemName}} {{printf "%.1f" .Security}} · {{.RegionName}}{{if .CorpName}} · {{.CorpName}}{{end}} · stationID {{.StationID}}</span>
+  <a href="/industry/factories?view=stations" style="font-size:12px;margin-left:auto">← all factory stations</a>
+</div>
+{{end}}
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+{{if not .Station.Known}}
+<div class="alert alert-error">No <code>staStations</code> row matches this container ID — nobody can dock here, so these lines can never be used. The lines are real rows in <code>ramassemblylines</code>; the station they point at is missing.</div>
+{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Assembly lines</div><div class="value">{{len .Lines}}</div></div>
+  <div class="stat"><div class="label">In use</div><div class="value" style="color:#fbbf24">{{.BusyLines}}</div></div>
+  <div class="stat"><div class="label">Active jobs</div><div class="value">{{len .Jobs}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Assembly lines</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Install cost is charged once when the job is installed; cost per hour is billed against the job's full duration. The time and material multipliers come from the line's type and are what makes one factory faster than another — they are static reference data, not editable here.</p>
+  <table>
+    <tr>
+      <th>Line</th><th>Type</th><th>Activity</th><th>Owner</th>
+      <th style="width:130px">Install cost</th><th style="width:130px">Cost / hour</th><th style="width:110px">Min standing</th>
+      <th>Multipliers</th><th>Occupied by</th><th style="width:80px"></th>
+    </tr>
+    {{range .Lines}}
+    <tr>
+      <td style="color:#9ca3af;font-size:12px">{{.AssemblyLineID}}</td>
+      <td style="font-size:12px">{{.LineTypeName}}</td>
+      <td style="font-size:12px">{{.ActivityName}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{if .OwnerName}}{{.OwnerName}}{{else}}{{.OwnerID}}{{end}}</td>
+      <td><input form="al{{.AssemblyLineID}}" type="text" name="costInstall" value="{{num .CostInstall}}" style="width:115px"></td>
+      <td><input form="al{{.AssemblyLineID}}" type="text" name="costPerHour" value="{{num .CostPerHour}}" style="width:115px"></td>
+      <td><input form="al{{.AssemblyLineID}}" type="text" name="minimumStanding" value="{{num .MinimumStand}}" style="width:95px"></td>
+      <td style="font-size:12px;color:#9ca3af">time ×{{num .TimeMultiplier}}<br>mat ×{{num .MatMultiplier}}</td>
+      <td style="font-size:12px">
+        {{if .Busy}}
+          <a href="/industry/factories?status=all&amp;q={{.JobID}}">job {{.JobID}}</a>
+          <span style="color:{{if eq .JobStatus "Ready"}}#6ee7b7{{else}}#fbbf24{{end}}">{{.JobStatus}}</span>
+          <br><span style="color:#6b7280">{{.JobBlueprint}}{{if .JobInstaller}} — {{.JobInstaller}}{{end}}</span>
+          {{if .JobEndUnix}}<br><span style="color:#6b7280">{{unixTime .JobEndUnix}}</span>{{end}}
+          {{if .QueuedJobs}}<br><span style="color:#fbbf24">+{{.QueuedJobs}} more waiting</span>{{end}}
+        {{else}}<span style="color:#4b5563">free</span>{{end}}
+      </td>
+      <td>
+        <form id="al{{.AssemblyLineID}}" method="POST" style="display:inline">
+          <input type="hidden" name="action" value="saveLine">
+          <input type="hidden" name="assemblyLineID" value="{{.AssemblyLineID}}">
+          <button type="submit">Save</button>
+        </form>
+      </td>
+    </tr>
+    {{else}}
+    <tr><td colspan="10" style="color:#6b7280">This station has no assembly lines — nothing can be installed here.</td></tr>
+    {{end}}
+  </table>
+</div>
+
+{{if .Lines}}
+<div class="card">
+  <h3>Set costs across the station</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Overwrites both cost columns on every matching line at this station in one write.</p>
+  <form method="POST" class="inline-form" style="margin-bottom:0">
+    <input type="hidden" name="action" value="stationCosts">
+    <input type="hidden" name="stationID" value="{{.Station.StationID}}">
+    <select name="activityID">
+      <option value="0">Every line</option>
+      {{range .JobActs}}<option value="{{.ID}}">{{.Name}} lines only</option>{{end}}
+    </select>
+    <input type="text" name="costInstall" placeholder="install cost" style="width:130px" required>
+    <input type="text" name="costPerHour" placeholder="cost / hour" style="width:130px" required>
+    <button type="submit" onclick="return confirm('Overwrite install and hourly cost on the selected lines at this station?')">Apply</button>
+  </form>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Active jobs here ({{len .Jobs}})</h3>
+  {{template "jobtable" .Jobs}}
+</div>
+{{end}}
+
+{{template "layout" .}}

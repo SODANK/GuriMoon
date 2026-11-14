@@ -1,0 +1,306 @@
+{{define "content"}}
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+
+<style>
+/* Two-up panels mirroring the client's SUPPLY / DEMAND market-activity tab. */
+.sd-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(430px,1fr)); gap:16px; align-items:start; margin-bottom:16px; }
+.panel { background:var(--win); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+              padding:9px 14px; border-bottom:1px solid var(--line); font-size:12px;
+              text-transform:uppercase; letter-spacing:1.5px; }
+.panel-head .meta { font-size:11px; letter-spacing:0; text-transform:none; color:#6b7280; }
+.panel-supply .panel-head { background:#1a1114; color:#fca5a5; border-bottom-color:#3a1c1c; }
+.panel-demand .panel-head { background:#0e1d17; color:#6ee7b7; border-bottom-color:#1a4731; }
+.grp { display:flex; justify-content:space-between; padding:4px 14px; background:var(--win-deep);
+       color:#9ca3af; font-size:10px; text-transform:uppercase; letter-spacing:1px;
+       border-top:1px solid var(--line-soft); border-bottom:1px solid var(--line-soft); }
+.grp .cat { color:#4b5563; }
+.sd-row { display:flex; align-items:center; gap:8px; padding:3px 14px;
+          border-bottom:1px solid var(--line-soft); font-size:12px; }
+.sd-row:hover { background:var(--win-hover); }
+.sd-row .nm { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#e0e4ec; }
+.sd-row .nm .tid { color:#4b5563; font-size:11px; }
+.sd-row .px { width:104px; text-align:right; color:#6b7280; font-size:11px; white-space:nowrap; }
+.sd-row .tot { width:78px; text-align:right; color:#6b7280; font-size:11px; white-space:nowrap; }
+.sd-row form { display:flex; gap:4px; margin:0; }
+.sd-row input[type="number"] { width:72px; padding:3px 6px; font-size:12px; }
+.sd-row .pxin { width:88px; padding:3px 6px; font-size:12px; text-align:right; color:#6b7280; }
+.sd-row .pxin::placeholder { color:#4b5563; font-style:italic; }
+.sd-row .pxin.set { border-color:var(--accent); color:#e0e4ec; }
+.warn { color:#fbbf24; cursor:help; }
+.btn-xs { padding:2px 7px !important; font-size:11px !important; }
+.btn-danger { background:var(--btn) !important; border-color:var(--btn-hi) !important; }
+.btn-danger:hover { background:#7e2a2a !important; }
+.empty { padding:14px; color:#4b5563; font-size:12px; }
+.pill-row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; font-size:12px; }
+.pill { background:var(--win); border:1px solid var(--line); border-radius:4px; padding:5px 10px; color:#9ca3af; }
+.pill b { color:#e0e4ec; font-weight:600; }
+details.help { margin-bottom:16px; }
+details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
+.picker-results { max-height:140px; overflow-y:auto; margin-bottom:6px; }
+.picker-results div { font-size:12px; padding:3px 6px; cursor:pointer; color:#9ca3af; border-radius:3px; }
+.picker-results div:hover { background:var(--btn); color:#e0e4ec; }
+</style>
+
+{{if .Corps}}
+{{/* ── Corp picker ─────────────────────────────────────────────────────── */}}
+<h2>NPC Supply / Demand</h2>
+
+<div class="sd-cols">
+  <div class="card" style="margin:0">
+    <h3>Choose a Corporation</h3>
+    <form method="GET" action="/market/supply" class="inline-form" style="margin-bottom:0">
+      <input type="text" name="q" placeholder="search corporation name" value="{{.NameFilter}}" style="flex:1;min-width:200px">
+      <button type="submit">Search</button>
+      {{if .NameFilter}}<a href="/market/supply" style="margin-left:4px">Clear</a>{{end}}
+    </form>
+  </div>
+  <div class="card" style="margin:0">
+    <h3>Reseed</h3>
+    <div class="inline-form" style="margin-bottom:0">
+      <form method="POST" action="/market/supply" style="margin:0">
+        <input type="hidden" name="action" value="reseed">
+        <button type="submit" onclick="return confirm('Reseed all auto NPC market orders now?')">Reseed NPC orders</button>
+      </form>
+      <span style="color:#6b7280;font-size:12px;flex:1">
+        Regenerates every auto-seeded NPC order from these tables, plus ore/mineral
+        demand at mining-corp stations. Hand-seeded (admin) orders are preserved.
+      </span>
+    </div>
+  </div>
+</div>
+
+<details class="help">
+  <summary>What this page controls</summary>
+  <div class="card" style="margin-top:8px">
+    <p style="color:#9ca3af;font-size:12px;margin:0">
+      Every NPC corporation has a list of item types it trades. On reseed, each row
+      becomes a market order at <em>every station that corp owns</em> — sell orders
+      for types it supplies, buy orders for types it demands. Pick a corporation to
+      see and edit its list.
+    </p>
+  </div>
+</details>
+
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Corporation</th><th>Stations</th><th>Supply</th><th>Demand</th><th>Total rows</th></tr>
+    </thead>
+    <tbody>
+      {{range .Corps}}
+      <tr>
+        <td><a href="/market/supply?corp={{.CorporationID}}"><strong>{{.CorpName}}</strong></a>
+            <span style="color:#4b5563">#{{.CorporationID}}</span></td>
+        <td>{{if eq .StationCount 0}}<span style="color:#f87171">0</span>{{else}}{{.StationCount}}{{end}}</td>
+        <td><span style="color:#fca5a5">{{.SellRows}}</span></td>
+        <td><span style="color:#6ee7b7">{{.BuyRows}}</span></td>
+        <td>{{.TotalRows}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+
+{{else}}
+{{/* ── Per-corp detail ─────────────────────────────────────────────────── */}}
+<h2><a href="/market/supply" style="color:#6b7280">NPC Supply / Demand</a> &rsaquo; {{.Corp.CorpName}}</h2>
+
+<div class="pill-row">
+  <span class="pill">Stations owned
+    <b {{if eq .Corp.StationCount 0}}style="color:#f87171"{{end}}>{{.Corp.StationCount}}</b></span>
+  <span class="pill">Supply <b style="color:#fca5a5">{{.Corp.SellRows}}</b></span>
+  <span class="pill">Demand <b style="color:#6ee7b7">{{.Corp.BuyRows}}</b></span>
+  <span class="pill">Traded types <b>{{.Corp.TotalRows}}</b></span>
+  {{if .Unseedable}}<span class="pill" title="These rows never become orders">Never seeded <b class="warn">{{.Unseedable}}</b></span>{{end}}
+  <span style="color:#4b5563;font-size:11px">#{{.Corp.CorporationID}}</span>
+</div>
+
+{{if eq .Corp.StationCount 0}}
+<div class="alert alert-error">
+  This corporation owns no stations, so reseeding creates <strong>no orders</strong>
+  for it no matter what is listed below.
+</div>
+{{end}}
+
+<div class="sd-cols">
+  <div class="card" style="margin:0">
+    <h3>Add / Update a Type</h3>
+    <form method="POST" action="/market/supply" id="addForm">
+      <input type="hidden" name="action" value="saveTrade">
+      <input type="hidden" name="corpID" value="{{.Corp.CorporationID}}">
+      <div class="inline-form">
+        <input type="text" id="typeSearch" placeholder="search item name…" style="flex:1;min-width:160px">
+        <button type="button" onclick="searchTypes()">Find</button>
+        <input type="number" name="typeID" id="typeID" placeholder="typeID" required style="width:100px">
+        <span id="typeLabel" style="color:#6ee7b7;font-size:12px"></span>
+      </div>
+      <div id="typeResults" class="picker-results"></div>
+      <div class="inline-form" style="margin-bottom:0">
+        <select name="side">
+          <option value="sell">Supply — corp sells</option>
+          <option value="buy">Demand — corp buys</option>
+        </select>
+        <input type="number" name="units" value="833" min="1" required style="width:100px">
+        <span style="color:#6b7280;font-size:12px">units/station</span>
+        <input type="text" name="price" placeholder="price (auto)" style="width:110px"
+               title="Order price in ISK. Leave blank to derive it from the item's basePrice.">
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin:0">
+    <h3>Price All Types</h3>
+    <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
+      Applies to every one of this corporation's {{.Corp.TotalRows}} rows at once.
+      Multiplying sets each row's price to that multiple of its own
+      <code>basePrice</code> (demand rows keep the 90% buy discount), fixing it
+      so reseeding no longer jitters it.
+    </p>
+    <form method="POST" action="/market/supply" class="inline-form" style="margin-bottom:6px">
+      <input type="hidden" name="action" value="corpPrices">
+      <input type="hidden" name="corpID" value="{{.Corp.CorporationID}}">
+      <input type="hidden" name="priceMode" value="mult">
+      <span style="color:#9ca3af;font-size:12px">Set all to</span>
+      <input type="text" name="factor" value="1.0" style="width:70px">
+      <span style="color:#9ca3af;font-size:12px">× basePrice</span>
+      <button type="submit" onclick="return confirm('Set a fixed price on all {{.Corp.TotalRows}} rows?')">Apply</button>
+    </form>
+    <form method="POST" action="/market/supply" class="inline-form" style="margin:0">
+      <input type="hidden" name="action" value="corpPrices">
+      <input type="hidden" name="corpID" value="{{.Corp.CorporationID}}">
+      <input type="hidden" name="priceMode" value="clear">
+      <button type="submit" onclick="return confirm('Clear all price overrides for this corporation?')">Reset all to auto</button>
+    </form>
+  </div>
+
+  <details class="help card" style="margin:0">
+    <summary>How the numbers work</summary>
+    <p style="color:#9ca3af;font-size:12px;margin:8px 0 6px">
+      <strong>Units</strong> is what you set — the order volume this corp stocks at
+      each of its stations; the group and panel totals are those units summed, still
+      per station. Multiply by {{.Corp.StationCount}} for the whole corp.
+      <strong>Price</strong> is what reseeding will charge. Left blank it is
+      derived &mdash; the item's <code>basePrice</code> for supply, 90% of it for
+      demand, &plusmn;5% jitter &mdash; and the greyed number in the box is that
+      derived price. Type a figure and it is used <em>exactly</em>, with no
+      jitter and no buy discount; clear the box to go back to auto.
+    </p>
+    <p style="color:#9ca3af;font-size:12px;margin-bottom:6px">
+      Stored on disk as <code>supplyDemand</code> = units &divide; {{.UnitScale}},
+      negative for buy. In the original CCP data that value is a normalized share
+      (0&ndash;1, usually an exact 1/N fraction) of what the corp trades in a
+      category &mdash; this server reads only its <em>sign</em> (supply vs demand)
+      and its <em>magnitude</em> (volume).
+    </p>
+    <p style="color:#6b7280;font-size:12px;margin:0">
+      <strong>Typical values in the shipped data:</strong> 833 units (1/12, the most
+      common by far), 909 (1/11), 2,000, 3,333 (1/3), 10,000 (the maximum). Staying
+      in the 100&ndash;10,000 range keeps new entries consistent with everything else.
+      A <span class="warn">&#9888;</span> row is unpublished or has no market group,
+      so reseeding skips it entirely.
+    </p>
+  </details>
+</div>
+
+<div class="sd-cols">
+  {{$corp := .Corp}}
+  {{range .Panels}}
+  <div class="panel {{.Class}}">
+    <div class="panel-head">
+      <span>{{.Title}}</span>
+      <span class="meta">
+        {{.RowCount}} type{{if ne .RowCount 1}}s{{end}} &middot;
+        {{commas .UnitsTotal}} units/station &middot; {{.Sub}}
+        {{if .Unseedable}}&middot; <span class="warn" title="Rows reseeding skips">&#9888; {{.Unseedable}} never seeded</span>{{end}}
+      </span>
+    </div>
+    {{$side := .Side}}{{$other := .Other}}{{$otherTitle := .OtherTitle}}
+    {{if .Groups}}
+      {{range .Groups}}
+      <div class="grp">
+        <span><span class="cat">{{.CategoryName}} /</span> {{.GroupName}}</span>
+        <span>{{commas .UnitsTotal}}</span>
+      </div>
+        {{range .Rows}}
+        <div class="sd-row">
+          <span class="nm" title="{{.TypeName}} (#{{.TypeID}}) — supplyDemand {{printf "%.6f" .SupplyDemand}}">
+            {{if not .Seedable}}<span class="warn"
+               title="Never seeded — {{.SkipDetail}}">&#9888;</span> {{end}}
+            {{if .TypeName}}{{.TypeName}}{{else}}<em style="color:#6b7280">not in invTypes</em>{{end}}
+            <span class="tid">#{{.TypeID}}</span>
+            {{if not .Seedable}}<span class="tid" style="color:#fbbf24">{{.SkipLabel}}</span>{{end}}
+          </span>
+          <span class="tot" title="{{$corp.StationCount}} stations × {{.UnitsPerStation}} units">{{commas .TotalUnits}}</span>
+          <form method="POST" action="/market/supply">
+            <input type="hidden" name="action" value="saveTrade">
+            <input type="hidden" name="corpID" value="{{.CorporationID}}">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <input type="text" name="price" class="pxin{{if .HasPriceOverride}} set{{end}}"
+                   value="{{if .HasPriceOverride}}{{printf "%.2f" .Price}}{{end}}"
+                   placeholder="{{printf "%.2f" .DerivedPrice}}"
+                   title="Order price in ISK. Blank = auto from basePrice ({{formatISK .DerivedPrice}}, ±5% jitter). A set price is used exactly, with no jitter.">
+            <input type="number" name="units" value="{{.UnitsPerStation}}" min="1" title="Units per station">
+            <button type="submit" name="side" value="{{$side}}" class="btn-xs" title="Save price + units">Set</button>
+            <button type="submit" name="side" value="{{$other}}" class="btn-xs" title="{{$otherTitle}}">&#8644;</button>
+          </form>
+          <form method="POST" action="/market/supply" style="margin:0">
+            <input type="hidden" name="action" value="deleteTrade">
+            <input type="hidden" name="corpID" value="{{.CorporationID}}">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <button type="submit" class="btn-xs btn-danger" title="Remove"
+                    onclick="return confirm('Remove {{.TypeName}} (#{{.TypeID}}) from {{$corp.CorpName}}?')">&times;</button>
+          </form>
+        </div>
+        {{end}}
+      {{end}}
+    {{else}}
+      <div class="empty">Nothing in this panel yet.</div>
+    {{end}}
+  </div>
+  {{end}}
+</div>
+
+<details class="help">
+  <summary>Bulk paste (raw: corpID typeID supplyDemand [price] per line)</summary>
+  <div class="card" style="margin-top:8px">
+    <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
+      Raw fraction format, for importing data in bulk. Remember
+      supplyDemand = units &divide; {{.UnitScale}}, negative = buy. The fourth
+      field is an optional fixed price &mdash; omit it to derive from basePrice.
+    </p>
+    <form method="POST" action="/market/supply">
+      <input type="hidden" name="action" value="bulkTrades">
+      <textarea name="bulk" rows="6" placeholder="{{.Corp.CorporationID}} 34 0.0833&#10;{{.Corp.CorporationID}} 35 -0.25 4.50"></textarea>
+      <button type="submit" style="margin-top:6px">Apply</button>
+    </form>
+  </div>
+</details>
+
+<script>
+function searchTypes(){
+  var box=document.getElementById('typeResults');
+  fetch('/api/types/search?scope=market&q='+encodeURIComponent(document.getElementById('typeSearch').value))
+    .then(function(r){return r.json();}).then(function(rows){
+      box.innerHTML='';
+      if(!rows||!rows.length){box.innerHTML='<div style="color:#6b7280">No item matches that name.</div>';return;}
+      rows.forEach(function(t){
+        var d=document.createElement('div');
+        d.textContent=t.typeID+' — '+t.typeName+(t.groupName?' ('+t.groupName+')':'')
+                      +(t.seedable?'':'  ⚠ will not seed');
+        if(!t.seedable){d.title='Unpublished or no marketGroupID — reseeding skips this type.';d.style.color='#f59e0b';}
+        d.onclick=function(){
+          document.getElementById('typeID').value=t.typeID;
+          document.getElementById('typeLabel').textContent='✓ '+t.typeName;
+          box.innerHTML='';
+        };
+        box.appendChild(d);
+      });
+    });
+}
+</script>
+{{end}}
+{{end}}

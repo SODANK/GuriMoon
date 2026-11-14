@@ -1,0 +1,202 @@
+{{define "content"}}
+<style>
+/* Tower detail row. tr:hover td reaches every nested cell, so hovering the
+   outer row would paint the whole inner table; only the inner row lights. */
+tr.sb-detail:hover td { background: transparent; }
+tr.sb-detail > td, tr.sb-detail:hover > td { background: var(--win-deep); }
+tr.sb-detail tr:hover td { background: var(--win); }
+tr.sb-detail summary { cursor: pointer; font-size: 12px; color: #9ca3af; }
+tr.sb-detail strong { display: block; font-size: 12px; color: #e0e4ec; margin-top: 8px; }
+</style>
+<h2>Starbases</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Control Towers</div><div class="value">{{len .Towers}}</div></div>
+  <div class="stat"><div class="label">Online</div><div class="value">{{.OnlineCount}}</div></div>
+  <div class="stat"><div class="label">Anchored Structures</div><div class="value">{{.StructureCount}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Anchoring security ceiling</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    Normally each type carries its own ceiling in the shipped data: control towers anchor below
+    {{printf "%.2f" .DefaultMaxSec}}, and a Moon Harvesting Array carries
+    <code>anchoringSecurityLevelMax</code> 0.4 (0.3 for II and III) — which is why moon mining is a
+    lowsec-and-below activity without a line of code saying so. Setting a value here overrides
+    <em>every</em> ceiling at once, for a test shard that wants moon mining in highsec. Leave empty
+    to use the shipped attributes.
+  </p>
+  <form method="POST" action="/starbases" class="inline-form">
+    <input type="hidden" name="action" value="secoverride">
+    <label>Ceiling <input type="text" name="maxsec" value="{{.SecOverride}}" placeholder="(shipped)" size="8"></label>
+    <button type="submit">Save</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Towers</h3>
+  {{if .Towers}}
+  <table>
+    <thead><tr>
+      <th>Item</th><th>Type</th><th>Moon</th><th>System</th>
+      <th>Owner</th><th>Alliance</th><th>State</th><th>Structures</th>
+    </tr></thead>
+    <tbody>
+      {{range .Towers}}
+      <tr>
+        <td>{{.EntityID}}</td>
+        <td>{{.TypeName}}</td>
+        <td>
+          {{if .MoonName}}{{.MoonName}}
+          {{else}}<span style="color:#b91c1c">not attached to a moon</span>{{end}}
+        </td>
+        <td>{{.SystemName}}</td>
+        <td>{{if .CorpName}}{{.CorpName}}{{else}}{{.OwnerCorpID}}{{end}}</td>
+        <td>{{if .AllianceName}}{{.AllianceName}}{{else}}&mdash;{{end}}</td>
+        <td>{{.State}}</td>
+        <td>{{.StructureCount}}</td>
+      </tr>
+      <tr class="sb-detail">
+        <td colspan="8">
+          <details>
+            <summary>Moon pool and structures</summary>
+            <div style="padding:0 0 8px">
+              <strong>Moon pool</strong>
+              {{if .MoonPool}}
+              <table style="margin-top:4px">
+                <thead><tr><th>Material</th><th>Abundance</th></tr></thead>
+                <tbody>
+                  {{range .MoonPool}}
+                  <tr><td>{{.TypeName}}</td><td>{{.Abundance}}</td></tr>
+                  {{end}}
+                </tbody>
+              </table>
+              <p style="font-size:11px;color:#6b7280;margin-top:4px">
+                This is the same answer <code>posMgr.GetMoonForTower</code> gives the management
+                window's Moon tab. If the client shows nothing while this shows rows, the problem
+                is on the wire, not in the data.
+              </p>
+              {{else}}
+              <p style="font-size:12px;color:#6b7280">No pool — the tower has no moon.</p>
+              {{end}}
+
+              <strong>Anchored structures</strong>
+              {{if .Structures}}
+              <table style="margin-top:4px">
+                <thead><tr>
+                  <th>Item</th><th>Type</th><th>State</th><th>Handles</th><th>Feeds</th>
+                </tr></thead>
+                <tbody>
+                  {{range .Structures}}
+                  <tr>
+                    <td>{{.EntityID}}</td>
+                    <td>{{.TypeName}}</td>
+                    <td>{{.State}}</td>
+                    <td>{{if .ProvisionName}}{{.ProvisionName}}{{else}}<span style="color:#6b7280">unset</span>{{end}}</td>
+                    <td>
+                      {{if .FeedsInto}}{{.FeedsName}} ({{.FeedsInto}})
+                      {{else}}<span style="color:#6b7280">unwired</span>{{end}}
+                    </td>
+                  </tr>
+                  {{end}}
+                </tbody>
+              </table>
+              <p style="font-size:11px;color:#6b7280;margin-top:4px">
+                A harvester produces only into a silo it is wired to, which is retail behaviour.
+                Both the material and the wiring are set in game, in the management window's
+                Production tab.
+              </p>
+              {{else}}
+              <p style="font-size:12px;color:#6b7280">Nothing anchored to this tower.</p>
+              {{end}}
+
+              <form method="POST" action="/starbases" class="inline-form" style="margin-top:8px">
+                <input type="hidden" name="action" value="tplsave">
+                <input type="hidden" name="towerID" value="{{.EntityID}}">
+                <label>Save layout as template <input type="text" name="name" size="18" required maxlength="64"></label>
+                <label>fuel days <input type="text" name="fuelDays" value="0" size="4"></label>
+                <button type="submit">Save template</button>
+              </form>
+            </div>
+          </details>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="font-size:12px;color:#6b7280">
+    No control towers anchored. One is planted in game with the right-click Anchor entry on a
+    launched tower, or with <code>/posplant &lt;typeID&gt; &lt;moonID&gt;</code>.
+  </p>
+  {{end}}
+</div>
+<div class="card">
+  <h3>POS templates</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    A template is captured from a POS players built in game: the tower type, every anchored
+    structure's type and offset from the tower (inside its anchor radius), what each one handles,
+    and the Production wiring. Save one from a tower above (or <code>/possave &lt;towerID&gt; &lt;name&gt;</code>),
+    then stamp it at any moon here or with <code>/posspawn &lt;name&gt; &lt;moonID&gt; [online] [fuelDays]</code>.
+    Placement rules (security ceiling, one tower per moon, sovereignty) apply to a stamp exactly as
+    to <code>/posplant</code>.
+  </p>
+  {{if .Templates}}
+  <table>
+    <thead><tr><th>ID</th><th>Name</th><th>Tower</th><th>Structures</th><th>Links</th><th>Fuel days</th><th></th></tr></thead>
+    <tbody>
+      {{range .Templates}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.TowerTypeName}} ({{.TowerTypeID}})</td>
+        <td>
+          <details>
+            <summary style="cursor:pointer">{{len .Structures}}</summary>
+            <table style="margin-top:4px">
+              <thead><tr><th>#</th><th>Type</th><th>Offset (m)</th><th>Handles</th><th>Online</th></tr></thead>
+              <tbody>
+                {{range .Structures}}
+                <tr>
+                  <td>{{.Idx}}</td><td>{{.TypeName}}</td>
+                  <td>{{printf "%.0f, %.0f, %.0f" .DX .DY .DZ}}</td>
+                  <td>{{if .ProvisionTypeID}}{{.ProvisionTypeID}}{{else}}&mdash;{{end}}</td>
+                  <td>{{if .Online}}yes{{else}}no{{end}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </details>
+        </td>
+        <td>{{len .Links}}</td>
+        <td>{{printf "%.1f" .FuelDays}}</td>
+        <td>
+          {{if $.CanSpawn}}
+          <form method="POST" action="/starbases" class="inline-form">
+            <input type="hidden" name="action" value="tplspawn">
+            <input type="hidden" name="templateID" value="{{.ID}}">
+            <label>moonID <input type="text" name="moonID" size="9" required></label>
+            <label>corpID <input type="text" name="corpID" size="9" required></label>
+            <label>fuel days <input type="text" name="fuelDays" size="4" placeholder="{{printf "%.0f" .FuelDays}}"></label>
+            <label><input type="checkbox" name="online" value="1"> online</label>
+            <button type="submit">Spawn</button>
+          </form>
+          {{end}}
+          <form method="POST" action="/starbases" class="inline-form" onsubmit="return confirm('Delete template {{.Name}}?')">
+            <input type="hidden" name="action" value="tpldelete">
+            <input type="hidden" name="templateID" value="{{.ID}}">
+            <button type="submit">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="font-size:12px;color:#6b7280">No templates yet.</p>
+  {{end}}
+</div>
+{{end}}

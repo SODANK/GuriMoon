@@ -1,0 +1,515 @@
+{{define "content"}}
+<style>
+/* Science & Industry.
+   Built for a shard with thousands of jobs in flight: the overview is
+   aggregates only (no per-job rows), and the job tabs roll jobs up into groups
+   that open on demand. Mfg is amber, science violet, ready green, running
+   gold — the same four colours on every panel so a bar means the same thing
+   wherever it is drawn. */
+/* Job-tab pieces */
+.sx-filter { background:var(--win); border:1px solid var(--line); border-radius:6px; padding:10px 14px; margin-bottom:14px; }
+.sx-filter .inline-form { margin-bottom:0; }
+.sx-tbl { width:100%; }
+.sx-tbl td { white-space:nowrap; }
+.sx-tbl tr.g > td { background:var(--win-hover); }
+.sx-tbl tr.g:hover > td { background:var(--win-hover); }
+.sx-tbl tr.gx > td { padding:0 0 0 38px; background:var(--win-deep); }
+.sx-tbl .chev { display:inline-block; width:16px; font-size:14px; color:var(--dim); cursor:pointer; user-select:none; text-decoration:none; }
+.sx-tbl tr.open .chev { color:var(--accent); }
+.sx-tbl .num { text-align:right; }
+.sx-pager { display:flex; gap:10px; align-items:center; margin-top:10px; font-size:12px; color:var(--dim); }
+.sx-act { font-size:10px; padding:1px 6px; border-radius:8px; background:var(--line); color:var(--accent-hi); margin-left:6px; }
+.sx-note { font-size:12px; color:var(--dim); margin:4px 0 8px; }
+</style>
+
+<div class="sx">
+<div class="sx-top">
+  <h2>Science &amp; Industry</h2>
+  <span class="asof">as of {{unixTime .O.AsOfUnix}} &middot; <a href="/industry/factories?view={{.View}}&amp;refresh=1">Refresh</a></span>
+</div>
+<p class="sx-lede">What every capsuleer on the server is building and researching. A line is busy exactly when an undelivered job points at it — nothing stores a busy flag — so every figure here is read out of <code>ramJobs</code>.</p>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+{{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
+
+<div class="sx-tabs">
+  <a href="/industry/factories" class="{{if eq .View "overview"}}on{{end}}"><button type="button">Overview</button></a>
+  <a href="/industry/factories?view=manufacturing" class="{{if eq .View "manufacturing"}}on{{end}}"><button type="button">Manufacturing<span class="n">{{commas .Stats.MfgActive}}</span></button></a>
+  <a href="/industry/factories?view=science" class="{{if eq .View "science"}}on{{end}}"><button type="button">Science<span class="n">{{commas .Stats.SciActive}}</span></button></a>
+  <a href="/industry/factories?view=installers" class="{{if eq .View "installers"}}on{{end}}"><button type="button">Installers<span class="n">{{commas .Stats.Installers}}</span></button></a>
+  <a href="/industry/factories?view=stations" class="{{if eq .View "stations"}}on{{end}}"><button type="button">Stations<span class="n">{{commas .Stats.Stations}}</span></button></a>
+</div>
+
+{{with .Stats}}
+{{/* One banner, not several stacked ones. Each of these is a distinct kind of
+     seed or tick drift and the operator needs the whole explanation to act on
+     it, so the text stays; only the framing collapses. */}}
+{{if or .Overdue .Orphaned .NoStation}}
+<div class="alert alert-error" style="margin-bottom:14px">
+  <ul style="margin:0;padding-left:18px">
+    {{if .Overdue}}<li><b>{{commas .Overdue}}</b> job{{if ne .Overdue 1}}s are{{else}} is{{end}} past its end time but still flagged running — the job ticker has not swept since. They show as Ready to the client anyway (readiness is derived from the clock), but the status here will stay wrong until the tick runs.</li>{{end}}
+    {{if .Orphaned}}<li><b>{{commas .Orphaned}}</b> active job{{if ne .Orphaned 1}}s point{{else}} points{{end}} at an assembly line that no longer exists. Those can never be delivered or cancelled in-game — open the station and use <b>Release</b> to free the blueprint.</li>{{end}}
+    {{if .NoStation}}<li><b>{{commas .NoStation}}</b> line container{{if ne .NoStation 1}}s are{{else}} is{{end}} neither a station nor a POS array — no <code>staStations</code> or <code>starbaseStructures</code> row matches the <code>containerID</code>. Nobody can reach those lines, so they are dead capacity. They sort to the bottom of the station list.</li>{{end}}
+  </ul>
+</div>
+{{end}}
+{{end}}
+{{range .O.Warnings}}<div class="alert alert-error" style="margin-bottom:14px">Panel unavailable &mdash; {{.}}</div>{{end}}
+
+{{if eq .View "overview"}}
+{{with .O}}
+{{$st := .Stats}}
+<div class="sx-kpis">
+  <div class="sx-kpi">
+    <div class="label">Lines in use</div>
+    <div class="big">{{commas $st.BusyLines}} <small>/ {{commas $st.Lines}}</small></div>
+    <div class="sx-meter"><div style="width:{{printf "%.3f" $st.BarPct}}%"></div></div>
+    <div class="split">{{printf "%.2f" $st.UtilPct}}% of shipped lines &middot; {{commas $st.Stations}} sites</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Active jobs</div>
+    <div class="big">{{commas $st.Active}}</div>
+    <div class="split"><b style="color:var(--run)">{{commas $st.Running}}</b> running &middot; <b style="color:var(--rdy)">{{commas $st.Ready}}</b> ready</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label" style="color:var(--mfg)">Manufacturing</div>
+    <div class="big">{{commas $st.MfgActive}}</div>
+    <div class="split"><b style="color:var(--run)">{{commas $st.MfgRunning}}</b> running &middot; <b style="color:var(--rdy)">{{commas $st.MfgReady}}</b> ready</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label" style="color:var(--sci)">Science</div>
+    <div class="big">{{commas $st.SciActive}}</div>
+    <div class="split"><b style="color:var(--run)">{{commas $st.SciRunning}}</b> running &middot; <b style="color:var(--rdy)">{{commas $st.SciReady}}</b> ready</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Awaiting pickup</div>
+    <div class="big">{{commas .Backlog.Total}}</div>
+    <div class="split"><b style="color:var(--mfg)">{{commas .Backlog.Mfg}}</b> mfg &middot; <b style="color:var(--sci)">{{commas .Backlog.Sci}}</b> sci</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Next finishes</div>
+    <div class="big" style="color:{{if $st.NextDoneUnix}}#e0e4ec{{else}}#4b5563{{end}}">{{if $st.NextDoneUnix}}{{if $.NextInSec}}{{secs $.NextInSec}}{{else}}now{{end}}{{else}}&mdash;{{end}}</div>
+    <div class="split">{{if $st.NextDoneUnix}}{{unixTime $st.NextDoneUnix}}{{else}}nothing running{{end}}</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">Installers</div>
+    <div class="big">{{commas $st.Installers}}</div>
+    <div class="split"><b>{{commas .CorpJobs}}</b> run for a corp &middot; {{printf "%.0f" .CorpSharePct}}%</div>
+  </div>
+  <div class="sx-kpi">
+    <div class="label">POS arrays</div>
+    <div class="big">{{commas .PosJobs}} <small>jobs</small></div>
+    <div class="split"><b>{{printf "%.1f" .PosSharePct}}%</b> of active &middot; {{commas $st.PosArrays}} site{{if ne $st.PosArrays 1}}s{{end}}</div>
+  </div>
+</div>
+
+<div class="sx-grid">
+  <div class="sx-p c7">
+    <h3>By activity <span class="hint">{{commas $st.Active}} active jobs</span></h3>
+    <p class="note">Jobs holding a line, and how much of that activity's capacity is in use.</p>
+    {{if .Activities}}
+    <table>
+      <tr><th>Activity</th><th style="width:34%">Jobs</th><th class="r">Running</th><th class="r">Ready</th><th class="r">Runs</th><th style="width:22%">Lines in use</th></tr>
+      {{range .Activities}}
+      <tr>
+        <td title="{{.Name}}"><span style="color:{{if eq .ActivityID 1}}var(--mfg){{else}}var(--sci){{end}}">&#9632;</span> {{.Short}}</td>
+        <td><div class="sx-bar"><i class="run" style="width:{{printf "%.2f" .RunningPct}}%"></i><i class="rdy" style="width:{{printf "%.2f" .ReadyPct}}%"></i></div></td>
+        <td class="r" style="color:var(--run)">{{if .Running}}{{commas .Running}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+        <td class="r" style="color:var(--rdy)">{{if .Ready}}{{commas .Ready}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+        <td class="r">{{commas .Runs}}</td>
+        <td><div class="sx-bar" title="{{commas .LinesBusy}} of {{commas .LinesTotal}} lines"><i class="use" style="width:{{printf "%.2f" .UtilPct}}%"></i></div>
+            <span class="sub">{{commas .LinesBusy}} / {{commas .LinesTotal}} &middot; {{printf "%.1f" .UtilPct}}%</span></td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No jobs and no assembly lines.</div>{{end}}
+  </div>
+
+  <div class="sx-p c5">
+    <h3>Finishing in the next 24 hours <span class="hint">by hour</span></h3>
+    <p class="note">Running jobs by the hour they complete.</p>
+    <div class="sx-cols">
+      {{range .Hist}}<div class="sx-col" title="{{if eq .Hour 0}}within the hour{{else}}in {{.Hour}}&ndash;{{add .Hour 1}} h{{end}}: {{.Mfg}} manufacturing, {{.Sci}} science">
+        {{if .Mfg}}<i class="m" style="height:{{printf "%.2f" .MfgPct}}%"></i>{{end}}{{if .Sci}}<i class="s" style="height:{{printf "%.2f" .SciPct}}%"></i>{{end}}
+      </div>{{end}}
+    </div>
+    <div class="sx-axis"><span style="flex:6;text-align:left">now</span><span style="flex:6">+6h</span><span style="flex:6">+12h</span><span style="flex:6">+18h</span></div>
+    <div class="sx-legend"><span><i class="sw" style="background:var(--mfg)"></i>Manufacturing</span><span><i class="sw" style="background:var(--sci)"></i>Science</span></div>
+    <div class="sx-chips">
+      <span class="sx-chip">Ready / overdue <b>{{commas .Backlog.Total}}</b> ({{commas .Backlog.Mfg}} mfg &middot; {{commas .Backlog.Sci}} sci)</span>
+      <span class="sx-chip">Beyond 24 h <b>{{commas .Later.Total}}</b> ({{commas .Later.Mfg}} mfg &middot; {{commas .Later.Sci}} sci)</span>
+    </div>
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Last {{len .Days}} days <span class="hint">UTC</span></h3>
+    <p class="note">Faded = installed, solid = delivered (dated by end time; pickup is not stored).</p>
+    {{if .Days}}
+    <div class="sx-cols tall">
+      {{range .Days}}<div class="sx-col pair {{if .Today}}today{{end}}" title="{{.Day}}: installed {{.InstMfg}} mfg + {{.InstSci}} sci · delivered {{.DelMfg}} mfg + {{.DelSci}} sci">
+        <span class="inst">{{if .InstMfg}}<i class="m" style="height:{{printf "%.2f" .InstMfgPct}}%"></i>{{end}}{{if .InstSci}}<i class="s" style="height:{{printf "%.2f" .InstSciPct}}%"></i>{{end}}</span>
+        <span class="del">{{if .DelMfg}}<i class="m" style="height:{{printf "%.2f" .DelMfgPct}}%"></i>{{end}}{{if .DelSci}}<i class="s" style="height:{{printf "%.2f" .DelSciPct}}%"></i>{{end}}</span>
+      </div>{{end}}
+    </div>
+    <div class="sx-axis">{{range .Days}}<span>{{.Day}}</span>{{end}}</div>
+    {{else}}<div class="sx-empty">No history.</div>{{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Top products <span class="hint">manufacturing</span></h3>
+    <p class="note">What is being built most right now.</p>
+    {{if .TopProducts}}
+    <table>
+      <tr><th>Product</th><th class="r">Jobs</th><th class="r">Runs</th><th class="r">Builders</th></tr>
+      {{range .TopProducts}}
+      <tr><td class="name" title="{{.Name}}">{{.Name}}</td>
+          <td class="r"><b>{{commas .Jobs}}</b></td><td class="r">{{commas .Runs}}</td><td class="r">{{.Installers}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">Nothing is being manufactured.</div>{{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Top research targets <span class="hint">science</span></h3>
+    <p class="note">Blueprints with the most research, copy and invention jobs.</p>
+    {{if .TopTargets}}
+    <table>
+      <tr><th>Blueprint</th><th>Activity</th><th class="r">Jobs</th><th class="r">Runs</th></tr>
+      {{range .TopTargets}}
+      <tr><td class="name" title="{{.Name}}">{{if .TypeID}}<a href="/industry/blueprint/{{.TypeID}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+          <td><span class="sub">{{.ActivityShort}}</span></td>
+          <td class="r"><b>{{commas .Jobs}}</b></td><td class="r">{{commas .Runs}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No science jobs running.</div>{{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Busiest regions <span class="hint">lines in use</span></h3>
+    <p class="note">POS arrays have no region and are counted in the KPI above, not here.</p>
+    {{if .Regions}}
+    <table>
+      <tr><th>Region</th><th style="width:38%">Utilisation</th><th class="r">Lines</th><th class="r">Jobs</th></tr>
+      {{range .Regions}}
+      <tr><td class="name" title="{{.Name}}"><a href="/industry/factories?view=stations&amp;region={{.RegionID}}">{{.Name}}</a></td>
+          <td><div class="sx-bar"><i class="use" style="width:{{printf "%.2f" .UtilPct}}%"></i></div></td>
+          <td class="r"><b>{{commas .LinesBusy}}</b> <span class="sub">/ {{commas .LinesTotal}}</span></td>
+          <td class="r">{{commas .Jobs}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No jobs at any station.</div>{{end}}
+  </div>
+
+  <div class="sx-p c8">
+    <h3>Busiest stations <span class="hint">top {{len .Stations}} by lines in use</span></h3>
+    <p class="note">Open one to see each line and what sits on it.</p>
+    {{if .Stations}}
+    <table>
+      <tr><th>Station</th><th>System</th><th>Region</th><th style="width:20%">Utilisation</th><th class="r">Lines</th><th class="r">Jobs</th></tr>
+      {{range .Stations}}
+      <tr><td class="name" title="{{.Name}}"><a href="/industry/factory/{{.StationID}}">{{.Name}}</a></td>
+          <td>{{if .System}}{{.System}} <span class="sub">{{printf "%.1f" .Security}}</span>{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+          <td class="name" style="color:#9ca3af">{{if .Region}}{{.Region}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+          <td><div class="sx-bar"><i class="use" style="width:{{printf "%.2f" .UtilPct}}%"></i></div></td>
+          <td class="r"><b>{{commas .LinesBusy}}</b> <span class="sub">/ {{commas .LinesTotal}}</span></td>
+          <td class="r">{{commas .Jobs}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No jobs installed anywhere.</div>{{end}}
+  </div>
+
+  <div class="sx-p c5">
+    <h3>Top installers <span class="hint"><a href="/industry/factories?view=installers">all installers &rarr;</a></span></h3>
+    <p class="note">Every capsuleer with a job on a line, busiest first.</p>
+    {{if .TopInstallers}}
+    <table>
+      <tr><th>Capsuleer</th><th>Corporation</th><th class="r" style="color:var(--mfg)">Mfg</th><th class="r" style="color:var(--sci)">Sci</th><th class="r">Runs</th><th class="r">Lines</th></tr>
+      {{range .TopInstallers}}
+      <tr><td class="name" title="{{.Name}}"><a href="/character/{{.CharID}}">{{.Name}}</a></td>
+          <td class="name" style="color:#9ca3af" title="{{.Corp}}">{{.Corp}}</td>
+          <td class="r">{{if .Mfg}}{{commas .Mfg}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+          <td class="r">{{if .Sci}}{{commas .Sci}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+          <td class="r">{{commas .Runs}}</td><td class="r">{{commas .Lines}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No installers.</div>{{end}}
+  </div>
+
+  <div class="sx-p c4">
+    <h3>Top corporations <span class="hint">by members' jobs</span></h3>
+    <p class="note">"For corp" = installed against the corporation's wallet and hangar.</p>
+    {{if .TopCorps}}
+    <table>
+      <tr><th>Corporation</th><th class="r">Jobs</th><th class="r">For corp</th><th class="r">Pilots</th></tr>
+      {{range .TopCorps}}
+      <tr><td class="name" title="{{.Name}}">{{if .CorpID}}<a href="/corporation/{{.CorpID}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td>
+          <td class="r"><b>{{commas .Jobs}}</b></td>
+          <td class="r">{{if .CorpJobs}}{{commas .CorpJobs}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+          <td class="r">{{commas .Installers}}</td></tr>
+      {{end}}
+    </table>
+    {{else}}<div class="sx-empty">No corporations.</div>{{end}}
+  </div>
+
+  <div class="sx-p c3">
+    <h3>Research Facility</h3>
+    <p class="note">Duplicating &amp; Reverse Engineering, in rented lab slots (own tables, not <code>ramJobs</code>).</p>
+    {{with .Research}}
+    {{if .Present}}
+    <table>
+      <tr><td>Slots rented</td><td class="r"><b>{{commas .SlotsRented}}</b></td></tr>
+      <tr><td>Stations</td><td class="r">{{commas .RentalStation}}</td></tr>
+      <tr><td>Duplicating running</td><td class="r" style="color:var(--run)">{{commas .DupRunning}}</td></tr>
+      <tr><td>Reverse Eng. running</td><td class="r" style="color:var(--run)">{{commas .REngRunning}}</td></tr>
+      <tr><td>Duplicated, 7 d</td><td class="r">{{commas .DupDone7d}}</td></tr>
+      <tr><td>Reverse engineered, 7 d</td><td class="r">{{commas .REngDone7d}}</td></tr>
+    </table>
+    {{else}}<div class="sx-empty">Research Facility tables are not present.</div>{{end}}
+    {{end}}
+  </div>
+</div>
+{{end}}
+
+{{else if eq .View "stations"}}
+<div class="sx-filter">
+  <form method="GET" action="/industry/factories" class="inline-form">
+    <input type="hidden" name="view" value="stations">
+    <input type="text" name="q" value="{{.Query}}" placeholder="Station or system name…" style="flex:1;min-width:240px">
+    <select name="region">
+      <option value="0">All regions</option>
+      {{$reg := .RegionID}}
+      {{range .Regions}}
+      <option value="{{.RegionID}}" {{if eq .RegionID $reg}}selected{{end}}>{{.RegionName}} ({{.Stations}} st / {{.Lines}} lines)</option>
+      {{end}}
+    </select>
+    <label style="font-size:12px;color:#9ca3af"><input type="checkbox" name="busy" value="1" {{if .BusyOnly}}checked{{end}}> Only stations with work</label>
+    <button type="submit">Filter</button>
+    <a href="/industry/factories?view=stations" style="font-size:12px">reset</a>
+  </form>
+</div>
+
+<div class="card">
+  <h3>{{len .Stations}} factory station{{if ne (len .Stations) 1}}s{{end}}</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Line counts by activity. Open a station to edit its install costs and see what sits on each slot.</p>
+  <table class="rows">
+    <tr>
+      <th>Station</th><th>System</th><th>Region</th>
+      <th>Lines</th><th title="Manufacturing">Mfg</th><th title="Time Efficiency Research">PE</th>
+      <th title="Material Efficiency Research">ME</th><th>Copy</th><th>Inv</th>
+      <th>In use</th><th>Running</th><th>Ready</th>
+    </tr>
+    {{range .Stations}}
+    <tr>
+      <td><a href="/industry/factory/{{.StationID}}" style="font-weight:600" class="clip" title="{{.StationName}}">{{.StationName}}</a>
+        {{if .IsPOS}} <span style="color:#9ca3af;font-size:11px">POS array</span>
+        {{else if not .Known}} <span style="color:#f87171;font-size:11px">not a station — unreachable</span>{{end}}</td>
+      <td>{{if .SystemName}}{{.SystemName}} <span class="sub">{{printf "%.1f" .Security}}</span>{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td style="color:#9ca3af">{{if .RegionName}}{{.RegionName}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td style="font-weight:600">{{.Lines}}</td>
+      <td>{{if .Manufacturing}}{{.Manufacturing}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .TimeResearch}}{{.TimeResearch}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .MatResearch}}{{.MatResearch}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .Copying}}{{.Copying}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .Invention}}{{.Invention}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .BusyLines}}<b style="color:#fbbf24">{{.BusyLines}}</b>{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .Running}}{{.Running}}{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+      <td>{{if .Ready}}<span style="color:#6ee7b7">{{.Ready}}</span>{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="12" style="color:#6b7280">No stations match. If this is empty everywhere, <code>ramassemblylines</code> has not been seeded — no station in the game can host a job.</td></tr>
+    {{end}}
+  </table>
+</div>
+
+{{else}}
+{{/* Manufacturing, Science and Installers: the same grouped table. */}}
+<div class="sx-filter">
+  <form method="GET" action="/industry/factories" class="inline-form">
+    <input type="hidden" name="view" value="{{.View}}">
+    <input type="text" name="q" value="{{.Query}}" placeholder="Blueprint, product, installer or station…" style="flex:1;min-width:220px">
+    <select name="region">
+      <option value="0">All regions</option>
+      {{$reg := .RegionID}}
+      {{range .Regions}}
+      <option value="{{.RegionID}}" {{if eq .RegionID $reg}}selected{{end}}>{{.RegionName}} ({{.Stations}} st / {{.Lines}} lines)</option>
+      {{end}}
+    </select>
+    {{if eq .View "science"}}
+    <select name="activity">
+      <option value="0">All science activities</option>
+      {{$act := .Activity}}
+      {{range .JobActs}}<option value="{{.ID}}" {{if eq .ID $act}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+    {{end}}
+    <select name="status">
+      {{$status := .Status}}
+      <option value="active" {{if eq $status "active"}}selected{{end}}>Running + ready</option>
+      <option value="running" {{if eq $status "running"}}selected{{end}}>Running</option>
+      <option value="ready" {{if eq $status "ready"}}selected{{end}}>Ready</option>
+    </select>
+    {{if ne .View "installers"}}
+    <select name="by" title="Group jobs by">
+      {{$by := .By}}
+      <option value="blueprint" {{if eq $by "blueprint"}}selected{{end}}>Group: blueprint</option>
+      <option value="station" {{if eq $by "station"}}selected{{end}}>Group: station</option>
+      <option value="installer" {{if eq $by "installer"}}selected{{end}}>Group: installer</option>
+      <option value="region" {{if eq $by "region"}}selected{{end}}>Group: region</option>
+    </select>
+    {{end}}
+    <select name="sort" title="Order groups by">
+      {{$sort := .Sort}}
+      <option value="jobs" {{if eq $sort "jobs"}}selected{{end}}>Most jobs</option>
+      <option value="runs" {{if eq $sort "runs"}}selected{{end}}>Most runs</option>
+      <option value="soonest" {{if eq $sort "soonest"}}selected{{end}}>Finishing soonest</option>
+      <option value="name" {{if eq $sort "name"}}selected{{end}}>Name</option>
+    </select>
+    <button type="submit">Filter</button>
+    <a href="/industry/factories?view={{.View}}" style="font-size:12px">reset</a>
+  </form>
+</div>
+
+<div class="card">
+  <div class="fx-head" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <h3 style="margin:0">{{if eq .View "manufacturing"}}Manufacturing{{else if eq .View "science"}}Science{{else}}Installers{{end}}
+      &mdash; {{commas .TotalJobs}} job{{if ne .TotalJobs 1}}s{{end}} in {{commas .TotalGroups}} group{{if ne .TotalGroups 1}}s{{end}}</h3>
+    <span style="font-size:12px;color:#6b7280">Open a group to see its jobs.{{if eq .View "science"}} ME/PE research, copying and invention.{{end}}</span>
+    <span style="margin-left:auto"><input type="search" id="gfilter" placeholder="Search this page…" autocomplete="off" style="padding:4px 8px;font-size:12px;width:200px"></span>
+  </div>
+  <table class="sx-tbl rows" id="groups">
+    <tr>
+      <th></th>
+      <th>{{if eq .By "blueprint"}}Blueprint{{else if eq .By "station"}}Station{{else if eq .By "installer"}}Capsuleer{{else}}Region{{end}}</th>
+      <th class="num">Jobs</th><th class="num">Runs</th>
+      <th class="num" style="color:#fbbf24">Running</th><th class="num" style="color:#6ee7b7">Ready</th>
+      <th>Progress</th><th>Next finish</th><th>Last finish</th>
+      {{if ne .By "installer"}}<th class="num">Pilots</th>{{end}}{{if ne .By "station"}}<th class="num">Sites</th>{{end}}<th></th>
+    </tr>
+    {{$gb := .GroupBase}}{{$gf := .GroupFilter}}
+    {{range .Groups}}
+    <tr class="g">
+      <td><a class="chev" href="{{$gb}}&amp;id={{.ID}}&amp;act={{.Activity}}" data-src="{{$gb}}&amp;id={{.ID}}&amp;act={{.Activity}}" title="Show jobs">&#9656;</a></td>
+      <td>
+        {{if eq .By "blueprint"}}{{if .ID}}<a href="/industry/blueprint/{{.ID}}" style="font-weight:600" class="clip" title="{{.Label}}">{{.Label}}</a>{{else}}<span style="font-weight:600">{{.Label}}</span>{{end}}<span class="sx-act">{{.ActivityShort}}</span>{{if .Sub}} <span class="sub">&rarr; {{.Sub}}</span>{{end}}
+        {{else if eq .By "station"}}<a href="/industry/factory/{{.ID}}" style="font-weight:600" class="clip" title="{{.Label}}">{{.Label}}</a>{{if .Sub}} <span class="sub">{{.Sub}}</span>{{end}}
+        {{else if eq .By "installer"}}<a href="/character/{{.ID}}" style="font-weight:600" class="clip" title="{{.Label}}">{{.Label}}</a>
+        {{else}}<span style="font-weight:600">{{.Label}}</span>{{end}}
+      </td>
+      <td class="num"><b>{{commas .Jobs}}</b></td>
+      <td class="num">{{commas .Runs}}</td>
+      <td class="num" style="color:#fbbf24">{{if .Running}}{{commas .Running}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+      <td class="num" style="color:#6ee7b7">{{if .Ready}}{{commas .Ready}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+      <td><span class="sx-bar" style="display:inline-flex;width:90px;vertical-align:middle"><i class="prog {{if eq .Running 0}}ok{{end}}" style="width:{{.ProgressPct}}%"></i></span> <span class="sub">{{.ProgressPct}}%</span></td>
+      <td>{{if .FirstEndUnix}}{{if lt .NextInSec 1}}<span style="color:#6ee7b7">done</span>{{else}}{{secs .NextInSec}}{{end}}{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+      <td>{{if .LastEndUnix}}<span class="sub">{{unixTime .LastEndUnix}}</span>{{else}}<span class="sub">&mdash;</span>{{end}}</td>
+      {{if ne .By "installer"}}<td class="num">{{commas .Installers}}</td>{{end}}
+      {{if ne .By "station"}}<td class="num">{{commas .Stations}}</td>{{end}}
+      <td class="actions">{{if .Running}}
+        <form method="POST" action="" onsubmit="return confirm('Rush all {{.Running}} running job(s) in this group? Each is pulled to now; the installers collect them in-game.')">
+          <input type="hidden" name="action" value="rushGroup">
+          <input type="hidden" name="by" value="{{.By}}"><input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="act" value="{{.Activity}}">
+          {{range $k, $vs := $gf}}<input type="hidden" name="{{$k}}" value="{{index $vs 0}}">{{end}}
+          <button type="submit" title="Pull every running job in this group to now">Rush all</button>
+        </form>{{end}}</td>
+    </tr>
+    <tr class="gx" style="display:none"><td colspan="12"></td></tr>
+    {{else}}
+    <tr class="empty"><td colspan="12" style="color:#6b7280">No jobs match.</td></tr>
+    {{end}}
+  </table>
+  <div class="sx-pager">
+    {{if .HasPrev}}<a href="{{.Prev}}">&larr; Previous</a>{{end}}
+    <span>Page {{.PageNo}} of {{.PageCount}}</span>
+    {{if .HasNext}}<a href="{{.Next}}">Next &rarr;</a>{{end}}
+  </div>
+</div>
+
+<script>
+// Group rows open their jobs on demand: the fragment is the same page the
+// chevron links to, fetched into the row beneath. Without JavaScript the
+// chevron is a plain link to that fragment.
+(function () {
+  var table = document.getElementById('groups');
+  if (!table) { return; }
+  table.addEventListener('click', function (ev) {
+    var a = ev.target.closest('a.chev');
+    if (!a) { return; }
+    ev.preventDefault();
+    var row = a.closest('tr');
+    var detail = row.nextElementSibling;
+    var cell = detail.firstElementChild;
+    if (row.classList.contains('open')) {
+      row.classList.remove('open'); detail.style.display = 'none'; a.innerHTML = '&#9656;'; return;
+    }
+    row.classList.add('open'); detail.style.display = ''; a.innerHTML = '&#9662;';
+    if (cell.dataset.loaded) { return; }
+    cell.innerHTML = '<div style="padding:8px;color:#6b7280;font-size:12px">Loading&hellip;</div>';
+    fetch(a.dataset.src, { credentials: 'same-origin' })
+      .then(function (r) { return r.text(); })
+      .then(function (html) { cell.innerHTML = html; cell.dataset.loaded = '1'; })
+      .catch(function () { cell.innerHTML = '<div style="padding:8px;color:#f87171;font-size:12px">Could not load jobs.</div>'; });
+  });
+
+  // "Search this page" narrows the group rows already drawn.
+  var box = document.getElementById('gfilter');
+  if (box) {
+    box.addEventListener('input', function () {
+      var q = box.value.trim().toLowerCase();
+      table.querySelectorAll('tr.g').forEach(function (tr) {
+        var hit = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+        tr.style.display = hit ? '' : 'none';
+        var d = tr.nextElementSibling;
+        if (d && d.classList.contains('gx') && !hit) { d.style.display = 'none'; }
+        else if (d && d.classList.contains('gx') && tr.classList.contains('open')) { d.style.display = ''; }
+      });
+    });
+  }
+})();
+</script>
+{{end}}
+</div>
+{{end}}
+
+{{define "groupjobs"}}
+{{/* The jobs under one group row. Rush is the only action here: Cancel, Release
+     and Shift live on the station page, where a line and its job are in view. */}}
+<table class="rows" style="width:100%">
+  <tr>
+    <th>Job</th><th>Activity</th><th>Blueprint</th>
+    {{if ne .By "installer"}}<th>Installer</th>{{end}}
+    {{if ne .By "station"}}<th>Station</th>{{end}}
+    <th>Progress</th><th>Finishes</th><th></th>
+  </tr>
+  {{range .Jobs}}
+  <tr>
+    <td style="color:#9ca3af">{{.JobID}}</td>
+    <td title="{{.ActivityName}}{{if .LineTypeName}} &middot; {{.LineTypeName}}{{end}}">{{.ActivityShort}}</td>
+    <td><a href="/industry/blueprint/{{.BlueprintTypeID}}" class="clip" title="{{.BlueprintName}}">{{.BlueprintName}}</a>
+      {{if .DistinctOutput}}<span class="sub">&rarr;</span> <span class="clip" style="max-width:160px" title="{{.OutputName}}">{{.OutputName}}</span>{{end}}
+      {{if .ShowLevels}}<span class="sub">ME{{.MaterialLevel}} PE{{.ProductivityLev}}</span>{{end}}
+      {{if gt .Runs 1}}<span class="sub">&times;{{.Runs}}</span>{{end}}</td>
+    {{if ne $.By "installer"}}<td><span class="clip" style="max-width:150px" title="{{.InstallerName}}">{{.InstallerName}}</span></td>{{end}}
+    {{if ne $.By "station"}}<td>{{if .StationName}}<a href="/industry/factory/{{.StationID}}" class="clip" title="{{.StationName}} &middot; {{.SystemName}}">{{.StationName}}</a>{{else}}<span style="color:#9ca3af">POS / container {{.StationID}}</span>{{end}}</td>{{end}}
+    <td>
+      <span style="display:inline-block;width:70px;background:var(--bg);border:1px solid var(--line);border-radius:3px;height:8px;overflow:hidden;vertical-align:middle">
+        <span style="display:block;height:100%;width:{{.ProgressPct}}%;background:{{if eq .StatusID 1}}#1a4731{{else}}var(--btn-hi){{end}}"></span>
+      </span>
+      <span style="font-size:11px;color:{{if eq .Status "Ready"}}#6ee7b7{{else}}#9ca3af{{end}}">{{.Status}} {{.ProgressPct}}%</span>
+      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time but still flagged running - the job ticker has not swept since">&middot; overdue</span>{{end}}
+    </td>
+    <td>{{if .EndTimeUnix}}{{unixTime .EndTimeUnix}}
+        <span class="sub" style="color:{{if lt .RemainingSec 0}}#6ee7b7{{else}}#6b7280{{end}}">{{if lt .RemainingSec 0}}done{{else}}{{secs .RemainingSec}} left{{end}}</span>
+      {{else}}<span style="color:#6b7280">&mdash;</span>{{end}}</td>
+    <td class="actions">{{if eq .StatusID 0}}
+      <form method="POST" action="">
+        <input type="hidden" name="jobID" value="{{.JobID}}">
+        <button type="submit" name="action" value="rush" title="Pull the end time to now so the installer can collect it in-game">Rush</button>
+      </form>{{end}}</td>
+  </tr>
+  {{else}}
+  <tr class="empty"><td colspan="8" style="color:#6b7280">No jobs in this group any more.</td></tr>
+  {{end}}
+</table>
+{{if .Truncated}}<div style="padding:6px 10px;font-size:11px;color:#fbbf24">Showing the first {{.Limit}} jobs, soonest finishing first.</div>{{end}}
+{{end}}
+
+{{template "layout" .}}

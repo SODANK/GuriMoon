@@ -1,0 +1,91 @@
+{{define "content"}}
+<h2>Bug Tracker</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Open</div><div class="value" style="color:#ef4444">{{index .Counts "open"}}</div></div>
+  <div class="stat"><div class="label">Acked</div><div class="value" style="color:#f59e0b">{{index .Counts "acked"}}</div></div>
+  <div class="stat"><div class="label">Fixed</div><div class="value" style="color:#22c55e">{{index .Counts "fixed"}}</div></div>
+  <div class="stat"><div class="label">Ignored</div><div class="value" style="color:#6b7280">{{index .Counts "ignored"}}</div></div>
+</div>
+
+<div class="card">
+  <form class="search-form" method="GET" action="/bugs">
+    <select name="status">
+      <option value="" {{if eq .Status ""}}selected{{end}}>All statuses</option>
+      {{$cur := .Status}}
+      {{range .Statuses}}<option value="{{.}}" {{if eq $cur .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+    <select name="category">
+      <option value="" {{if eq .Category ""}}selected{{end}}>All categories</option>
+      {{$cat := .Category}}
+      {{range .Categories}}<option value="{{.}}" {{if eq $cat .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
+    <button type="submit">Filter</button>
+  </form>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+    Bugs are collected automatically: log lines mentioning errors / unhandled calls / exceptions,
+    generic exceptions sent to clients, and recovered panics. Repeat occurrences of the same
+    signature bump the hit count instead of adding rows. Fixed bugs that recur reopen automatically.
+  </p>
+
+  {{if .Bugs}}
+  <table>
+    <tr><th>ID</th><th>Category</th><th>Service</th><th>Sample</th><th>Hits</th><th>Last Seen</th><th>Status</th><th></th></tr>
+    {{range .Bugs}}
+    <tr>
+      <td><a href="/bug/{{.BugID}}">#{{.BugID}}</a></td>
+      <td>
+        {{if eq .Category "panic"}}<span style="color:#ef4444;font-weight:600">panic</span>
+        {{else if eq .Category "unhandled"}}<span style="color:#f59e0b">unhandled</span>
+        {{else if eq .Category "exception"}}<span style="color:#a78bfa">exception</span>
+        {{else}}<span style="color:#9ca3af">{{.Category}}</span>{{end}}
+      </td>
+      <td>{{.Service}}{{if .Method}}.{{.Method}}{{end}}</td>
+      <td style="max-width:480px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <a href="/bug/{{.BugID}}" style="color:inherit">{{.SampleMessage}}</a>
+      </td>
+      <td>{{.HitCount}}</td>
+      <td>{{unixTime .LastSeen}}</td>
+      <td>{{.Status}}</td>
+      <td style="white-space:nowrap">
+        {{if ne .Status "fixed"}}
+        <form method="POST" action="/bugs" style="display:inline">
+          <input type="hidden" name="action" value="status">
+          <input type="hidden" name="bugID" value="{{.BugID}}">
+          <input type="hidden" name="status" value="fixed">
+          <input type="hidden" name="filterStatus" value="{{$.Status}}">
+          <input type="hidden" name="filterCategory" value="{{$.Category}}">
+          <button type="submit" style="padding:4px 8px;font-size:11px">Fixed</button>
+        </form>
+        {{end}}
+        {{if ne .Status "ignored"}}
+        <form method="POST" action="/bugs" style="display:inline">
+          <input type="hidden" name="action" value="status">
+          <input type="hidden" name="bugID" value="{{.BugID}}">
+          <input type="hidden" name="status" value="ignored">
+          <input type="hidden" name="filterStatus" value="{{$.Status}}">
+          <input type="hidden" name="filterCategory" value="{{$.Category}}">
+          <button type="submit" style="padding:4px 8px;font-size:11px">Ignore</button>
+        </form>
+        {{end}}
+        <form method="POST" action="/bugs" style="display:inline" onsubmit="return confirm('Delete bug #{{.BugID}}? It will reappear if the signal recurs.');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="bugID" value="{{.BugID}}">
+          <input type="hidden" name="filterStatus" value="{{$.Status}}">
+          <input type="hidden" name="filterCategory" value="{{$.Category}}">
+          <button type="submit" style="padding:4px 8px;font-size:11px">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>No bugs match this filter. Nice.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{template "layout" .}}

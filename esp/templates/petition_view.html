@@ -1,0 +1,73 @@
+{{define "content"}}
+<h2>Petition #{{.P.PetitionID}}: {{.P.Subject}}</h2>
+<p style="margin-bottom:16px"><a href="/petitions">&larr; back to petitions</a></p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <h3>Details</h3>
+  <table>
+    <tr><td style="color:#6b7280;width:140px">Petitioner</td><td><a href="/character/{{.P.PetitionerID}}">{{.Petitioner}}</a></td></tr>
+    <tr><td style="color:#6b7280">Category</td><td>{{.Category}}</td></tr>
+    <tr><td style="color:#6b7280">Status</td><td>{{.Status}}{{if .Claimer}} &mdash; claimed by {{.Claimer}}{{end}}</td></tr>
+    <tr><td style="color:#6b7280">Queue</td><td>{{.P.QueueID}}{{if .P.EscalatesTo}} (escalates to {{.P.EscalatesTo}}){{end}}</td></tr>
+    <tr><td style="color:#6b7280">Created</td><td>{{.Created}}</td></tr>
+    {{range $k, $v := .P.Properties}}<tr><td style="color:#6b7280">{{$k}}</td><td>{{$v}}</td></tr>{{end}}
+  </table>
+  <pre style="margin-top:12px">{{.P.Text}}</pre>
+</div>
+
+<div class="card">
+  <h3>Messages</h3>
+  {{if .Messages}}
+  <table>
+    <tr><th>When</th><th>From</th><th>Message</th></tr>
+    {{range .Messages}}
+    <tr{{if .Comment}} style="color:#6b7280"{{end}}>
+      <td>{{.Sent}}</td>
+      <td>{{.Sender}}{{if .Comment}} (comment){{end}}</td>
+      <td style="white-space:pre-wrap">{{.Text}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}<p>No messages yet.</p>{{end}}
+  {{if not .P.Closed}}
+  <form method="POST" action="/petition/{{.P.PetitionID}}" style="margin-top:12px">
+    <input type="hidden" name="action" value="reply">
+    <textarea name="text" rows="4" placeholder="Reply to the petitioner (signed CONCORD)"></textarea>
+    <div style="margin-top:8px">
+      <label><input type="checkbox" name="comment" value="1"> GM comment only (not shown to the petitioner)</label>
+      <button type="submit" style="margin-left:12px">Send</button>
+    </div>
+  </form>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Actions</h3>
+  {{if not .P.Closed}}
+    {{if .P.ClaimedBy}}
+    <form method="POST" action="/petition/{{.P.PetitionID}}" style="display:inline"><input type="hidden" name="action" value="unclaim"><button type="submit">Unclaim</button></form>
+    {{else}}
+    <form method="POST" action="/petition/{{.P.PetitionID}}" style="display:inline"><input type="hidden" name="action" value="claim"><button type="submit">Claim</button></form>
+    {{end}}
+    {{if .P.EscalatesTo}}
+    <form method="POST" action="/petition/{{.P.PetitionID}}" style="display:inline"><input type="hidden" name="action" value="escalate"><button type="submit">Escalate</button></form>
+    {{end}}
+    <form method="POST" action="/petition/{{.P.PetitionID}}" style="display:inline" onsubmit="return confirm('Close petition #{{.P.PetitionID}}?');"><input type="hidden" name="action" value="close"><button type="submit" style="background:var(--btn);border-color:var(--btn-hi)">Close</button></form>
+  {{else}}
+  <p>Closed.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Log</h3>
+  {{if .Log}}
+  <table>
+    <tr><th>When</th><th>Who</th><th>Event</th></tr>
+    {{range .Log}}<tr><td>{{.When}}</td><td>{{.UserName}}</td><td>{{.EventText}}</td></tr>{{end}}
+  </table>
+  {{else}}<p>Nothing logged.</p>{{end}}
+</div>
+{{end}}

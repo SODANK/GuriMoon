@@ -1,0 +1,74 @@
+{{define "content"}}
+<h2>Agent Dialogue</h2>
+
+<p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
+  Everything an agent says outside a mission template, and the captions on the player's own
+  choices &mdash; the conversation shell (greeting, refusals, the mission-cap turn-away), the
+  service pitches, and the locator mails. Mission briefings and their accept/decline texts stay
+  on the <a href="/missions">mission template</a> pages; this is everything else.
+  <strong>Scope</strong>: &ldquo;All agents&rdquo; edits the global voice; picking a division
+  overrides line by line and inherits the rest &mdash; so Legal can greet like a law office
+  while everyone else keeps the stock words. Saving a line identical to what the scope would
+  inherit anyway clears the override.
+</p>
+
+{{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
+
+<style>
+.dlg-scope { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px }
+.dlg-scope select { padding:6px 8px; font-size:12px; min-width:260px }
+.dlg-key { font-family:monospace; font-size:11px; color:#e0a35b; white-space:nowrap }
+.dlg-flow { font-size:11px; color:#9ca3af }
+.dlg-row textarea { width:100%; min-height:40px; font-size:12px; font-family:inherit }
+.dlg-src { font-size:10px; border-radius:3px; padding:0 4px; margin-left:6px; white-space:nowrap }
+.dlg-src-default { color:#6b7280; border:1px solid #374151 }
+.dlg-src-global { color:#5b8fd5; border:1px solid #24466e }
+.dlg-src-division { color:#5bd58f; border:1px solid #2a4a35 }
+.dlg-tokens { font-size:11px; color:#6b7280; margin-bottom:10px }
+.dlg-tokens code { margin-right:4px }
+</style>
+
+<form method="get" class="dlg-scope">
+  <label style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">Speaking as</label>
+  <select name="division" onchange="this.form.submit()">
+    <option value="0" {{if eq .Division 0}}selected{{end}}>All agents (global voice)</option>
+    {{$sel := .Division}}
+    {{range .Divisions}}
+    <option value="{{.DivisionID}}" {{if eq .DivisionID $sel}}selected{{end}}>
+      {{.DivisionName}} — {{.Agents}} agents{{if .Authored}} · {{.Authored}} own lines{{end}}
+    </option>
+    {{end}}
+  </select>
+  <noscript><button type="submit" class="btn">View</button></noscript>
+</form>
+
+<div class="dlg-tokens">
+  Tokens: <code>{pilot}</code><code>{target}</code><code>{fee}</code><code>{cost}</code>
+  <code>{range}</code><code>{delay}</code><code>{sec}</code><code>{lp}</code>
+  <code>{required}</code><code>{effective}</code><code>{available}</code><code>{cap}</code>
+  <code>{reason}</code><code>{station}</code><code>{system}</code> &mdash; each fills at speak
+  time. Badges: <span class="dlg-src dlg-src-default">default</span> shipped text,
+  <span class="dlg-src dlg-src-global">global</span> authored for all agents,
+  <span class="dlg-src dlg-src-division">division</span> this division's own line.
+</div>
+
+<form method="post">
+  <input type="hidden" name="division" value="{{.Division}}">
+  {{range .Groups}}
+  <div class="card">
+    <h3 style="margin-bottom:8px">{{.Name}} <span style="font-size:11px;color:#6b7280;font-weight:normal">— {{$.DivisionName}}</span></h3>
+    <table class="compact">
+      <tr><th style="width:180px">Key</th><th style="width:27%">Where / choices</th><th>Text</th></tr>
+      {{range .Rows}}
+      <tr class="dlg-row">
+        <td class="dlg-key">{{.Key}}<span class="dlg-src dlg-src-{{.Source}}">{{.Source}}</span></td>
+        <td class="dlg-flow">{{.Where}}<br><em>{{.Choices}}</em></td>
+        <td><textarea name="text_{{.Key}}">{{.Effective}}</textarea></td>
+      </tr>
+      {{end}}
+    </table>
+  </div>
+  {{end}}
+  <button type="submit" class="btn">Save dialogue for {{.DivisionName}}</button>
+</form>
+{{end}}

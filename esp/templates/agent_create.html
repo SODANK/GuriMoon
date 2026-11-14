@@ -1,0 +1,138 @@
+{{define "content"}}
+<h2>Create New Agent</h2>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<a href="/agents" style="font-size:13px">&larr; Back to Agent Browser</a>
+
+<div class="card" style="margin-top:12px">
+  <h3>New Agent</h3>
+  <form method="POST" action="/agents/create">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+
+      <div class="form-group">
+        <label>Agent ID</label>
+        <input type="number" name="agentID" required style="width:100%" value="{{.NextID}}">
+      </div>
+
+      <div class="form-group">
+        <label>Agent Name</label>
+        <input type="text" name="agentName" required style="width:100%" placeholder="Agent display name">
+      </div>
+
+      <div class="form-group">
+        <label>Agent Type</label>
+        <select name="agentTypeID" style="width:100%">
+          {{range $.AgentTypes}}
+          <option value="{{.AgentTypeID}}">{{agentTypeName .AgentTypeID}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Division</label>
+        <select name="divisionID" style="width:100%">
+          {{range $.Divisions}}
+          <option value="{{.DivisionID}}">{{.DivisionName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Corporation</label>
+        <select name="corporationID" style="width:100%">
+          {{range $.Corps}}
+          <option value="{{.CorporationID}}">{{.CorpName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group" style="position:relative">
+        <label>Station</label>
+        <input type="hidden" name="stationID" id="stationID" value="">
+        <input type="text" id="stationSearch" autocomplete="off" placeholder="Type to search stations..." style="width:100%">
+        <div id="stationResults" style="position:absolute;top:100%;left:0;right:0;z-index:10;background:var(--win);border:1px solid var(--line);border-top:none;border-radius:0 0 4px 4px;max-height:240px;overflow-y:auto;display:none"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Level</label>
+        <input type="number" name="level" value="1" style="width:100%">
+      </div>
+
+      <div class="form-group">
+        <label>Quality</label>
+        <input type="number" name="quality" value="0" style="width:100%">
+      </div>
+
+      <div class="form-group">
+        <label>Bloodline</label>
+        <select name="bloodlineID" style="width:100%">
+          {{range $.Bloodlines}}
+          <option value="{{.BloodlineID}}">{{.BloodlineName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Gender</label>
+        <select name="gender" style="width:100%">
+          <option value="0">Male</option>
+          <option value="1">Female</option>
+        </select>
+      </div>
+
+    </div>
+    <button type="submit" style="margin-top:8px">Create Agent</button>
+  </form>
+</div>
+
+<script>
+(function() {
+  var input = document.getElementById('stationSearch');
+  var hidden = document.getElementById('stationID');
+  var dropdown = document.getElementById('stationResults');
+  var debounce = null;
+
+  input.addEventListener('input', function() {
+    clearTimeout(debounce);
+    var q = input.value.trim();
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    debounce = setTimeout(function() {
+      fetch('/agents/stations/api?q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(stations) {
+          if (!stations.length) { dropdown.style.display = 'none'; return; }
+          var html = '';
+          for (var i = 0; i < stations.length; i++) {
+            var st = stations[i];
+            html += '<div class="st-item" data-id="' + st.stationID + '" data-name="' + st.stationName.replace(/"/g, '&quot;') + '"'
+              + ' style="padding:6px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line-soft)">'
+              + '<div style="color:#e0e4ec">' + st.stationName + '</div>'
+              + '<div style="color:#6b7280;font-size:11px">' + st.systemName + '</div></div>';
+          }
+          dropdown.innerHTML = html;
+          dropdown.style.display = 'block';
+
+          var items = dropdown.querySelectorAll('.st-item');
+          for (var j = 0; j < items.length; j++) {
+            items[j].addEventListener('click', function() {
+              hidden.value = this.getAttribute('data-id');
+              input.value = this.getAttribute('data-name');
+              dropdown.style.display = 'none';
+            });
+          }
+        });
+    }, 250);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (e.target !== input && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+})();
+</script>
+
+{{end}}
+
+{{template "layout" .}}

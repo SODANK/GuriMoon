@@ -1,0 +1,149 @@
+{{define "content"}}
+<h2>Agent Browser</h2>
+
+<p><a href="/agents/create" style="font-size:13px;color:#faa560">+ Create New Agent</a></p>
+
+<div class="card">
+  <h3>Search Agents</h3>
+  <form class="inline-form" method="GET" action="/agents" id="agentSearchForm">
+    <select name="corp" id="corpSelect">
+      <option value="">All Corporations</option>
+      {{range .Corps}}
+      <option value="{{.CorporationID}}" {{if eq .CorporationID $.CorpID}}selected{{end}}>{{.CorpName}}</option>
+      {{end}}
+    </select>
+    <select name="division">
+      <option value="">All Divisions</option>
+      {{range .Divisions}}
+      <option value="{{.DivisionID}}" {{if eq .DivisionID $.Division}}selected{{end}}>{{.DivisionName}}</option>
+      {{end}}
+    </select>
+    <select name="station" id="stationSelect">
+      <option value="">All Stations</option>
+      {{range .Stations}}
+      <option value="{{.StationID}}" {{if eq .StationID $.StationID}}selected{{end}}>{{.StationName}}</option>
+      {{end}}
+    </select>
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+{{if .ScrambleResult}}
+<div class="card" style="background:#32231a;border:1px solid #eb6325;padding:10px 14px;margin-bottom:12px">
+  <p style="margin:0;color:#fdc593">{{.ScrambleResult}}</p>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Scramble All Agent Portraits</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">Randomize portrait data for ALL agents. Bloodline and gender will NOT change.</p>
+  <form method="POST" action="/agents/scramble" onsubmit="return confirm('This will randomize portrait data for ALL agents. Bloodline and gender will NOT change. Continue?');">
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeMorphs"> Randomize morph data
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(unchecked = all morphs 0.0)</span>
+    <br>
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeHeadRotation"> Randomize head rotation
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(face angle/position)</span>
+    <br>
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeEyeRotation"> Randomize eye rotation
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(eye direction/gaze)</span>
+    <br>
+    <button type="submit" style="margin-top:8px">Scramble All Portraits</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Scramble NPC CEO Portraits</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    Randomize portrait data for every NPC corporation CEO. CEOs are not agents &mdash; they exist only as
+    <code>corporation.ceoID</code> plus an <code>eveStaticOwners</code> row, so the bloodline comes from their
+    character typeID and the gender is derived from the ID (<code>ceoID % 2</code>), exactly the way the server
+    renders them. Both are preserved. Player CEOs and CEOs that are also agents are skipped.
+  </p>
+  <form method="POST" action="/agents/scramble-ceos" onsubmit="return confirm('This will randomize portrait data for ALL NPC corporation CEOs. Bloodline and gender will NOT change. Continue?');">
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeMorphs"> Randomize morph data
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(unchecked = all morphs 0.0)</span>
+    <br>
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeHeadRotation"> Randomize head rotation
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(face angle/position)</span>
+    <br>
+    <label style="font-size:12px;cursor:pointer">
+      <input type="checkbox" name="randomizeEyeRotation"> Randomize eye rotation
+    </label>
+    <span style="font-size:11px;color:#6b7280;margin-left:6px">(eye direction/gaze)</span>
+    <br>
+    <button type="submit" style="margin-top:8px">Scramble CEO Portraits</button>
+  </form>
+</div>
+
+{{if .Agents}}
+<div class="card" style="padding:8px 12px">
+  <table style="font-size:12px">
+    <tr>
+      {{if .HasPortraits}}<th style="padding:4px 6px"></th>{{end}}
+      <th style="padding:4px 6px">ID</th>
+      <th style="padding:4px 6px">Name</th>
+      <th style="padding:4px 6px">Type</th>
+      <th style="padding:4px 6px">Lv</th>
+      <th style="padding:4px 6px">Qual</th>
+      <th style="padding:4px 6px">Corp</th>
+      <th style="padding:4px 6px">Station</th>
+      <th style="padding:4px 6px">G</th>
+    </tr>
+    {{range .Agents}}
+    <tr>
+      {{if $.HasPortraits}}<td style="padding:3px 6px;width:32px"><img src="/portrait/{{.AgentID}}?size=64" width="28" height="28" style="vertical-align:middle;border-radius:3px;background:var(--bg)" onerror="this.style.display='none'"></td>{{end}}
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{.AgentID}}</a></td>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}&mdash;{{end}}</a></td>
+      <td style="padding:3px 6px;color:#6b7280">{{agentTypeName .AgentTypeID}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.Level}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.Quality}}</td>
+      <td style="padding:3px 6px">{{.CorpName}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{if .StationName}}{{.StationName}}{{else}}{{.StationID}}{{end}}</td>
+      <td style="padding:3px 6px;text-align:center">{{if eq .Gender 1}}F{{else}}M{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{if ge (len .Agents) 200}}<p style="margin-top:6px;color:#6b7280;font-size:11px">Results limited to 200.</p>{{end}}
+</div>
+{{else if .Searched}}
+<div class="card"><p>No agents found.</p></div>
+{{end}}
+
+<script>
+(function() {
+  var corpSel = document.getElementById('corpSelect');
+  var stationSel = document.getElementById('stationSelect');
+  var currentStation = '{{.StationID}}';
+
+  corpSel.addEventListener('change', function() {
+    var corpID = corpSel.value;
+    stationSel.innerHTML = '<option value="">All Stations</option>';
+    if (!corpID) return;
+    fetch('/agents/corpstations/api?corp=' + corpID)
+      .then(function(r) { return r.json(); })
+      .then(function(stations) {
+        for (var i = 0; i < stations.length; i++) {
+          var opt = document.createElement('option');
+          opt.value = stations[i].stationID;
+          opt.textContent = stations[i].stationName;
+          if (String(stations[i].stationID) === currentStation) opt.selected = true;
+          stationSel.appendChild(opt);
+        }
+      });
+  });
+})();
+</script>
+
+{{end}}
+
+{{template "layout" .}}

@@ -1,0 +1,1303 @@
+{{define "dunMusicOptions"}}
+<optgroup label="Combat / Dungeon">
+  <option value="res:/Sound/Music/Ambient031combat.ogg">Ambient031combat &mdash; At the End of Your Journey (combat)</option>
+  <option value="res:/Sound/Music/Ambient046combat.ogg">Ambient046combat &mdash; It's Full of Stars (combat)</option>
+  <option value="res:/Sound/Music/Ambient010beat3.ogg">Ambient010beat3 &mdash; Forsaken Ruins (beat)</option>
+  <option value="res:/Sound/Music/Ambient017beat2.ogg">Ambient017beat2 &mdash; Safe Trade Routes (beat)</option>
+  <option value="res:/Sound/Music/ShivaTheme003d.ogg">ShivaTheme003d &mdash; Shiva theme</option>
+</optgroup>
+<optgroup label="Rock / Theme">
+  <option value="res:/Sound/Music/EVE_Rock_01.ogg">EVE_Rock_01</option>
+  <option value="res:/Sound/Music/EVE_Rock_02.ogg">EVE_Rock_02</option>
+  <option value="res:/Sound/Music/EVE_Rock_03.ogg">EVE_Rock_03</option>
+  <option value="res:/Sound/Music/EVE_Rock_04.ogg">EVE_Rock_04</option>
+  <option value="res:/Sound/Music/EVE_Rock_05.ogg">EVE_Rock_05</option>
+  <option value="res:/Sound/Music/EVE_Theme_01.ogg">EVE_Theme_01</option>
+</optgroup>
+<optgroup label="Amarr">
+  <option value="res:/Sound/Music/Amarr001.ogg">Amarr001</option>
+  <option value="res:/Sound/Music/Amarr002.ogg">Amarr002</option>
+  <option value="res:/Sound/Music/Amarr003.ogg">Amarr003</option>
+</optgroup>
+<optgroup label="Caldari">
+  <option value="res:/Sound/Music/Caldari001.ogg">Caldari001</option>
+  <option value="res:/Sound/Music/Caldari002.ogg">Caldari002</option>
+  <option value="res:/Sound/Music/Caldari003.ogg">Caldari003</option>
+  <option value="res:/Sound/Music/Caldari004.ogg">Caldari004</option>
+</optgroup>
+<optgroup label="Gallente">
+  <option value="res:/Sound/Music/Gallente001.ogg">Gallente001</option>
+  <option value="res:/Sound/Music/Gallente002.ogg">Gallente002</option>
+  <option value="res:/Sound/Music/Gallente003.ogg">Gallente003</option>
+  <option value="res:/Sound/Music/Gallente004.ogg">Gallente004</option>
+  <option value="res:/Sound/Music/Gallente005.ogg">Gallente005</option>
+  <option value="res:/Sound/Music/Gallente006.ogg">Gallente006</option>
+  <option value="res:/Sound/Music/Gallente007.ogg">Gallente007</option>
+</optgroup>
+<optgroup label="Minmatar">
+  <option value="res:/Sound/Music/Minmatar001.ogg">Minmatar001</option>
+  <option value="res:/Sound/Music/Minmatar002.ogg">Minmatar002</option>
+  <option value="res:/Sound/Music/Minmatar003.ogg">Minmatar003</option>
+  <option value="res:/Sound/Music/Minmatar004.ogg">Minmatar004</option>
+</optgroup>
+<option value="__custom__">Custom path&hellip;</option>
+{{end}}
+
+{{define "dunLootBallName"}}#{{.ObjectID}} {{if .BallName}}{{.BallName}} ({{.TypeName}}){{else}}{{.TypeName}}{{end}}{{if isStructureGroup .GroupID}} [structure]{{end}}{{end}}
+
+{{define "content"}}
+<style>
+.dv-header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.dv-header h2{margin:0}
+.dv-meta{display:flex;gap:16px;font-size:12px;color:#6b7280;margin-bottom:12px}
+.dv-meta span{color:#9ca3af}
+.dv-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.dv-toolbar form{margin:0;display:flex;gap:4px;align-items:center}
+.dv-toolbar input[type="text"]{padding:4px 8px;font-size:12px}
+.dv-toolbar button{padding:4px 10px;font-size:12px}
+.btn-sm{padding:3px 8px!important;font-size:11px!important}
+.btn-danger{background:var(--btn)!important;border-color:var(--btn-hi)!important}
+.btn-danger:hover{background:#7e2a2a!important}
+
+/* Compact table */
+.obj-table{width:100%;border-collapse:collapse;font-size:12px}
+.obj-table th{padding:3px 6px;font-size:10px;background:var(--bg);position:sticky;top:0}
+.obj-table td{padding:2px 6px;cursor:pointer;white-space:nowrap}
+.obj-table tr.obj-row:hover td{background:var(--win-hover)}
+.obj-table tr.obj-row.selected td{background:var(--btn);color:#e0e4ec}
+.obj-table tr.obj-row td:first-child{font-family:monospace;color:#6b7280;font-size:11px}
+
+/* Expanded row */
+.obj-expand{display:none;background:var(--win-deep)}
+.obj-expand.open{display:table-row}
+.obj-expand td{padding:8px 10px}
+.obj-expand .ef{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end}
+.obj-expand .ef label{font-size:10px;color:#6b7280;display:flex;flex-direction:column;gap:1px}
+.obj-expand .ef input{width:72px;padding:3px 6px;font-size:12px}
+.obj-expand .ef button{padding:4px 10px;font-size:11px}
+
+/* Room tabs */
+.room-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);margin-bottom:0}
+.room-tab{padding:6px 14px;font-size:12px;color:#6b7280;cursor:pointer;border:1px solid transparent;border-bottom:none;border-radius:4px 4px 0 0;background:transparent}
+.room-tab:hover{color:#9ca3af;background:var(--win)}
+.room-tab.active{color:var(--accent);background:var(--win);border-color:var(--line);margin-bottom:-1px}
+.room-panel{display:none}
+.room-panel.active{display:block}
+
+/* Add object bar */
+.add-obj-bar{display:flex;gap:4px;align-items:center;flex-wrap:wrap;padding:6px 0}
+.add-obj-bar input{font-size:12px;padding:3px 6px}
+.add-obj-bar button{font-size:12px;padding:3px 10px}
+.item-dd{position:absolute;top:100%;left:0;z-index:20;background:var(--win);border:1px solid var(--line);max-height:180px;overflow-y:auto;width:320px;font-size:11px;border-radius:0 0 4px 4px}
+.item-dd div{padding:3px 6px;cursor:pointer;border-bottom:1px solid var(--line-soft)}
+.item-dd div:hover{background:var(--line)}
+.item-dd div.in-table{color:#6b7280;cursor:not-allowed;font-style:italic}
+.item-dd div.in-table:hover{background:transparent}
+
+/* Trigger editor */
+.trig-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:4px}
+.trig-table th{padding:3px 6px;font-size:10px;background:var(--bg);text-align:left}
+.trig-table td{padding:3px 6px;vertical-align:top}
+.trig-form{background:var(--win-deep);border:1px solid var(--line);border-radius:4px;padding:8px 10px;margin-top:6px}
+.trig-form .tf{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px}
+.trig-form label{font-size:10px;color:#6b7280;display:flex;flex-direction:column;gap:2px}
+.trig-form input[type="text"],.trig-form input[type="number"]{padding:3px 6px;font-size:12px}
+.trig-form select{padding:3px 4px;font-size:12px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px}
+.trig-form textarea{width:100%;min-height:56px;padding:4px 6px;font-size:12px;background:var(--bg);color:#e2e8f0;border:1px solid #374151;border-radius:3px;font-family:monospace}
+.trig-hint{color:#6b7280;font-size:11px;margin:4px 0}
+.trig-hint code{color:#fdc593}
+.trig-form .tf-hide{display:none!important}
+.trig-help summary{cursor:pointer;color:#6b7280;font-size:11px;user-select:none;margin:2px 0}
+.trig-help[open] summary{color:#9ca3af}
+.trig-form .tf-row-label{font-size:10px;color:#6b7280;display:block;margin-bottom:2px}
+/* Loot Setup */
+.loot-setup-wrap{margin:10px 0;border:2px solid #2d6b4a;border-radius:4px;background:#0c140f}
+.loot-head{cursor:pointer;padding:8px 10px;color:#6ee7b7;font-size:14px;font-weight:bold;background:#12261c;user-select:none}
+.loot-head:hover{background:#1a3627}
+.loot-head small{color:#9ca3af;font-size:11px;font-weight:normal;margin-left:6px}
+.loot-body{padding:8px 10px}
+.loot-ask{display:flex;align-items:center;gap:8px;flex-wrap:wrap;color:#e2e8f0;font-size:13px;font-weight:bold;margin-bottom:6px}
+.loot-pick{min-width:320px;max-width:100%;padding:4px 6px;font-size:13px;background:var(--bg);color:#e2e8f0;border:1px solid #2d6b4a;border-radius:3px}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10px;border:1px solid}
+.badge-ev{color:#a78bfa;border-color:#4c3a78}
+.badge-act{color:#6ee7b7;border-color:#1f5c46}
+</style>
+
+<div class="dv-header">
+  <h2>{{.Dungeon.DungeonVName}} <span style="color:#6b7280;font-size:13px;font-weight:normal">— Dungeon Logic</span></h2>
+  <a href="/editor/?dungeon={{.Dungeon.DungeonVID}}" style="background:var(--btn);border:1px solid var(--btn-hi);color:#e0e4ec;padding:4px 14px;border-radius:4px;font-size:12px">Open Layout in 3D Editor</a>
+  <form method="POST" action="/dungeon/{{.Dungeon.DungeonVID}}" style="margin-left:auto">
+    <input type="hidden" name="action" value="refreshplayers">
+    <button type="submit" style="background:#1a4731;border-color:#2d6b4a;padding:4px 14px;font-size:12px">Save &amp; Refresh Players</button>
+  </form>
+  <form method="POST" action="/dungeon/{{.Dungeon.DungeonVID}}" onsubmit="return confirm('Delete entire dungeon? Cannot be undone.')">
+    <input type="hidden" name="action" value="deletedungeon">
+    <button type="submit" class="btn-sm btn-danger">Delete Dungeon</button>
+  </form>
+</div>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="dv-meta" style="align-items:center">
+  <form method="POST" action="/dungeon/{{.Dungeon.DungeonVID}}" style="display:flex;gap:8px;align-items:center;margin:0">
+    <input type="hidden" name="action" value="editdungeon">
+    VID: <span>{{.Dungeon.DungeonVID}}</span> |
+    Name: <input type="text" name="dungeonName" value="{{.Dungeon.DungeonVName}}" style="width:180px;padding:2px 6px;font-size:12px"> |
+    Faction: <select name="factionID" style="padding:2px 4px;font-size:12px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
+      {{range $.AllFactions}}<option value="{{.FactionID}}"{{if eq .FactionID $.Dungeon.FactionID}} selected{{end}}>{{.FactionName}}</option>{{end}}
+    </select> |
+    <span title="Shown on the star map's DED Deadspace Report beside the site name; the system is coloured by its highest rating (10 red, 1 green).">DED:</span>
+    <select name="dedLevel" style="padding:2px 4px;font-size:12px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
+      <option value="0"{{if eq .Dungeon.DEDLevel 0}} selected{{end}}>unrated</option>
+      {{range $i := .DEDLevels}}<option value="{{$i}}"{{if eq $.Dungeon.DEDLevel $i}} selected{{end}}>{{$i}}/10</option>{{end}}
+    </select> |
+    Version: <span>{{.Dungeon.Version}}</span> |
+    Status: <span>{{.Dungeon.Status}}</span>
+    <button type="submit" class="btn-sm">Save</button>
+  </form>
+  | <span style="color:#4b5563">Layout (positions, drag &amp; drop) lives in the 3D editor — this page is for logic: triggers, ball AI, names, waves, loot, leashes, gates, beacons.</span>
+</div>
+
+<!-- Room tabs -->
+<div class="dv-toolbar">
+  <form method="POST" action="/dungeon/{{.Dungeon.DungeonVID}}">
+    <input type="hidden" name="action" value="addroom">
+    <input type="text" name="roomName" value="New Room" style="width:120px">
+    <button type="submit" class="btn-sm">+ Room</button>
+  </form>
+</div>
+
+{{if .Dungeon.Rooms}}
+<div class="room-tabs" id="roomTabs">
+  {{range $i, $r := .Dungeon.Rooms}}
+  <div class="room-tab{{if eq $i 0}} active{{end}}" data-room="{{$i}}">{{$r.RoomName}} <small style="color:#4b5563">({{len $r.Objects}} obj / {{len $r.Triggers}} trig)</small></div>
+  {{end}}
+</div>
+
+{{range $ri, $room := .Dungeon.Rooms}}
+<div class="room-panel{{if eq $ri 0}} active{{end}}" data-room="{{$ri}}" id="room{{$ri}}">
+<div class="card" style="border-radius:0 4px 4px 4px;margin-bottom:8px;padding:8px 10px">
+  <!-- Room controls -->
+  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+    <span style="font-size:12px;color:#6b7280">Room #{{$room.RoomID}}</span>
+    <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="display:flex;gap:4px;align-items:center;margin:0">
+      <input type="hidden" name="action" value="renameroom">
+      <input type="hidden" name="roomID" value="{{$room.RoomID}}">
+      <input type="text" name="roomName" value="{{$room.RoomName}}" style="width:120px;padding:2px 6px;font-size:12px">
+      <button type="submit" class="btn-sm">Rename</button>
+    </form>
+    <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="display:flex;gap:4px;align-items:center;margin:0">
+      <input type="hidden" name="action" value="roomphenomena">
+      <input type="hidden" name="roomID" value="{{$room.RoomID}}">
+      <label style="font-size:12px;color:#a78bfa;display:flex;align-items:center;gap:4px;cursor:pointer"
+             title="Deadspace: while this room is loaded, warp drives do not work inside the pocket. Players get &quot;natural phenomena are disrupting the warp&quot; and must fly sublight or use an acceleration gate. Warping clear of the site still works. On by default.">
+        <input type="checkbox" name="naturalPhenomena" value="1"{{if $room.NaturalPhenomena}} checked{{end}}>
+        Natural phenomena
+      </label>
+      <button type="submit" class="btn-sm">Apply</button>
+    </form>
+    <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" onsubmit="return confirm('Delete room {{$room.RoomName}} and all objects?')" style="margin:0;margin-left:auto">
+      <input type="hidden" name="action" value="deleteroom">
+      <input type="hidden" name="roomID" value="{{$room.RoomID}}">
+      <button type="submit" class="btn-sm btn-danger">Delete Room</button>
+    </form>
+  </div>
+
+  <!-- ══ Logic Triggers ══ -->
+  <div style="margin-bottom:10px;border:1px solid #2a2440;border-radius:4px;padding:8px 10px;background:#0d0b16">
+    <details open>
+      <summary style="cursor:pointer;color:#a78bfa;font-size:13px;user-select:none;font-weight:bold">Logic Triggers ({{len $room.Triggers}})</summary>
+      <details class="trig-help">
+        <summary>Reference — events, actions, body formatting</summary>
+        <p class="trig-hint">
+          <b>Events:</b> <code>roomEnter</code> fires when the player warps into / loads this room ·
+          <code>npcDamaged</code> when the player first shoots a ball ·
+          <code>npcKilled</code> on ball death · <code>roomCleared</code> when the last hostile ball dies ·
+          <code>gateActivated</code> when an acceleration gate in this room is used ·
+          <code>itemPlaced</code> when a pilot drags an item from their cargo hold into a container ball.
+          Name the ball and the item, and a quantity if it takes more than one: the count is what the container
+          holds, so several drops add up. A container takes items only while an <code>itemPlaced</code> trigger
+          listens to it, and the pilot can take them back out.
+          (The event names are the stored wire values — everything in space is a ball.)
+          <b>Actions:</b> <code>transmission</code> = the TRANSMISSIONS popup window ·
+          <code>localChat</code> = a narrator line in Local (body text only, no sender) · <code>popup</code> = plain message box ·
+          <code>spawnWave</code> = spawn this room's balls assigned to that wave group (set <b>Wave</b> per ball
+          below or in the 3D editor; wave balls stay hidden until their wave spawns) ·
+          <code>completeDungeon</code> = finish the site: a mission's objective is met, an open site starts its
+          clear countdown. Rats still alive stay. A kill-item mission still wants its item delivered ·
+          <code>music</code> = crossfade the pilot's music to a track, the same switch a gate's <code>dunMusicUrl</code> makes.
+          With <code>roomEnter</code> it plays as the ship lands; when the track ends the normal playlist resumes.
+          A pilot who has stopped or paused their music hears nothing.
+          Chain waves with several once-only <code>roomCleared → spawnWave</code> triggers: each clear releases
+          the next unfired wave in order.
+          One event can run several actions: add a trigger per action, for example an <code>itemPlaced</code>
+          that spawns a wave and a second one on the same ball and item that speaks a <code>localChat</code> line.
+        </p>
+        <p class="trig-hint">
+          Transmission <b>Icon</b> = an <code>eveGraphics</code> graphicID (its icon string is used; corp-logo sheet icons show corp logos).
+          Transmission body is HTML — embed client images inline: <code>&lt;img src=corplogo:1000125 width=64 height=64&gt;</code>,
+          <code>typeicon:587</code>, <code>portrait:&lt;charID&gt;</code>, <code>icon:38_14</code>.
+          <b>Defer</b> holds the popup until the player drops out of warp (client-side <code>[d]</code> header prefix).
+        </p>
+        <p class="trig-hint">
+          Local chat body is plain text and is always sent as a <b>narrator line</b>: the client prints the body
+          only, with no <i>Sender &gt;</i> prefix (<i>The mercenary squad leader has arrived to face you!</i>).
+          Write the speaker into the text if you want one (<i>EoM Priest: Purge the unbelievers!</i>).
+          Narrator lines are tinted cyan by the client unless a colour is set.
+          Start the body with <code>/emote </code> to opt out and get a roleplay line instead
+          (<i>* Name does something</i>), which does show the speaker name.
+          The portrait square left of each line is a chat-window setting, not something the server sends —
+          click the top <b>compact</b> mode button on the chat window to drop the picture column.
+        </p>
+      </details>
+
+      {{if $room.Triggers}}
+      <table class="trig-table">
+        <tr><th>#</th><th>Event</th><th>Target</th><th>Action</th><th>Header / Sender</th><th>Body</th><th>Flags</th><th></th></tr>
+        {{range $room.Triggers}}
+        <tr>
+          <td style="font-family:monospace;color:#6b7280">{{.TriggerID}}</td>
+          <td><span class="badge badge-ev">{{.Event}}</span>{{if eq .Event "itemPlaced"}} <span style="color:#6ee7b7;font-size:11px">{{if .ItemTypeID.Valid}}{{.ItemQty}} &times; {{if .ItemName}}{{.ItemName}}{{else}}type {{.ItemTypeID.Int64}}{{end}}{{else}}{{.ItemQty}} &times; any item{{end}}</span>{{end}}</td>
+          <td>{{if .TargetObjectID.Valid}}obj #{{.TargetObjectID.Int64}}{{else}}<span style="color:#4b5563">any</span>{{end}}</td>
+          <td><span class="badge badge-act">{{.Action}}</span>{{if .SpawnWave.Valid}} <span style="color:#f59e0b;font-size:11px">wave {{.SpawnWave.Int64}}</span>{{end}}</td>
+          <td style="color:#c5c8d0">{{if .SenderName.Valid}}{{.SenderName.String}}{{else}}{{.Header.String}}{{end}}{{if .ChatColor.Valid}} <span style="display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;background:#{{.ChatColor.String}}"></span>{{end}}</td>
+          <td style="color:#9ca3af;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{.Body.String}}">{{.Body.String}}</td>
+          <td style="color:#6b7280;font-size:10px">
+            {{if .OnceOnly}}once{{else}}every{{end}}{{if .DeferUntilLanded}} · defer{{end}}{{if .DelayMs}} · +{{.DelayMs}}ms{{end}}
+          </td>
+          <td style="white-space:nowrap">
+            <button type="button" class="btn-sm" onclick="editTrigger(this)"
+              data-tid="{{.TriggerID}}" data-room="{{$ri}}" data-event="{{.Event}}"
+              data-target="{{if .TargetObjectID.Valid}}{{.TargetObjectID.Int64}}{{else}}0{{end}}"
+              data-action="{{.Action}}" data-header="{{.Header.String}}" data-icon="{{.Icon.String}}"
+              data-sender="{{.SenderName.String}}" data-color="{{.ChatColor.String}}" data-body="{{.Body.String}}"
+              data-defer="{{if .DeferUntilLanded}}1{{end}}" data-once="{{if .OnceOnly}}1{{end}}" data-delay="{{.DelayMs}}"
+              data-wave="{{if .SpawnWave.Valid}}{{.SpawnWave.Int64}}{{else}}0{{end}}"
+              data-item="{{if .ItemTypeID.Valid}}{{.ItemTypeID.Int64}}{{end}}" data-itemname="{{.ItemName}}" data-itemqty="{{.ItemQty}}">Edit</button>
+            <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="margin:0;display:inline" onsubmit="return confirm('Delete trigger?')">
+              <input type="hidden" name="action" value="deletetrigger">
+              <input type="hidden" name="triggerID" value="{{.TriggerID}}">
+              <button type="submit" class="btn-sm btn-danger">Del</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </table>
+      {{end}}
+
+      <!-- Add / edit trigger form -->
+      <form class="trig-form" method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" id="trigForm{{$ri}}">
+        <input type="hidden" name="action" value="savetrigger">
+        <input type="hidden" name="triggerID" value="0">
+        <input type="hidden" name="roomID" value="{{$room.RoomID}}">
+        <div class="tf">
+          <label>When
+            <select name="event" onchange="trigEventChanged(this)">
+              <option value="roomEnter">Player enters room</option>
+              <option value="npcDamaged">Player damages a ball</option>
+              <option value="npcKilled">A ball is killed</option>
+              <option value="roomCleared">Room cleared (last hostile ball dies)</option>
+              <option value="gateActivated">Acceleration gate used</option>
+              <option value="itemPlaced">Item placed in a container</option>
+            </select>
+          </label>
+          <label class="tf-target">Which ball
+            <select name="targetObjectID">
+              <option value="0">Any ball in room</option>
+              {{range $room.Objects}}{{if or (eq .CategoryID 6) (eq .CategoryID 11) (isCargoGroup .GroupID)}}
+              <option value="{{.ObjectID}}"{{if isCargoGroup .GroupID}} data-cargo="1"{{end}}>#{{.ObjectID}} {{if .BallName}}{{.BallName}}{{else}}{{.TypeName}}{{end}}</option>
+              {{end}}{{end}}
+            </select>
+          </label>
+          <label class="tf-item" style="position:relative">Item (blank = any)
+            <input type="text" class="trig-item-search" placeholder="Search item..." autocomplete="off" style="width:220px">
+            <input type="hidden" name="itemTypeID" class="trig-item-typeid" value="">
+            <div class="item-dd"></div>
+          </label>
+          <label class="tf-item">Quantity<input type="number" name="itemQty" value="1" min="1" style="width:70px"></label>
+          <label>Do
+            <select name="triggerAction" onchange="trigActionChanged(this)">
+              <option value="transmission">Transmission popup window</option>
+              <option value="localChat">Speak in Local chat</option>
+              <option value="popup">Plain message box</option>
+              <option value="spawnWave">Spawn a wave group</option>
+              <option value="music">Switch music track</option>
+              <option value="completeDungeon">Complete the dungeon</option>
+            </select>
+          </label>
+          <label class="tf-music">Track
+            <select name="trigMusic" onchange="onGateMusicChange(this)" style="width:280px">
+              <option value="">(pick a track)</option>
+              {{template "dunMusicOptions"}}
+            </select>
+            <input type="text" name="trigMusicCustom" value="" placeholder="res:/Sound/Music/..." style="display:none;width:280px;margin-top:3px">
+          </label>
+          <label class="tf-wave">Wave #<input type="number" name="spawnWave" value="" min="1" style="width:60px"></label>
+          <label>Delay ms<input type="number" name="delayMs" value="0" style="width:70px"></label>
+          <label style="flex-direction:row;align-items:center;gap:4px;color:#9ca3af">
+            <input type="checkbox" name="onceOnly" checked> fire once only
+          </label>
+          <label style="flex-direction:row;align-items:center;gap:4px;color:#9ca3af" class="tf-defer">
+            <input type="checkbox" name="deferUntilLanded"> wait until player lands
+          </label>
+        </div>
+        <div class="tf tf-row2">
+          <label class="tf-header">Window title<input type="text" name="header" style="width:220px"></label>
+          <label class="tf-icon">Icon graphicID<input type="text" name="icon" style="width:90px"></label>
+          <label class="tf-sender">Speaker name<input type="text" name="senderName" style="width:200px"></label>
+          <label style="flex-direction:row;align-items:center;gap:4px;color:#9ca3af" class="tf-color">
+            <input type="checkbox" name="chatColorOn" onchange="trigColorToggled(this)"> custom text colour
+          </label>
+          <label class="tf-color tf-swatch"><input type="color" name="chatColor" value="#ffffff" style="width:44px;height:22px;padding:0"></label>
+        </div>
+        <label class="tf-body">
+          <span class="tf-row-label">Body</span>
+          <textarea name="body"></textarea>
+        </label>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <button type="submit" class="btn-sm" style="background:#1a4731;border-color:#2d6b4a" id="trigSubmit{{$ri}}">+ Add Trigger</button>
+          <button type="button" class="btn-sm" onclick="resetTrigForm({{$ri}})" style="display:none" id="trigCancel{{$ri}}">Cancel Edit</button>
+        </div>
+      </form>
+    </details>
+  </div>
+
+  <!-- Object table -->
+  <div style="max-height:240px;overflow-y:auto">
+  <table class="obj-table" id="objTable{{$ri}}">
+    <tr><th>#</th><th>TypeID</th><th>Name</th><th>X</th><th>Y</th><th>Z</th><th>Yaw</th><th>Pitch</th><th>Roll</th><th>R</th></tr>
+    {{range $oi, $obj := $room.Objects}}
+    <tr class="obj-row" data-room="{{$ri}}" data-idx="{{$oi}}" data-oid="{{$obj.ObjectID}}"
+        data-x="{{printf "%.1f" $obj.X}}" data-y="{{printf "%.1f" $obj.Y}}" data-z="{{printf "%.1f" $obj.Z}}"
+        data-yaw="{{printf "%.2f" $obj.Yaw}}" data-pitch="{{printf "%.2f" $obj.Pitch}}" data-roll="{{printf "%.2f" $obj.Roll}}"
+        data-radius="{{printf "%.1f" $obj.Radius}}" data-aggr="{{printf "%.0f" $obj.AggressionRange}}" data-stance="{{$obj.Stance}}"
+        data-catid="{{$obj.CategoryID}}">
+      <td>{{$obj.ObjectID}}</td>
+      <td>{{$obj.TypeID}}</td>
+      <td style="color:#c5c8d0">{{if $obj.BallName}}<span style="color:#fdc593">{{$obj.BallName}}</span> <span style="color:#6b7280;font-size:10px">({{$obj.TypeName}})</span>{{else}}{{$obj.TypeName}}{{end}}{{if gt $obj.SpawnWave 0}} <span style="color:#f59e0b;font-size:10px">[wave {{$obj.SpawnWave}}]</span>{{end}}{{if $obj.Loot}} <span style="color:#6ee7b7;font-size:10px">[loot {{len $obj.Loot}}{{if or (gt $obj.LootMinDrops 0) (gt $obj.LootMaxDrops 0)}} &middot; {{if gt $obj.LootMinDrops 0}}{{$obj.LootMinDrops}}{{else}}0{{end}}-{{if gt $obj.LootMaxDrops 0}}{{$obj.LootMaxDrops}}{{else}}any{{end}} items{{end}}]</span>{{end}}</td>
+      <td>{{printf "%.0f" $obj.X}}</td>
+      <td>{{printf "%.0f" $obj.Y}}</td>
+      <td>{{printf "%.0f" $obj.Z}}</td>
+      <td>{{printf "%.1f" $obj.Yaw}}</td>
+      <td>{{printf "%.1f" $obj.Pitch}}</td>
+      <td>{{printf "%.1f" $obj.Roll}}</td>
+      <td>{{printf "%.0f" $obj.Radius}}</td>
+    </tr>
+    <tr class="obj-expand" data-room="{{$ri}}" data-idx="{{$oi}}">
+      <td colspan="10">
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <!-- Edit -->
+          <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="margin:0">
+            <input type="hidden" name="action" value="editobject">
+            <input type="hidden" name="objectID" value="{{$obj.ObjectID}}">
+            <div class="ef">
+              <label>X<input type="number" name="x" step="any" value="{{printf "%.1f" $obj.X}}"></label>
+              <label>Y<input type="number" name="y" step="any" value="{{printf "%.1f" $obj.Y}}"></label>
+              <label>Z<input type="number" name="z" step="any" value="{{printf "%.1f" $obj.Z}}"></label>
+              <label>Yaw<input type="number" name="yaw" step="any" value="{{printf "%.2f" $obj.Yaw}}"></label>
+              <label>Pitch<input type="number" name="pitch" step="any" value="{{printf "%.2f" $obj.Pitch}}"></label>
+              <label>Roll<input type="number" name="roll" step="any" value="{{printf "%.2f" $obj.Roll}}"></label>
+              <label>Radius<input type="number" name="radius" step="any" value="{{printf "%.1f" $obj.Radius}}"></label>
+              <label title="Name broadcast to the client for this ball. Blank = the item type's name.">Ball name<input type="text" name="ballName" value="{{$obj.BallName}}" style="width:160px"></label>
+              <label title="Multiplies this ball's shield, armour and structure HP at spawn. 1 = the type's own HP. Resists are unchanged.">HP &times;<input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" $obj.HPScale}}" style="width:56px"></label>
+              <label title="0 = spawns with the room. N = held until a spawnWave trigger for wave N fires.">Wave<input type="number" name="spawnWave" min="0" value="{{$obj.SpawnWave}}" style="width:52px"></label>
+              <label title="Solid balls are a collision sphere of the ball's Radius: ships bounce off them, and a warp through one drops out at its surface. Clouds, beacons and force fields default to flown-through.">Collision<select name="solid">
+                <option value=""{{if not $obj.SolidAuthored}} selected{{end}}>Type default ({{if $obj.SolidDefault}}solid{{else}}none{{end}})</option>
+                <option value="1"{{if and $obj.SolidAuthored $obj.Solid}} selected{{end}}>Solid</option>
+                <option value="0"{{if and $obj.SolidAuthored (not $obj.Solid)}} selected{{end}}>Fly through</option>
+              </select></label>
+              <button type="submit" class="btn-sm">Save</button>
+            </div>
+          </form>
+          <!-- Copy with offset -->
+          <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="margin:0">
+            <input type="hidden" name="action" value="copyobject">
+            <input type="hidden" name="objectID" value="{{$obj.ObjectID}}">
+            <div class="ef">
+              <label>dX<input type="number" name="offsetX" step="any" value="1000"></label>
+              <label>dY<input type="number" name="offsetY" step="any" value="0"></label>
+              <label>dZ<input type="number" name="offsetZ" step="any" value="0"></label>
+              <button type="submit" class="btn-sm">Copy+Offset</button>
+            </div>
+          </form>
+          <!-- Clipboard / Duplicate / Delete -->
+          <div class="ef" style="margin-left:auto;align-self:flex-end;gap:4px">
+            <button type="button" class="btn-sm" onclick="clipCopy(this)" data-x="{{printf "%.1f" $obj.X}}" data-y="{{printf "%.1f" $obj.Y}}" data-z="{{printf "%.1f" $obj.Z}}" data-yaw="{{printf "%.2f" $obj.Yaw}}" data-pitch="{{printf "%.2f" $obj.Pitch}}" data-roll="{{printf "%.2f" $obj.Roll}}" data-radius="{{printf "%.1f" $obj.Radius}}" data-aggr="{{printf "%.0f" $obj.AggressionRange}}" data-stance="{{$obj.Stance}}" title="Copy properties to clipboard">Copy</button>
+            <button type="button" class="btn-sm" onclick="clipPaste(this)" data-room="{{$ri}}" data-idx="{{$oi}}" title="Paste clipboard properties into edit form">Paste</button>
+            <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="margin:0;display:inline">
+              <input type="hidden" name="action" value="copyobject">
+              <input type="hidden" name="objectID" value="{{$obj.ObjectID}}">
+              <input type="hidden" name="offsetX" value="0">
+              <input type="hidden" name="offsetY" value="0">
+              <input type="hidden" name="offsetZ" value="0">
+              <button type="submit" class="btn-sm" title="Duplicate object at same position">Duplicate</button>
+            </form>
+            <form method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" onsubmit="return confirm('Remove?')" style="margin:0;display:inline">
+              <input type="hidden" name="action" value="removeobject">
+              <input type="hidden" name="objectID" value="{{$obj.ObjectID}}">
+              <button type="submit" class="btn-sm btn-danger">Delete</button>
+            </form>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {{end}}
+    {{if not $room.Objects}}<tr><td colspan="10" style="color:#4b5563;text-align:center;padding:8px">No objects</td></tr>{{end}}
+  </table>
+  </div>
+
+  <!-- Add object -->
+  <div class="add-obj-bar" style="border-top:1px solid var(--line);margin-top:4px;padding-top:6px">
+    <form class="inline-form" method="POST" action="/dungeon/{{$.Dungeon.DungeonVID}}" style="gap:4px;margin:0;flex-wrap:wrap">
+      <input type="hidden" name="action" value="addobject">
+      <input type="hidden" name="roomID" value="{{$room.RoomID}}">
+      <div style="position:relative;display:inline-block">
+        <input type="text" class="item-search" placeholder="Search type..." autocomplete="off" style="width:180px;padding:3px 6px;font-size:12px">
+        <input type="hidden" name="typeID" class="item-typeid" required>
+        <div class="item-dd" style="display:none"></div>
+      </div>
+      <input type="number" name="x" placeholder="X" step="any" value="0" style="width:64px">
+      <input type="number" name="y" placeholder="Y" step="any" value="0" style="width:64px">
+      <input type="number" name="z" placeholder="Z" step="any" value="0" style="width:64px">
+      <button type="submit" class="btn-sm">+ Add</button>
+      <a href="/dungeons/items?dungeon={{$.Dungeon.DungeonVID}}" target="_blank" style="font-size:11px;margin-left:4px">Browse</a>
+    </form>
+  </div>
+
+  <!-- Ball Setup (living balls = categoryID 6 or 11) -->
+  <div class="npc-setup-wrap" data-room="{{$ri}}" style="display:none;margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
+    <details open>
+      <summary style="cursor:pointer;color:#a78bfa;font-size:12px;user-select:none">Ball Setup — name, wave, AI, faction, leash</summary>
+      <p class="trig-hint">
+        <b>Name</b> is what the client shows in brackets, the overview and Show Info for this ball — the type
+        is only the template, so a spawned Serpentis Scout can broadcast as <i>Kruul's Bodyguard</i>. Blank = the
+        type's own name. Category 6 (player-hull Ships) is the one exception: the client always renders those
+        by type name, so custom names on hull-category balls are ignored — use a category 11 Entity type.
+        <b>Wave</b> 0 spawns the ball with the room; 1+ holds it back until a <code>spawnWave</code> trigger
+        for that number fires.
+        <b>Leash</b> anchors the ball to another ball in this room: with no target it flies a circle around
+        that ball at <b>Orbit</b> metres instead of sitting still. Great for patrols around a structure.
+        <b>Invuln</b> only applies to structures (Large Collidable Objects and Structures, spawn containers,
+        sentry guns). Those are lockable and destructible by default; tick Invuln to nail one down as
+        permanent scenery — it still locks and still eats fire, it just never loses HP. Structures never
+        count toward a <i>killAll</i> objective either way, but one can still be named as a mission's
+        target type.
+        <b>Solid</b> makes a structure a collision sphere of its radius: ships bounce off it, and a warp
+        line through it drops out of warp at its surface. On by default for everything except clouds,
+        beacons and force fields. Rats always collide; scenery that is not a structure is set from its
+        row in the objects table (or the 3D editor).
+      </p>
+      <table class="obj-table" style="margin-top:4px">
+        <tr><th>#</th><th>Type</th><th>Name</th><th>HP &times;</th><th>Wave</th><th>Faction</th><th>Stance</th><th>Aggr</th><th>Leash to</th><th>Orbit m</th><th>Invuln</th><th>Solid</th><th></th></tr>
+        {{range $room.Objects}}
+        {{if or (eq .CategoryID 6) (eq .CategoryID 11) (isStructureGroup .GroupID)}}
+        <tr class="npc-setup-row" data-oid="{{.ObjectID}}" data-faction="{{.NPCFactionID}}" data-leash="{{.LeashObjectID}}">
+          <td>{{.ObjectID}}</td>
+          <td style="color:#c5c8d0">{{.TypeName}}</td>
+          <td><input type="text" name="ballName" value="{{.BallName}}" placeholder="(type name)" style="width:150px;padding:2px 4px;font-size:11px"{{if eq .CategoryID 6}} title="Category 6 hull — the client ignores custom names on these"{{end}}></td>
+          <td><input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" .HPScale}}" style="width:52px;padding:2px 4px;font-size:11px{{if ne .HPScale 1.0}};color:#fdc593{{end}}" title="Multiplies this ball's shield, armour and structure HP at spawn. 1 = the type's own HP. Resists are unchanged."></td>
+          <td><input type="number" name="spawnWave" min="0" value="{{.SpawnWave}}" style="width:48px;padding:2px 4px;font-size:11px" title="0 = spawns with the room"></td>
+          <td><select class="npc-faction-sel" data-oid="{{.ObjectID}}" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
+            <option value="0" title="NPCs inherit the dungeon faction; structures get none">(default)</option>
+            {{range $.AllFactions}}<option value="{{.FactionID}}">{{.FactionName}}</option>{{end}}
+          </select></td>
+          <td><select class="npc-stance-sel" data-oid="{{.ObjectID}}" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="aggressive: engages any hostile it sees. defensive: only fights back. passive: never engages, even when shot. What the ball can DO (move, shoot, run its EWAR) comes from its type.">
+            {{range $.Stances}}<option value="{{.}}">{{.}}</option>{{end}}
+          </select></td>
+          <td><input type="number" name="aggressionRange" value="{{printf "%.0f" .AggressionRange}}" step="any" style="width:70px;padding:2px 4px;font-size:11px"></td>
+          <td><select class="npc-leash-sel" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px;max-width:180px">
+            <option value="0">(none — hold position)</option>
+            {{$self := .ObjectID}}
+            {{range $room.Objects}}{{if ne .ObjectID $self}}
+            <option value="{{.ObjectID}}">#{{.ObjectID}} {{if .BallName}}{{.BallName}}{{else}}{{.TypeName}}{{end}}</option>
+            {{end}}{{end}}
+          </select></td>
+          <td><input type="number" name="orbitDistance" value="{{if .OrbitDistance}}{{printf "%.0f" .OrbitDistance}}{{else}}0{{end}}" step="any" placeholder="5000" style="width:70px;padding:2px 4px;font-size:11px" title="0 = default 5000 m"></td>
+          <td style="text-align:center">
+            {{if isStructureGroup .GroupID}}
+              <input type="checkbox" name="invulnerable"{{if .Invulnerable}} checked{{end}} title="Structure takes no damage and can never be destroyed. It still locks and still draws fire.">
+            {{else}}
+              <span style="color:#6b7280" title="Only structures can be made invulnerable">&mdash;</span>
+            {{end}}
+          </td>
+          <td>
+            {{if isStructureGroup .GroupID}}
+              <select name="solid" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="Solid: ships bounce off a sphere of this ball's radius. Moving balls (rats) always collide; this only matters for structures.">
+                <option value=""{{if not .SolidAuthored}} selected{{end}}>default ({{if .SolidDefault}}on{{else}}off{{end}})</option>
+                <option value="1"{{if and .SolidAuthored .Solid}} selected{{end}}>on</option>
+                <option value="0"{{if and .SolidAuthored (not .Solid)}} selected{{end}}>off</option>
+              </select>
+            {{else}}
+              <span style="color:#6b7280" title="A moving ball always collides">&mdash;</span>
+            {{end}}
+          </td>
+          <td><button type="button" class="btn-sm" onclick="saveNPCSetup(this)">Save</button></td>
+        </tr>
+        {{end}}
+        {{end}}
+      </table>
+    </details>
+  </div>
+
+  <!-- Loot Setup (per-ball authored drops) -->
+  <div class="loot-setup-wrap" data-room="{{$ri}}" style="display:none">
+    <details>
+      <summary class="loot-head">Loot Setup <small>click to set up a ball's loot table</small></summary>
+      <div class="loot-body">
+      <label class="loot-ask">Which ball do you want to set up loot for?
+        <select class="loot-pick" onchange="pickLootBall(this)">
+          <option value="">Choose a ball...</option>
+          {{range $room.Objects}}
+          {{if or (eq .CategoryID 6) (eq .CategoryID 11) (isStructureGroup .GroupID)}}
+          <option value="{{.ObjectID}}" data-name="{{template "dunLootBallName" .}}">{{template "dunLootBallName" .}}{{if .Loot}} — {{len .Loot}} {{if eq (len .Loot) 1}}drop{{else}}drops{{end}}{{end}}</option>
+          {{end}}
+          {{end}}
+        </select>
+      </label>
+      <details class="trig-help">
+      <summary>Reference — how drops work</summary>
+      <p class="trig-hint">
+        Drops authored here belong to <b>this ball in this dungeon</b>, not to its item type — kill that ball, get
+        that item. They roll on their own <b>Chance</b> (100% = guaranteed), skip the normal haul gate and the
+        max-drops cap, and land in the same wreck can as the type/group loot tables. Use it for mission
+        objective items and scripted flavour drops. Qty rolls between <b>Min</b> and <b>Max</b>.
+        A <b>blueprint</b> always drops as one <b>copy</b> (ME 0 / PE 0), never an original: Min/Max are its
+        <b>runs</b>, capped at the blueprint's own max runs.
+        Destructible structures (containers, Overseer's structures, LCOs, sentries) are listed too and drop
+        theirs where they die. An <b>invulnerable</b> structure never dies, so its list never drops.
+      </p>
+      <p class="trig-hint">
+        <b>Items dropped</b> bounds how many <i>different</i> entries of a ball's list land per kill (blank = no bound).
+        Each entry still rolls its own Chance first. Short of the minimum, entries that missed are added, picked by
+        their Chance; over the maximum, extras are cut at random and 100% entries are kept first. A minimum above
+        the number of entries just means every entry drops.
+      </p>
+      <p class="trig-hint">
+        <b>Copy</b> and <b>Paste</b> move a whole list, Items dropped range included, to another ball in any room or
+        dungeon. Paste replaces what the target had. The copy points at the source ball, so edits made to it before
+        you paste carry over.
+      </p>
+      </details>
+      {{range $room.Objects}}
+      {{if or (eq .CategoryID 6) (eq .CategoryID 11) (isStructureGroup .GroupID)}}
+      <div class="loot-ball" data-oid="{{.ObjectID}}" data-label="#{{.ObjectID}} {{if .BallName}}{{.BallName}}{{else}}{{.TypeName}}{{end}}" style="display:none;margin:6px 0;padding:6px 8px;border:1px solid #2a3a30;border-radius:4px;background:#0c140f">
+        <div style="font-size:12px;color:#c5c8d0;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span>#{{.ObjectID}} {{if .BallName}}<span style="color:#fdc593">{{.BallName}}</span> <span style="color:#6b7280">({{.TypeName}})</span>{{else}}{{.TypeName}}{{end}}
+          {{if isStructureGroup .GroupID}} <span style="color:#9ca3af;font-size:10px">[structure]</span>{{if .Invulnerable}} <span style="color:#f87171;font-size:10px" title="An invulnerable structure is never destroyed, so these drops never land. Untick Invulnerable in Ball Setup.">[invulnerable &mdash; never drops]</span>{{end}}{{end}}</span>
+          <span style="margin-left:auto;white-space:nowrap">
+            <button type="button" class="btn-sm" onclick="copyBallLoot(this)" title="Copy this ball's drop list and Items dropped range">Copy</button>
+            <button type="button" class="btn-sm" onclick="pasteBallLoot(this)" title="Replace this ball's drops with the copied list. Works across rooms and dungeons.">Paste</button>
+          </span>
+        </div>
+        <table class="obj-table loot-list" style="margin-bottom:4px">
+          <tr><th>Item</th><th>TypeID</th><th>Min</th><th>Max</th><th>Chance</th><th></th></tr>
+          {{range .Loot}}
+          <tr data-lootid="{{.LootID}}" data-typeid="{{.ItemTypeID}}">
+            <td style="color:#c5c8d0">{{.ItemName}}{{if .IsBlueprint}} <span style="color:#fdc593;font-size:10px" title="Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint's max runs">[BPC]</span>{{end}}</td>
+            <td>{{.ItemTypeID}}</td>
+            <td>{{.MinQty}}{{if .IsBlueprint}} runs{{end}}</td>
+            <td>{{.MaxQty}}{{if .IsBlueprint}} runs{{end}}</td>
+            <td>{{pct .DropChance}}%</td>
+            <td><button type="button" class="btn-sm btn-danger" onclick="deleteBallLoot(this)">Del</button></td>
+          </tr>
+          {{end}}
+          {{if not .Loot}}<tr class="loot-empty"><td colspan="6" style="color:#4b5563">No authored drops</td></tr>{{end}}
+        </table>
+        <div class="add-obj-bar" style="padding:0">
+          <div style="position:relative;display:inline-block">
+            <input type="text" class="loot-search" placeholder="Search item..." autocomplete="off" style="width:220px;padding:3px 6px;font-size:12px">
+            <input type="hidden" class="loot-typeid">
+            <div class="item-dd" style="display:none"></div>
+          </div>
+          <input type="number" class="loot-min" value="1" min="1" style="width:58px" title="Minimum quantity (for a blueprint: minimum runs on the dropped copy)">
+          <input type="number" class="loot-max" value="1" min="1" style="width:58px" title="Maximum quantity (for a blueprint: maximum runs on the dropped copy)">
+          <input type="number" class="loot-chance" value="100" min="1" max="100" style="width:64px" title="Drop chance %">
+          <button type="button" class="btn-sm" onclick="addBallLoot(this)">+ Add Drop</button>
+        </div>
+        <div class="add-obj-bar loot-range" style="padding:4px 0 0">
+          <span style="font-size:12px;color:#9ca3af" title="How many different entries of this list drop per kill. Blank = no bound.">Items dropped</span>
+          <input type="number" class="loot-min-drops" min="0" placeholder="any" value="{{if gt .LootMinDrops 0}}{{.LootMinDrops}}{{end}}" style="width:58px" title="Fewest different items per kill (blank = no floor)">
+          <span style="color:#6b7280">to</span>
+          <input type="number" class="loot-max-drops" min="0" placeholder="any" value="{{if gt .LootMaxDrops 0}}{{.LootMaxDrops}}{{end}}" style="width:58px" title="Most different items per kill (blank = no cap)">
+          <button type="button" class="btn-sm" onclick="saveBallLootRange(this)">Save</button>
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+      </div>
+    </details>
+  </div>
+
+  <!-- Gate Setup (acceleration gates = groupID 366) -->
+  <div class="gate-setup-wrap" data-room="{{$ri}}" style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
+    <details>
+      <summary style="cursor:pointer;color:#facc15;font-size:12px;user-select:none">Gate Setup</summary>
+      <p style="color:#6b7280;font-size:11px;margin:4px 0">Track plays for the activating pilot (<code>dunMusicUrl</code>). Combat tracks ship in <code>resDungeons.stuff</code>, the rest in <code>resMusic.stuff</code>. Gates aim at and land players on the next room's Beacon automatically. Use a <b>gateActivated</b> trigger above for departure messages. To switch music on landing instead, add a <b>Player enters room</b> trigger with <b>Switch music track</b>.</p>
+      <table class="obj-table" style="margin-top:4px">
+        <tr><th>#</th><th>Type</th><th>Music Track</th><th></th></tr>
+        {{range $room.Objects}}
+        {{if eq .GroupID 366}}
+        <tr class="gate-setup-row" data-oid="{{.ObjectID}}">
+          <td>{{.ObjectID}}</td>
+          <td style="color:#c5c8d0">{{.TypeName}}</td>
+          <td>
+            <select name="musicUrl" data-current="{{.MusicUrl}}" onchange="onGateMusicChange(this)" style="width:280px;padding:2px 4px;font-size:11px">
+              <option value="">(none)</option>
+              {{template "dunMusicOptions"}}
+            </select>
+            <input type="text" name="musicUrlCustom" value="" placeholder="res:/Sound/Music/..." style="display:none;width:280px;margin-top:3px;padding:2px 4px;font-size:11px">
+          </td>
+          <td><button type="button" class="btn-sm" onclick="saveGateSetup(this)">Save</button></td>
+        </tr>
+        {{end}}
+        {{end}}
+      </table>
+    </details>
+  </div>
+
+  <!-- Beacon Setup (beacons = groupID 310) -->
+  {{$hasBeacon := false}}
+  {{range $room.Objects}}{{if eq .GroupID 310}}{{$hasBeacon = true}}{{end}}{{end}}
+  {{if $hasBeacon}}
+  <div class="beacon-setup-wrap" data-room="{{$ri}}" style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
+    <details>
+      <summary style="cursor:pointer;color:var(--accent-hi);font-size:12px;user-select:none">Beacon Setup</summary>
+      <p style="color:#6b7280;font-size:11px;margin:4px 0">Description shows in the client's Show Info window and as the bookmark hint for the beacon (<code>dunDescription</code>). The beacon also marks the room's warp-in point.</p>
+      <table class="obj-table" style="margin-top:4px">
+        <tr><th>#</th><th>Type</th><th>Description</th><th></th></tr>
+        {{range $room.Objects}}
+        {{if eq .GroupID 310}}
+        <tr class="beacon-setup-row" data-oid="{{.ObjectID}}">
+          <td>{{.ObjectID}}</td>
+          <td style="color:#c5c8d0">{{.TypeName}}</td>
+          <td><input type="text" name="description" value="{{.Description}}" placeholder="A derelict mining outpost..." style="width:380px;padding:2px 4px;font-size:11px"></td>
+          <td><button type="button" class="btn-sm" onclick="saveBeaconSetup(this)">Save</button></td>
+        </tr>
+        {{end}}
+        {{end}}
+      </table>
+    </details>
+  </div>
+  {{end}}
+
+</div>
+</div>
+{{end}}
+{{else}}
+<div class="card"><p style="color:#6b7280;font-size:13px">No rooms yet.</p></div>
+{{end}}
+
+<p style="margin-top:12px"><a href="/dungeons">&larr; Dungeons</a></p>
+
+<script>
+(function(){
+  // ── Room tabs ──
+  // Every action on this page is a POST + full re-render, which would drop the
+  // reader back on room 0. Remember the open tab per dungeon and restore it.
+  var tabKey='dng_room_{{.Dungeon.DungeonVID}}';
+  var tabs=document.querySelectorAll('.room-tab');
+  function openRoom(idx){
+    var p=document.querySelector('.room-panel[data-room="'+idx+'"]');
+    var t=document.querySelector('.room-tab[data-room="'+idx+'"]');
+    if(!p||!t)return false;
+    tabs.forEach(function(x){x.classList.remove('active')});
+    document.querySelectorAll('.room-panel').forEach(function(x){x.classList.remove('active')});
+    t.classList.add('active');
+    p.classList.add('active');
+    return true;
+  }
+  tabs.forEach(function(t){
+    t.addEventListener('click',function(){
+      openRoom(t.dataset.room);
+      try{sessionStorage.setItem(tabKey,t.dataset.room);}catch(e){}
+    });
+  });
+  try{
+    var savedRoom=sessionStorage.getItem(tabKey);
+    if(savedRoom!==null&&!openRoom(savedRoom))sessionStorage.removeItem(tabKey);
+  }catch(e){}
+  // A form inside a room panel is an edit of that room — remember it even if
+  // the tab itself was never clicked (room 0, deep link, etc).
+  document.querySelectorAll('.room-panel form').forEach(function(f){
+    f.addEventListener('submit',function(){
+      var panel=f.closest('.room-panel');
+      if(panel){try{sessionStorage.setItem(tabKey,panel.dataset.room);}catch(e){}}
+    });
+  });
+
+  // ── Row expand ──
+  document.querySelectorAll('.obj-row').forEach(function(row){
+    row.addEventListener('click',function(e){
+      if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON'||e.target.tagName==='A')return;
+      var ri=row.dataset.room, idx=row.dataset.idx;
+      var exp=document.querySelector('.obj-expand[data-room="'+ri+'"][data-idx="'+idx+'"]');
+      var wasOpen=exp.classList.contains('open');
+      document.querySelectorAll('.obj-expand[data-room="'+ri+'"]').forEach(function(x){x.classList.remove('open')});
+      document.querySelectorAll('.obj-row[data-room="'+ri+'"]').forEach(function(x){x.classList.remove('selected')});
+      if(!wasOpen){
+        exp.classList.add('open');
+        row.classList.add('selected');
+      }
+    });
+  });
+
+  // ── Item search typeahead ──
+  var timer;
+  document.querySelectorAll('.item-search').forEach(function(input){
+    var dd=input.parentNode.querySelector('.item-dd');
+    var hidden=input.parentNode.querySelector('.item-typeid');
+    input.addEventListener('input',function(){
+      clearTimeout(timer);
+      var q=input.value.trim();
+      if(q.length<2){dd.style.display='none';return;}
+      timer=setTimeout(function(){
+        fetch('/dungeons/items/api?q='+encodeURIComponent(q),{credentials:'include'})
+          .then(function(r){return r.json()})
+          .then(function(items){
+            dd.innerHTML='';
+            if(!items||!items.length){dd.style.display='none';return;}
+            items.slice(0,30).forEach(function(it){
+              var d=document.createElement('div');
+              d.textContent=it.typeID+' '+it.typeName+' ('+it.category+')';
+              d.addEventListener('click',function(e){
+                e.stopPropagation();
+                hidden.value=it.typeID;
+                input.value=it.typeName+' ['+it.typeID+']';
+                dd.style.display='none';
+              });
+              dd.appendChild(d);
+            });
+            dd.style.display='block';
+          });
+      },200);
+    });
+    document.addEventListener('click',function(e){
+      if(!input.parentNode.contains(e.target))dd.style.display='none';
+    });
+  });
+
+  // ── Trigger form helpers ──
+  // Fields that do not apply to the chosen event/action are hidden outright,
+  // not dimmed — a greyed-out control still reads as "fill me in".
+  function show(el,on){ if(el)el.classList.toggle('tf-hide',!on); }
+
+  window.trigActionChanged=function(sel){
+    var form=sel.closest('form');
+    var isChat=sel.value==='localChat';
+    var isTrans=sel.value==='transmission';
+    var isWave=sel.value==='spawnWave';
+    var isMusic=sel.value==='music';
+    var isDone=sel.value==='completeDungeon';
+    show(form.querySelector('.tf-music'),isMusic);
+    show(form.querySelector('.tf-header'),isTrans);
+    show(form.querySelector('.tf-icon'),isTrans);
+    show(form.querySelector('.tf-sender'),isChat);
+    show(form.querySelector('.tf-defer'),isTrans);
+    show(form.querySelector('.tf-wave'),isWave);
+    show(form.querySelector('.tf-body'),!isWave&&!isMusic&&!isDone);
+    form.querySelectorAll('.tf-color').forEach(function(el){show(el,isChat);});
+    if(isChat)trigColorToggled(form.querySelector('input[name="chatColorOn"]'));
+    // second row collapses when nothing in it applies
+    var row2=form.querySelector('.tf-row2');
+    if(row2)show(row2,isTrans||isChat);
+  };
+
+  window.trigEventChanged=function(sel){
+    var form=sel.closest('form');
+    var isItem=sel.value==='itemPlaced';
+    var perNPC=sel.value==='npcDamaged'||sel.value==='npcKilled'||isItem;
+    var target=form.querySelector('select[name="targetObjectID"]');
+    show(form.querySelector('.tf-target'),perNPC);
+    form.querySelectorAll('.tf-item').forEach(function(el){show(el,isItem);});
+    // itemPlaced lists container balls only.
+    Array.prototype.forEach.call(target.options,function(o){
+      o.hidden=isItem&&o.value!=='0'&&!o.dataset.cargo;
+    });
+    if(!perNPC||(target.selectedOptions[0]&&target.selectedOptions[0].hidden))target.value='0';
+  };
+
+  // Text is plain white unless the author opts into a colour.
+  window.trigColorToggled=function(cb){
+    if(!cb)return;
+    show(cb.closest('form').querySelector('.tf-swatch'),cb.checked);
+  };
+
+  window.editTrigger=function(btn){
+    var ri=btn.dataset.room;
+    var form=document.getElementById('trigForm'+ri);
+    if(!form)return;
+    form.querySelector('input[name="triggerID"]').value=btn.dataset.tid;
+    form.querySelector('select[name="event"]').value=btn.dataset.event;
+    form.querySelector('select[name="targetObjectID"]').value=btn.dataset.target||'0';
+    form.querySelector('select[name="triggerAction"]').value=btn.dataset.action;
+    form.querySelector('input[name="header"]').value=btn.dataset.header||'';
+    form.querySelector('input[name="icon"]').value=btn.dataset.icon||'';
+    form.querySelector('input[name="senderName"]').value=btn.dataset.sender||'';
+    form.querySelector('input[name="chatColor"]').value=btn.dataset.color?('#'+btn.dataset.color):'#ffffff';
+    form.querySelector('input[name="chatColorOn"]').checked=!!btn.dataset.color;
+    var isMusic=btn.dataset.action==='music';
+    form.querySelector('textarea[name="body"]').value=isMusic?'':(btn.dataset.body||'');
+    setMusicPick(form.querySelector('select[name="trigMusic"]'),isMusic?btn.dataset.body:'');
+    form.querySelector('input[name="deferUntilLanded"]').checked=btn.dataset.defer==='1';
+    form.querySelector('input[name="onceOnly"]').checked=btn.dataset.once==='1';
+    form.querySelector('input[name="delayMs"]').value=btn.dataset.delay||'0';
+    form.querySelector('input[name="spawnWave"]').value=(btn.dataset.wave&&btn.dataset.wave!=='0')?btn.dataset.wave:'';
+    form.querySelector('.trig-item-typeid').value=btn.dataset.item||'';
+    form.querySelector('.trig-item-search').value=btn.dataset.item?((btn.dataset.itemname||'type')+' ['+btn.dataset.item+']'):'';
+    form.querySelector('input[name="itemQty"]').value=btn.dataset.itemqty||'1';
+    document.getElementById('trigSubmit'+ri).textContent='Save Trigger #'+btn.dataset.tid;
+    document.getElementById('trigCancel'+ri).style.display='inline-block';
+    trigEventChanged(form.querySelector('select[name="event"]'));
+    trigActionChanged(form.querySelector('select[name="triggerAction"]'));
+    form.scrollIntoView({block:'center'});
+  };
+
+  window.resetTrigForm=function(ri){
+    var form=document.getElementById('trigForm'+ri);
+    if(!form)return;
+    form.reset();
+    setMusicPick(form.querySelector('select[name="trigMusic"]'),'');
+    form.querySelector('input[name="triggerID"]').value='0';
+    form.querySelector('.trig-item-typeid').value='';
+    document.getElementById('trigSubmit'+ri).textContent='+ Add Trigger';
+    document.getElementById('trigCancel'+ri).style.display='none';
+    trigEventChanged(form.querySelector('select[name="event"]'));
+    trigActionChanged(form.querySelector('select[name="triggerAction"]'));
+  };
+
+  // ── Clipboard copy/paste ──
+  var objClipboard=null;
+  window.clipCopy=function(btn){
+    objClipboard={
+      x:btn.dataset.x, y:btn.dataset.y, z:btn.dataset.z,
+      yaw:btn.dataset.yaw, pitch:btn.dataset.pitch, roll:btn.dataset.roll,
+      radius:btn.dataset.radius, aggr:btn.dataset.aggr
+    };
+    btn.textContent='Copied!';
+    setTimeout(function(){btn.textContent='Copy';},800);
+  };
+  window.clipPaste=function(btn){
+    if(!objClipboard){btn.textContent='Empty';setTimeout(function(){btn.textContent='Paste';},800);return;}
+    var ri=btn.dataset.room, idx=btn.dataset.idx;
+    var exp=document.querySelector('.obj-expand[data-room="'+ri+'"][data-idx="'+idx+'"]');
+    if(!exp){return;}
+    var map={x:'x',y:'y',z:'z',yaw:'yaw',pitch:'pitch',roll:'roll',radius:'radius',aggr:'aggressionRange'};
+    for(var k in map){
+      var inp=exp.querySelector('input[name="'+map[k]+'"]');
+      if(inp&&objClipboard[k]!=null)inp.value=objClipboard[k];
+    }
+    exp.classList.add('open');
+    var row=document.querySelector('.obj-row[data-room="'+ri+'"][data-idx="'+idx+'"]');
+    if(row)row.classList.add('selected');
+    btn.textContent='Pasted!';
+    setTimeout(function(){btn.textContent='Paste';},800);
+  };
+
+  // ── Search bar persistence ──
+  var dungeonID='{{.Dungeon.DungeonVID}}';
+  document.querySelectorAll('.add-obj-bar form').forEach(function(form){
+    var searchInput=form.querySelector('.item-search');
+    var typeInput=form.querySelector('.item-typeid');
+    var roomInput=form.querySelector('input[name="roomID"]');
+    if(!searchInput||!typeInput||!roomInput)return;
+    var key='dng_search_'+dungeonID+'_'+roomInput.value;
+    var saved=sessionStorage.getItem(key);
+    if(saved){
+      try{
+        var s=JSON.parse(saved);
+        searchInput.value=s.text||'';
+        typeInput.value=s.typeID||'';
+      }catch(e){}
+    }
+    form.addEventListener('submit',function(){
+      sessionStorage.setItem(key,JSON.stringify({text:searchInput.value,typeID:typeInput.value}));
+    });
+  });
+
+  // ── Ball Setup ──
+  document.querySelectorAll('.npc-setup-wrap').forEach(function(wrap){
+    if(wrap.querySelector('.npc-setup-row'))wrap.style.display='block';
+  });
+  document.querySelectorAll('.loot-setup-wrap').forEach(function(wrap){
+    if(wrap.querySelector('.loot-ball'))wrap.style.display='block';
+  });
+
+  document.querySelectorAll('.npc-setup-row').forEach(function(row){
+    var oid=row.dataset.oid;
+    var factionVal=row.dataset.faction||'0';
+    var factionSel=row.querySelector('.npc-faction-sel');
+    if(factionSel&&factionVal!=='0')factionSel.value=factionVal;
+    var leashVal=row.dataset.leash||'0';
+    var leashSel=row.querySelector('.npc-leash-sel');
+    if(leashSel&&leashVal!=='0')leashSel.value=leashVal;
+    var objRow=document.querySelector('.obj-row[data-oid="'+oid+'"]');
+    if(objRow){
+      var sel=row.querySelector('.npc-stance-sel');
+      if(sel)sel.value=objRow.dataset.stance||'aggressive';
+    }
+  });
+
+  window.saveNPCSetup=function(btn){
+    var row=btn.closest('tr');
+    var oid=row.dataset.oid;
+    var sel=row.querySelector('.npc-stance-sel');
+    var factionSel=row.querySelector('.npc-faction-sel');
+    var leashSel=row.querySelector('.npc-leash-sel');
+    var form=new FormData();
+    form.append('objectID',oid);
+    if(sel)form.append('stance',sel.value);
+    form.append('npcFactionID',factionSel?factionSel.value:'0');
+    form.append('aggressionRange',row.querySelector('input[name="aggressionRange"]').value);
+    form.append('leashObjectID',leashSel?leashSel.value:'0');
+    form.append('orbitDistance',row.querySelector('input[name="orbitDistance"]').value||'0');
+    form.append('ballName',row.querySelector('input[name="ballName"]').value||'');
+    form.append('hpScale',row.querySelector('input[name="hpScale"]').value||'1');
+    form.append('spawnWave',row.querySelector('input[name="spawnWave"]').value||'0');
+    var invuln=row.querySelector('input[name="invulnerable"]');
+    if(invuln)form.append('invulnerable',invuln.checked?'1':'0');
+    var solidSel=row.querySelector('select[name="solid"]');
+    if(solidSel)form.append('solid',solidSel.value);
+    btn.textContent='Saving...';
+    fetch('/dungeons/object/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status==='ok'){btn.textContent='Saved!';setTimeout(function(){btn.textContent='Save';},1000);}
+        else{btn.textContent='Error';setTimeout(function(){btn.textContent='Save';},2000);}
+        var objRow=document.querySelector('.obj-row[data-oid="'+oid+'"]');
+        if(objRow&&sel)objRow.dataset.stance=sel.value;
+      })
+      .catch(function(){btn.textContent='Failed';setTimeout(function(){btn.textContent='Save';},2000);});
+  };
+
+  // ── Loot Setup ──
+  // The dungeon item search hides modules/commodities (they are not space
+  // objects), so the loot picker uses the loot panel's item search instead.
+  var lootTimer;
+  document.querySelectorAll('.loot-search').forEach(function(input){
+    var dd=input.parentNode.querySelector('.item-dd');
+    var hidden=input.parentNode.querySelector('.loot-typeid');
+    input.addEventListener('input',function(){
+      clearTimeout(lootTimer);
+      hidden.value='';
+      var q=input.value.trim();
+      if(q.length<2){dd.style.display='none';return;}
+      lootTimer=setTimeout(function(){
+        fetch('/loot/items/api?q='+encodeURIComponent(q),{credentials:'include'})
+          .then(function(r){return r.json()})
+          .then(function(items){
+            dd.innerHTML='';
+            if(!items||!items.length){dd.style.display='none';return;}
+            // Items already on THIS ball's list are greyed out and cannot be
+            // picked: a second add would just overwrite the existing row.
+            var have={};
+            input.closest('.loot-ball').querySelectorAll('.loot-list tr[data-typeid]').forEach(function(tr){
+              have[tr.dataset.typeid]=true;
+            });
+            items.slice(0,30).forEach(function(it){
+              var d=document.createElement('div');
+              d.textContent=it.typeID+' '+it.typeName+' ('+it.group+')';
+              if(have[String(it.typeID)]){
+                d.className='in-table';
+                d.textContent+=' — already in loot';
+                d.title='Already on this ball\'s drop list. Delete it there first to change its amounts.';
+                d.addEventListener('click',function(e){e.stopPropagation();});
+                dd.appendChild(d);
+                return;
+              }
+              d.addEventListener('click',function(e){
+                e.stopPropagation();
+                hidden.value=it.typeID;
+                input.value=it.typeName+' ['+it.typeID+']';
+                dd.style.display='none';
+              });
+              dd.appendChild(d);
+            });
+            dd.style.display='block';
+          });
+      },200);
+    });
+    document.addEventListener('click',function(e){
+      if(!input.parentNode.contains(e.target))dd.style.display='none';
+    });
+  });
+
+  // ── itemPlaced item picker ──
+  // The same item search as Loot Setup. Emptying the box means any item.
+  var trigItemTimer;
+  document.querySelectorAll('.trig-item-search').forEach(function(input){
+    var dd=input.parentNode.querySelector('.item-dd');
+    var hidden=input.parentNode.querySelector('.trig-item-typeid');
+    input.addEventListener('input',function(){
+      clearTimeout(trigItemTimer);
+      hidden.value='';
+      var q=input.value.trim();
+      if(q.length<2){dd.style.display='none';return;}
+      trigItemTimer=setTimeout(function(){
+        fetch('/loot/items/api?q='+encodeURIComponent(q),{credentials:'include'})
+          .then(function(r){return r.json()})
+          .then(function(items){
+            dd.innerHTML='';
+            if(!items||!items.length){dd.style.display='none';return;}
+            items.slice(0,30).forEach(function(it){
+              var d=document.createElement('div');
+              d.textContent=it.typeID+' '+it.typeName+' ('+it.group+')';
+              d.addEventListener('click',function(e){
+                e.preventDefault();
+                e.stopPropagation();
+                hidden.value=it.typeID;
+                input.value=it.typeName+' ['+it.typeID+']';
+                dd.style.display='none';
+              });
+              dd.appendChild(d);
+            });
+            dd.style.display='block';
+          });
+      },200);
+    });
+    document.addEventListener('click',function(e){
+      if(!input.parentNode.contains(e.target))dd.style.display='none';
+    });
+  });
+
+  // ── Loot ball picker ──
+  // One ball's card shows at a time. The pick is kept per dungeon and room, because a form save
+  // re-renders the page.
+  function lootPickKey(sel){
+    return 'dng_loot_ball_'+dungeonID+'_'+sel.closest('.loot-setup-wrap').dataset.room;
+  }
+  window.pickLootBall=function(sel){
+    sel.closest('.loot-setup-wrap').querySelectorAll('.loot-ball').forEach(function(ball){
+      ball.style.display=ball.dataset.oid===sel.value?'block':'none';
+    });
+    try{sessionStorage.setItem(lootPickKey(sel),sel.value);}catch(e){}
+  };
+  document.querySelectorAll('.loot-pick').forEach(function(sel){
+    var saved='';
+    try{saved=sessionStorage.getItem(lootPickKey(sel))||'';}catch(e){}
+    if(!saved||!sel.querySelector('option[value="'+saved+'"]'))return;
+    sel.value=saved;
+    pickLootBall(sel);
+    sel.closest('details').open=true;
+  });
+
+  // Keeps the picker's drop count in step with a redrawn list.
+  function markLootCount(ball,n){
+    var opt=ball.closest('.loot-setup-wrap').querySelector('.loot-pick option[value="'+ball.dataset.oid+'"]');
+    if(opt)opt.textContent=opt.dataset.name+(n?' — '+n+(n===1?' drop':' drops'):'');
+  }
+
+  function redrawLoot(wrap,loot){
+    markLootCount(wrap,loot?loot.length:0);
+    var table=wrap.querySelector('.loot-list');
+    var head=table.rows[0];
+    table.innerHTML='';
+    table.appendChild(head);
+    if(!loot||!loot.length){
+      var er=table.insertRow();
+      er.className='loot-empty';
+      var ec=er.insertCell();
+      ec.colSpan=6;
+      ec.style.color='#4b5563';
+      ec.textContent='No authored drops';
+      return;
+    }
+    loot.forEach(function(l){
+      var tr=table.insertRow();
+      tr.dataset.lootid=l.lootID;
+      tr.dataset.typeid=l.itemTypeID;
+      var c0=tr.insertCell();c0.style.color='#c5c8d0';c0.textContent=l.itemName;
+      if(l.isBlueprint){
+        var bp=document.createElement('span');
+        bp.style.cssText='color:#fdc593;font-size:10px';
+        bp.title='Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint\'s max runs';
+        bp.textContent=' [BPC]';
+        c0.appendChild(bp);
+      }
+      var runs=l.isBlueprint?' runs':'';
+      tr.insertCell().textContent=l.itemTypeID;
+      tr.insertCell().textContent=l.minQty+runs;
+      tr.insertCell().textContent=l.maxQty+runs;
+      tr.insertCell().textContent=Math.round(l.dropChance*100)+'%';
+      var cb=tr.insertCell();
+      var b=document.createElement('button');
+      b.type='button';b.className='btn-sm btn-danger';b.textContent='Del';
+      b.addEventListener('click',function(){deleteBallLoot(b);});
+      cb.appendChild(b);
+    });
+  }
+
+  function postLoot(wrap,form,btn,label){
+    btn.textContent='Saving...';
+    fetch('/dungeons/loot/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status==='ok'){
+          redrawLoot(wrap,d.loot);
+          btn.textContent='Saved!';
+        }else{
+          btn.textContent=d.error||'Error';
+        }
+        setTimeout(function(){btn.textContent=label;},1200);
+      })
+      .catch(function(){btn.textContent='Failed';setTimeout(function(){btn.textContent=label;},2000);});
+  }
+
+  window.addBallLoot=function(btn){
+    var wrap=btn.closest('.loot-ball');
+    var typeID=wrap.querySelector('.loot-typeid').value;
+    if(!typeID){btn.textContent='Pick an item';setTimeout(function(){btn.textContent='+ Add Drop';},1500);return;}
+    var form=new FormData();
+    form.append('action','save');
+    form.append('objectID',wrap.dataset.oid);
+    form.append('itemTypeID',typeID);
+    form.append('minQty',wrap.querySelector('.loot-min').value||'1');
+    form.append('maxQty',wrap.querySelector('.loot-max').value||'1');
+    form.append('dropChance',(parseFloat(wrap.querySelector('.loot-chance').value||'100')/100).toString());
+    postLoot(wrap,form,btn,'+ Add Drop');
+  };
+
+  window.saveBallLootRange=function(btn){
+    var wrap=btn.closest('.loot-ball');
+    var lo=wrap.querySelector('.loot-min-drops'),hi=wrap.querySelector('.loot-max-drops');
+    var form=new FormData();
+    form.append('action','range');
+    form.append('objectID',wrap.dataset.oid);
+    form.append('minDrops',lo.value.trim());
+    form.append('maxDrops',hi.value.trim());
+    btn.textContent='Saving...';
+    fetch('/dungeons/loot/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status==='ok'){
+          lo.value=d.minDrops>0?d.minDrops:'';
+          hi.value=d.maxDrops>0?d.maxDrops:'';
+          btn.textContent='Saved!';
+        }else{
+          btn.textContent=d.error||'Error';
+        }
+        setTimeout(function(){btn.textContent='Save';},d.status==='ok'?1200:3000);
+      })
+      .catch(function(){btn.textContent='Failed';setTimeout(function(){btn.textContent='Save';},2000);});
+  };
+
+  window.deleteBallLoot=function(btn){
+    var wrap=btn.closest('.loot-ball');
+    var row=btn.closest('tr');
+    var form=new FormData();
+    form.append('action','delete');
+    form.append('objectID',wrap.dataset.oid);
+    form.append('lootID',row.dataset.lootid);
+    postLoot(wrap,form,btn,'Del');
+  };
+
+  // ── Loot copy/paste ──
+  // The clipboard holds the source ball's objectID, in localStorage so it outlives the page reload
+  // after a form save and reaches other dungeons. The server copies the rows.
+  var lootClip=null;
+  function readLootClip(){
+    try{var s=localStorage.getItem('dng_loot_clip');if(s)lootClip=JSON.parse(s);}catch(e){}
+    return lootClip;
+  }
+  function flashBtn(btn,text,label,ms){
+    btn.textContent=text;
+    setTimeout(function(){btn.textContent=label;},ms||1200);
+  }
+
+  window.copyBallLoot=function(btn){
+    var wrap=btn.closest('.loot-ball');
+    if(!wrap.querySelector('.loot-list tr[data-typeid]')){flashBtn(btn,'Empty','Copy');return;}
+    lootClip={oid:wrap.dataset.oid,label:wrap.dataset.label};
+    try{localStorage.setItem('dng_loot_clip',JSON.stringify(lootClip));}catch(e){}
+    flashBtn(btn,'Copied!','Copy');
+  };
+
+  window.pasteBallLoot=function(btn){
+    var wrap=btn.closest('.loot-ball');
+    var clip=readLootClip();
+    if(!clip){flashBtn(btn,'Nothing copied','Paste');return;}
+    if(clip.oid===wrap.dataset.oid){flashBtn(btn,'Same ball','Paste');return;}
+    var have=wrap.querySelectorAll('.loot-list tr[data-typeid]').length;
+    if(have&&!confirm('Replace the '+have+' drop(s) on '+wrap.dataset.label+' with the list from '+clip.label+'?'))return;
+    var form=new FormData();
+    form.append('action','paste');
+    form.append('objectID',wrap.dataset.oid);
+    form.append('fromObjectID',clip.oid);
+    btn.textContent='Pasting...';
+    fetch('/dungeons/loot/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status!=='ok'){flashBtn(btn,d.error||'Error','Paste',3000);return;}
+        redrawLoot(wrap,d.loot);
+        wrap.querySelector('.loot-min-drops').value=d.minDrops>0?d.minDrops:'';
+        wrap.querySelector('.loot-max-drops').value=d.maxDrops>0?d.maxDrops:'';
+        flashBtn(btn,'Pasted!','Paste');
+      })
+      .catch(function(){flashBtn(btn,'Failed','Paste',2000);});
+  };
+
+  // A track picker is a select with a custom-path text input beside it.
+  window.onGateMusicChange=function(sel){
+    var custom=sel.parentNode.querySelector('input[type="text"]');
+    if(!custom)return;
+    if(sel.value==='__custom__'){custom.style.display='';custom.focus();}
+    else{custom.style.display='none';}
+  };
+
+  // Selects a saved track; unknown or legacy paths fall back to the custom field.
+  function setMusicPick(sel,cur){
+    var custom=sel.parentNode.querySelector('input[type="text"]');
+    cur=(cur||'').trim();
+    custom.value='';
+    custom.style.display='none';
+    if(!cur){sel.value='';return;}
+    for(var i=0;i<sel.options.length;i++){
+      var v=sel.options[i].value;
+      if(v&&v!=='__custom__'&&v.toLowerCase()===cur.toLowerCase()){sel.value=v;return;}
+    }
+    sel.value='__custom__';
+    custom.value=cur;
+    custom.style.display='';
+  }
+  document.querySelectorAll('select[name="musicUrl"]').forEach(function(sel){setMusicPick(sel,sel.dataset.current);});
+
+  window.saveGateSetup=function(btn){
+    var row=btn.closest('tr');
+    var sel=row.querySelector('select[name="musicUrl"]');
+    var custom=row.querySelector('input[name="musicUrlCustom"]');
+    var url=sel.value==='__custom__'?custom.value.trim():sel.value;
+    var form=new FormData();
+    form.append('objectID',row.dataset.oid);
+    form.append('musicUrl',url);
+    btn.textContent='Saving...';
+    fetch('/dungeons/object/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status==='ok'){btn.textContent='Saved!';setTimeout(function(){btn.textContent='Save';},1000);}
+        else{btn.textContent='Error';setTimeout(function(){btn.textContent='Save';},2000);}
+      })
+      .catch(function(){btn.textContent='Failed';setTimeout(function(){btn.textContent='Save';},2000);});
+  };
+
+  window.saveBeaconSetup=function(btn){
+    var row=btn.closest('tr');
+    var form=new FormData();
+    form.append('objectID',row.dataset.oid);
+    form.append('description',row.querySelector('input[name="description"]').value);
+    btn.textContent='Saving...';
+    fetch('/dungeons/object/api',{method:'POST',body:form,credentials:'include'})
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.status==='ok'){btn.textContent='Saved!';setTimeout(function(){btn.textContent='Save';},1000);}
+        else{btn.textContent='Error';setTimeout(function(){btn.textContent='Save';},2000);}
+      })
+      .catch(function(){btn.textContent='Failed';setTimeout(function(){btn.textContent='Save';},2000);});
+  };
+
+  // hide irrelevant trigger fields on load
+  document.querySelectorAll('.trig-form select[name="event"]').forEach(function(s){trigEventChanged(s);});
+  document.querySelectorAll('.trig-form select[name="triggerAction"]').forEach(function(s){trigActionChanged(s);});
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

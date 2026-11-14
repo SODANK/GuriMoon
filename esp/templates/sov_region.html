@@ -1,0 +1,175 @@
+{{define "content"}}
+<h2><a href="/sov" style="color:#6b7280">Sovereignty</a> › {{.RegionName}}</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="card" style="margin-bottom:16px">
+  <h3>Set Whole Region</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    Region faction: {{if .RegionFactionName}}<strong>{{.RegionFactionName}}</strong>{{else}}<span style="color:#4b5563">none</span>{{end}}.
+    Applying an owner here repaints the region row, all constellations and all {{len .Systems}} systems.
+    NPC faction = empire space on the map; alliance = player sov claims (same data as <code>/claim</code>).
+  </p>
+  <form method="POST" action="/sov/region/{{.RegionID}}" class="inline-form sov-region-form" data-region="{{.RegionName}}" data-count="{{len .Systems}}">
+    <input type="hidden" name="action" value="region">
+    <input type="hidden" name="regionID" value="{{.RegionID}}">
+    <select name="owner">
+      <option value="0">— No sovereignty —</option>
+      <optgroup label="NPC Factions">
+        {{range .Factions}}<option value="f:{{.FactionID}}" {{if eq .FactionID $.RegionFactionID}}selected{{end}}>{{.FactionName}}</option>{{end}}
+      </optgroup>
+      {{if .Alliances}}
+      <optgroup label="Player Alliances">
+        {{range .Alliances}}<option value="a:{{.AllianceID}}">{{.AllianceName}}</option>{{end}}
+      </optgroup>
+      {{end}}
+    </select>
+    <button type="submit">Apply to Region</button>
+  </form>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <h3 id="bulkTitle">Set Sov for Tagged Systems</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag systems in the table below, pick an owner, Apply. Only tagged systems change (region/constellation faction rows stay as they are).</p>
+  <form method="POST" action="/sov/region/{{.RegionID}}" id="bulkForm" class="inline-form" style="margin-bottom:0">
+    <input type="hidden" name="action" value="bulksystem">
+    <input type="hidden" name="systemIDs" id="bulkSystemIDs">
+    <select name="owner" id="bulkOwner">
+      <option value="0">— No sovereignty —</option>
+      <optgroup label="NPC Factions">
+        {{range .Factions}}<option value="f:{{.FactionID}}">{{.FactionName}}</option>{{end}}
+      </optgroup>
+      {{if .Alliances}}
+      <optgroup label="Player Alliances">
+        {{range .Alliances}}<option value="a:{{.AllianceID}}">{{.AllianceName}}</option>{{end}}
+      </optgroup>
+      {{end}}
+    </select>
+    <button type="submit" id="bulkBtn" disabled>Tag Systems First</button>
+  </form>
+  <div id="tagStatus" style="margin-top:8px;font-size:12px;color:#6b7280"></div>
+</div>
+
+<div class="card">
+  <h3>Solar Systems ({{len .Systems}})</h3>
+  {{if .Systems}}
+  <table>
+    <tr><th title="Tag systems to target them with the bulk apply above">Tag</th><th>System</th><th>Security</th><th>Current Sov</th><th>Set System</th></tr>
+    {{range .Systems}}
+    <tr id="sys-{{.SolarSystemID}}">
+      <td><input type="checkbox" class="tagbox" data-gid="{{.SolarSystemID}}" data-gname="{{.SystemName}}"></td>
+      <td>{{.SystemName}} <span style="color:#4b5563;font-size:11px">{{.SolarSystemID}}</span></td>
+      <td>{{printf "%.1f" .Security}}</td>
+      <td>
+        {{if .AllianceName}}<span style="color:#fbbf24">{{.AllianceName}}</span>{{else if .FactionName}}<span style="color:#6ee7b7">{{.FactionName}}</span>{{else}}<span style="color:#4b5563">—</span>{{end}}
+      </td>
+      <td>
+        <form method="POST" action="/sov/region/{{$.RegionID}}" class="inline-form" style="margin:0">
+          <input type="hidden" name="action" value="system">
+          <input type="hidden" name="systemID" value="{{.SolarSystemID}}">
+          <select name="owner">
+            <option value="0">— No sovereignty —</option>
+            <optgroup label="NPC Factions">
+              {{$fid := .FactionID}}
+              {{range $.Factions}}<option value="f:{{.FactionID}}" {{if eq .FactionID $fid}}selected{{end}}>{{.FactionName}}</option>{{end}}
+            </optgroup>
+            {{if $.Alliances}}
+            <optgroup label="Player Alliances">
+              {{$aid := .AllianceID}}
+              {{range $.Alliances}}<option value="a:{{.AllianceID}}" {{if eq .AllianceID $aid}}selected{{end}}>{{.AllianceName}}</option>{{end}}
+            </optgroup>
+            {{end}}
+          </select>
+          <button type="submit">Apply</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p>No systems in this region.</p>
+  {{end}}
+</div>
+
+<script>
+// Confirm before repainting the whole region.
+document.querySelectorAll('.sov-region-form').forEach(f => {
+  f.addEventListener('submit', e => {
+    const sel = f.querySelector('select[name=owner]');
+    const owner = sel.options[sel.selectedIndex].text;
+    if (!confirm('Set sovereignty of ALL ' + f.dataset.count + ' systems in ' + f.dataset.region + ' to: ' + owner + '?'))
+      e.preventDefault();
+  });
+});
+// Highlight the row jumped to from the overview search.
+if (location.hash.startsWith('#sys-')) {
+  const row = document.getElementById(location.hash.slice(1));
+  if (row) { row.style.background = 'var(--btn)'; row.scrollIntoView({block:'center'}); }
+}
+
+// ── System tagging ──────────────────────────────────────────────────────────
+// Tags live in sessionStorage (per region) so they survive reloads. The bulk
+// form requires tags — no fall-through to the whole region here.
+(function(){
+  const KEY = 'sovSysTags-{{.RegionID}}';
+  const load = () => { try { return JSON.parse(sessionStorage.getItem(KEY)) || {}; } catch { return {}; } };
+  const save = t => sessionStorage.setItem(KEY, JSON.stringify(t));
+
+  const title = document.getElementById('bulkTitle');
+  const btn = document.getElementById('bulkBtn');
+  const status = document.getElementById('tagStatus');
+  const hidden = document.getElementById('bulkSystemIDs');
+  const form = document.getElementById('bulkForm');
+
+  function refresh() {
+    const tags = load();
+    const ids = Object.keys(tags);
+    hidden.value = ids.join(',');
+    if (ids.length === 0) {
+      title.textContent = 'Set Sov for Tagged Systems';
+      btn.textContent = 'Tag Systems First';
+      btn.disabled = true;
+      status.textContent = 'No systems tagged — tick boxes in the table below to build a target list.';
+      return;
+    }
+    btn.disabled = false;
+    title.textContent = 'Set Sov for ' + ids.length + ' Tagged System' + (ids.length > 1 ? 's' : '');
+    btn.textContent = 'Apply to ' + ids.length + ' Tagged System' + (ids.length > 1 ? 's' : '');
+    const names = ids.map(id => tags[id]);
+    const shown = names.slice(0, 8).join(', ') + (names.length > 8 ? ' … +' + (names.length - 8) + ' more' : '');
+    status.innerHTML = 'Tagged: <strong style="color:#fbbf24">' + shown +
+      '</strong> &nbsp;<a href="#" id="clearTags">clear tags</a>';
+    document.getElementById('clearTags').onclick = e => {
+      e.preventDefault();
+      sessionStorage.removeItem(KEY);
+      document.querySelectorAll('.tagbox').forEach(cb => cb.checked = false);
+      refresh();
+    };
+  }
+
+  document.querySelectorAll('.tagbox').forEach(cb => {
+    const tags = load();
+    if (tags[cb.dataset.gid]) cb.checked = true;
+    cb.addEventListener('change', () => {
+      const t = load();
+      if (cb.checked) t[cb.dataset.gid] = cb.dataset.gname;
+      else delete t[cb.dataset.gid];
+      save(t);
+      refresh();
+    });
+  });
+
+  form.addEventListener('submit', e => {
+    const n = Object.keys(load()).length;
+    if (n === 0) { e.preventDefault(); return; }
+    const sel = document.getElementById('bulkOwner');
+    const owner = sel.options[sel.selectedIndex].text;
+    if (!confirm('Set sovereignty of ' + n + ' tagged system' + (n > 1 ? 's' : '') + ' to: ' + owner + '?'))
+      e.preventDefault();
+  });
+
+  refresh();
+})();
+</script>
+{{end}}

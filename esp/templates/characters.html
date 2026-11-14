@@ -1,0 +1,82 @@
+{{define "content"}}
+<style>
+.chr-train { font-size: 12px; color: #9acd6a; white-space: nowrap; }
+.chr-train a { color: #9acd6a; text-decoration: none; }
+.chr-train a:hover { text-decoration: underline; }
+.chr-train .rem { color: #ffcc66; }
+.chr-queue { font-size: 11px; color: #6b7280; }
+.chr-idle { font-size: 12px; color: #374151; font-style: italic; }
+.chr-pager { margin-top: 10px; font-size: 13px; color: #9ca3af; }
+.chr-pager a { color: #9acd6a; text-decoration: none; margin: 0 6px; }
+.chr-pager a:hover { text-decoration: underline; }
+.chr-count { font-size: 13px; color: #9ca3af; margin: 6px 0; }
+</style>
+<h2>Character Search</h2>
+<form class="search-form" method="GET" action="/characters">
+  <input type="text" name="q" placeholder="Search by name or ID..." value="{{.Query}}">
+  {{if .CorpID}}<input type="hidden" name="corp" value="{{.CorpID}}">{{end}}
+  {{if .StationID}}<input type="hidden" name="station" value="{{.StationID}}">{{end}}
+  <label style="margin-left:10px;font-size:13px;color:#9ca3af;cursor:pointer"><input type="checkbox" name="bots" value="1" {{if .ShowBots}}checked{{end}} onchange="this.form.submit()"> Show RoleBot accounts</label>
+  <button type="submit">Search</button>
+</form>
+<p class="chr-count">
+  {{.Total}} pilot{{if ne .Total 1}}s{{end}}
+  {{if .CorpID}}in corporation {{.CorpID}} <a href="/characters{{if .Query}}?q={{.Query}}{{end}}">(clear)</a>{{end}}
+  {{if .StationID}}docked at station {{.StationID}} <a href="/characters{{if .Query}}?q={{.Query}}{{end}}">(clear)</a>{{end}}
+  &mdash; NPC agents excluded{{if not .ShowBots}}, RoleBot accounts hidden{{end}}.
+</p>
+{{if .Characters}}
+<div class="card">
+  <input type="text" id="chr-quick" placeholder="Quick filter this page..." style="width:100%;box-sizing:border-box;margin-bottom:8px"
+         oninput="chrQuick(this.value)">
+  <table id="chr-table">
+    <tr>{{if .HasPortraits}}<th></th>{{end}}<th>ID</th><th>Name</th><th>Corporation</th><th>Balance</th><th>Station</th><th>Training</th></tr>
+    {{range .Characters}}
+    <tr>
+      {{if $.HasPortraits}}<td style="width:40px"><img src="/portrait/{{.CharacterID}}?size=64" width="36" height="36" style="vertical-align:middle;border-radius:4px;background:var(--bg)" onerror="this.style.display='none'"></td>{{end}}
+      <td>{{.CharacterID}}</td>
+      <td><a href="/character/{{.CharacterID}}">{{.CharacterName}}</a>{{if .IsBotAccount}} <span style="font-size:10px;color:#6b7280;background:#1f2937;padding:1px 4px;border-radius:3px">BOT</span>{{else if .IsBot}} <span title="Main-roster pilot currently driven by the rolebots sim" style="font-size:10px;color:#9acd6a;background:#1f2937;padding:1px 4px;border-radius:3px">BOT-RUN</span>{{end}}</td>
+      <td>{{if .CorporationID}}<a href="/corporation/{{.CorporationID}}">{{.CorpName}}</a>{{else}}-{{end}}</td>
+      <td>{{formatISK .Balance}}</td>
+      <td>{{.StationName}}</td>
+      <td>
+        {{if .TrainingName}}
+          <span class="chr-train"><a href="/skillwindow/{{.CharacterID}}" title="Edit skill queue">{{.TrainingName}} {{romanLevel .TrainingLevel}}</a> <span class="rem">{{filetimeRemaining .TrainingEnd}}</span></span>
+          {{if gt .QueueDepth 0}}<br><span class="chr-queue">+{{.QueueDepth}} queued</span>{{end}}
+        {{else if gt .QueueDepth 0}}
+          <span class="chr-idle">idle</span> <span class="chr-queue"><a href="/skillwindow/{{.CharacterID}}" title="Edit skill queue" style="color:#6b7280">{{.QueueDepth}} queued</a></span>
+        {{else}}
+          <span class="chr-idle"><a href="/skillwindow/{{.CharacterID}}" title="Edit skill queue" style="color:#374151">idle</a></span>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{if gt .PageCount 1}}
+  <div class="chr-pager">
+    Page {{add .PageNum 1}} of {{.PageCount}}
+    {{if gt .PageNum 0}}<a href="{{.Prev}}">&laquo; Prev</a>{{end}}
+    {{if lt (add .PageNum 1) .PageCount}}<a href="{{.Next}}">Next &raquo;</a>{{end}}
+  </div>
+  {{end}}
+</div>
+<script>
+// Quick filter works over the rendered page only, deliberately. The server-side
+// search above it is the one that reaches the other pages; a round trip per
+// keystroke over a roster this size is unusable, which is the same split the
+// station browser settled on.
+function chrQuick(v) {
+  var needle = v.toLowerCase();
+  var rows = document.querySelectorAll('#chr-table tr');
+  for (var i = 1; i < rows.length; i++) {
+    var text = rows[i].textContent.toLowerCase();
+    rows[i].style.display = (needle === '' || text.indexOf(needle) !== -1) ? '' : 'none';
+  }
+}
+</script>
+{{else}}
+<div class="card"><p>No characters found.</p></div>
+{{end}}
+{{end}}
+
+{{template "layout" .}}

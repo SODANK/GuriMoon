@@ -1,0 +1,257 @@
+{{define "content"}}
+<h2>Asteroid Belts</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">What a system's belts hold, and why. Ore is decided by security status first — the empire that owns the space only gates the lowsec specials and the ice. The survey below is produced by running the live belt generator over a scratch copy of the system, so it is the real distribution, not a second guess at it.</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <h3>Persisted belt fields</h3>
+  <p style="font-size:13px;color:#6b7280;margin:-4px 0 12px">A system's belts are stored as one seed, not as rows of rocks — the generator rebuilds the identical field from it on every load, so a hub that empties for ten seconds comes back to the same belt. What is stored per rock is only what has been mined out of it. Regenerating re-rolls the seeds: every system gets a brand new field, and every mined rock is forgotten.</p>
+  {{with .Stats}}
+  <div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:14px">
+    <div><div style="font-size:22px">{{commas .Fields}}</div><div style="font-size:12px;color:#6b7280">systems seeded</div></div>
+    <div><div style="font-size:22px">{{commas .Expired}}</div><div style="font-size:12px;color:#6b7280">past expiry (re-roll on next load)</div></div>
+    <div><div style="font-size:22px">{{commas .DepletionRows}}</div><div style="font-size:12px;color:#6b7280">rocks mined into</div></div>
+    <div><div style="font-size:22px">{{commas .MinedOut}}</div><div style="font-size:12px;color:#6b7280">rocks mined out</div></div>
+    {{if $.OldestAge}}<div><div style="font-size:22px">{{$.OldestAge}}</div><div style="font-size:12px;color:#6b7280">oldest field · newest {{$.NewestAge}}</div></div>{{end}}
+  </div>
+  {{end}}
+  <form method="POST" action="/industry/belts" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <label style="display:block;font-size:12px;color:#6b7280">
+      Regenerate automatically every
+      <br><input type="number" name="days" min="0" max="3650" value="{{.RegenDays}}" style="width:90px"> day(s)
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">
+      Per-rock respawn
+      <br><input type="number" name="respawnMinutes" min="0" max="10080" value="{{.RespawnMinutes}}" style="width:90px"> minute(s)
+    </label>
+    <button type="submit" name="action" value="settings">Save settings</button>
+    <button type="submit" name="action" value="regen-all"
+            onclick="return confirm('Re-roll every asteroid belt in the game? Every system gets a new field and every partly mined rock comes back full. This cannot be undone.');">
+      &#9851; Regenerate every belt in the game
+    </button>
+  </form>
+  <p style="font-size:12px;color:#6b7280;margin:10px 0 0">
+    Both numbers are saved by either button, and <strong>saved before</strong> a regeneration runs, so the fields it mints are the first ones the new cycle governs.
+    <strong>0 days means never.</strong> With per-rock respawn off, nothing tops up a partly mined rock — the regeneration cycle is the only thing that refills a belt, so turning it off makes every field erode permanently. Respawn 0 is the shipped behaviour: belts are meant to drain.
+  </p>
+</div>
+
+<div class="card">
+  <form method="GET" action="/industry/belts" class="search-form" style="margin-bottom:0;position:relative">
+    <input type="text" name="system" id="beltSearch" value="{{.Query}}" placeholder="System name (e.g. Todaki, Old Man Star)…" autocomplete="off" style="flex:1;max-width:420px">
+    <button type="submit">Survey</button>
+    <div id="beltSuggest" style="position:absolute;top:100%;left:0;max-width:420px;width:100%;background:var(--win-deep);border:1px solid var(--line);border-radius:4px;z-index:10;display:none"></div>
+  </form>
+</div>
+
+{{if .NotFound}}
+<div class="alert alert-error">No system found matching "{{.Query}}".</div>
+{{end}}
+
+{{if .Matches}}
+<div class="card">
+  <h3>Multiple matches — pick one</h3>
+  <table>
+    <tr><th>System</th><th>Security</th><th>Region</th><th>Constellation</th><th>Belts</th></tr>
+    {{range .Matches}}
+    <tr>
+      <td><a href="/industry/belts?system={{.SolarSystemID}}">{{.SystemName}}</a></td>
+      <td>{{printf "%.1f" .Security}}</td>
+      <td>{{.RegionName}}</td>
+      <td>{{.ConstellationName}}</td>
+      <td>{{.BeltCount}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+{{with .Belts}}
+<div class="card" style="border-left:4px solid {{.SecColor}}">
+  <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <h3 style="font-size:18px;margin-bottom:0">{{.System.SystemName}}</h3>
+    <span style="color:{{.SecColor}};font-weight:600">{{printf "%.1f" .System.Security}} {{.SecLabel}}</span>
+    <span style="color:#6b7280;font-size:12px">{{.System.RegionName}} › {{.System.ConstellationName}} · {{.System.BeltCount}} asteroid belt{{if ne .System.BeltCount 1}}s{{end}}</span>
+  </div>
+  <div style="font-size:13px;color:#c5c8d0;margin-top:8px">
+    Band: <b>{{.Band}}</b>
+    · Sovereignty: <b>{{if .FactionName}}{{.FactionName}}{{else}}unclaimed{{end}}</b>
+    {{if ne .Bloc "Unclaimed"}}<span style="color:#6b7280">({{.Bloc}} ore bloc)</span>{{end}}
+    · Density class <b>{{.SecClass}}</b>
+    {{if ne .MiningRate 1.0}}· Mining yield rate <b>×{{printf "%.2f" .MiningRate}}</b>{{end}}
+  </div>
+</div>
+
+{{range .Warnings}}
+<div class="alert alert-error">⚠ {{.}}</div>
+{{end}}
+
+<!-- Distribution -->
+<div class="card">
+  <h3>Ore that can spawn here</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Weights are per rock. Every rock rolls a variant on top: 70% base, 20% the 5% variant, 10% the 10% variant.</p>
+  <table>
+    <tr><th>Ore</th><th>Share</th><th>Tier</th><th>m³/unit</th><th>5% variant</th><th>10% variant</th><th>Notes</th></tr>
+    {{range .Ore}}
+    <tr>
+      <td style="font-weight:600;color:#e0e4ec">{{.BaseName}}</td>
+      <td>{{printf "%.1f" .Pct}}%<span style="color:#4b5563;font-size:11px"> (w{{.Weight}})</span></td>
+      <td style="text-transform:capitalize;color:#9ca3af">{{.Tier}}</td>
+      <td>{{printf "%g" .Volume}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{.ConcName}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{.DenseName}}</td>
+      <td style="font-size:12px;color:var(--accent-hi)">{{.Note}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+<!-- Ice -->
+<div class="card">
+  <h3>Ice</h3>
+  {{if .NoIce}}
+  <p style="color:#9ca3af;font-size:13px">{{.IceNote}}</p>
+  {{else}}
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">{{.IceNote}} Ice is 1000 m³ per unit and needs an ice harvester — a mining laser will not touch it.</p>
+  <table>
+    <tr><th>Ice</th><th>Share</th><th>Units per formation</th><th>m³ per formation</th></tr>
+    {{range .Ice}}
+    <tr>
+      <td style="font-weight:600;color:#e0e4ec">{{.Name}}</td>
+      <td>{{printf "%.1f" .Pct}}%<span style="color:#4b5563;font-size:11px"> (w{{.Weight}})</span></td>
+      <td>{{commas .UnitMin}}–{{commas .UnitMax}}</td>
+      <td style="color:#9ca3af">{{commas .VolMin}}–{{commas .VolMax}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{end}}
+</div>
+
+{{if .Deposits}}
+<div class="card">
+  <h3>Deposit clusters</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">In 0.0, some anchor groups spawn as a deposit: 2–3 special ores clustered around one big rock instead of a scatter of the system table. This system's truesec allows:</p>
+  <table>
+    <tr><th>Deposit</th><th>Ores</th></tr>
+    {{range .Deposits}}
+    <tr><td style="font-weight:600;color:#e0e4ec">{{.Name}}</td><td>{{.Ores}}</td></tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<!-- Survey -->
+{{if .Belts}}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <h3>Belt survey — {{.BeltsSimmed}} belt{{if ne .BeltsSimmed 1}}s{{end}}, {{.TotalRocks}} rocks</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      <a href="/industry/belts?system={{.System.SolarSystemID}}"><button type="button">🎲 Re-run survey</button></a>
+      <form method="POST" action="/industry/belts" style="margin:0"
+            onsubmit="return confirm('Re-roll {{.System.SystemName}}’s belts? Every rock in the system is replaced and any partly mined rock comes back full.');">
+        <input type="hidden" name="action" value="regen-one">
+        <input type="hidden" name="system" value="{{.System.SolarSystemID}}">
+        <button type="submit">♻️ Regenerate this system</button>
+      </form>
+    </div>
+  </div>
+  <div style="font-size:13px;color:#c5c8d0;margin:6px 0 10px">
+    {{printf "%.0f" .TotalVolume}} m³ of ore and ice in the ground
+    · {{commas .TotalUnits}} units
+    · {{.IceBelts}} ice field{{if ne .IceBelts 1}}s{{end}}
+  </div>
+  <table>
+    <tr><th>Belt</th><th>Type</th><th>Rocks</th><th>Units</th><th>m³</th><th>Mix</th><th>Biggest rock</th></tr>
+    {{range .Belts}}
+    <tr>
+      <td>{{.Index}}</td>
+      <td style="color:{{if eq .Kind "Ice field"}}#93c5fd{{else}}#9ca3af{{end}}">{{.Kind}}</td>
+      <td>{{.Rocks}}</td>
+      <td>{{commas .Units}}</td>
+      <td>{{printf "%.0f" .Volume}}</td>
+      <td style="font-size:12px">{{.TopOres}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{.Biggest}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+<div class="card">
+  <h3>By ore</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Refined output is the raw table yield at 100% — station efficiency, refining skills and the station's cut all come off the top in game.</p>
+  <table>
+    <tr><th>Ore</th><th>Rocks</th><th>Units</th><th>Avg units/rock</th><th>m³</th><th>Refines into</th></tr>
+    {{range .Ores}}
+    <tr>
+      <td style="font-weight:600;color:#e0e4ec">{{.Family}}</td>
+      <td>{{.Rocks}}</td>
+      <td>{{commas .Units}}</td>
+      <td style="color:#9ca3af">{{commas .AvgUnits}}</td>
+      <td>{{printf "%.0f" .Volume}}</td>
+      <td style="font-size:12px;color:#9ca3af">{{if .Refined}}{{.Refined}}{{else}}<span style="color:#f87171">nothing — no reprocessing rows</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+{{if .Minerals}}
+<div class="card">
+  <h3>Total refined yield</h3>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Everything in the surveyed belts, mined dry and refined at 100%.</p>
+  <table>
+    <tr><th>Material</th><th>Units</th></tr>
+    {{range .Minerals}}
+    <tr><td>{{.Name}}</td><td>{{commas .Amount}}</td></tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>How mining works here</h3>
+  <div style="font-size:13px;color:#c5c8d0;line-height:1.8">
+    Rocks are sized by cargo volume, not unit count — a 20,000 m³ Arkonor rock and a 20,000 m³ Veldspar rock render the same size and take the same time to strip.<br>
+    A depleted rock respawns after <b>5 minutes</b> at its original size, re-rolling only its variant (base/5%/10%) — never its ore.<br>
+    Ice needs an <b>ice harvester</b>; Mercoxit needs a <b>deep core mining laser</b>; an ice harvester cannot chew ordinary ore.<br>
+    Mining crystals match a rock by its ore group, so a Veldspar crystal only boosts yield on Veldspar rocks.
+  </div>
+</div>
+{{end}}
+{{end}}
+
+<script>
+(function(){
+  var box = document.getElementById('beltSearch');
+  var sug = document.getElementById('beltSuggest');
+  var t;
+  box.addEventListener('input', function(){
+    clearTimeout(t);
+    var q = box.value.trim();
+    if (q.length < 2) { sug.style.display = 'none'; return; }
+    t = setTimeout(function(){
+      fetch('/systems/api?q=' + encodeURIComponent(q))
+        .then(function(r){ return r.json(); })
+        .then(function(list){
+          if (!list.length) { sug.style.display = 'none'; return; }
+          sug.innerHTML = '';
+          list.slice(0, 10).forEach(function(s){
+            var a = document.createElement('a');
+            a.href = '/industry/belts?system=' + s.id;
+            a.style.cssText = 'display:block;padding:8px 12px;font-size:13px;border-bottom:1px solid var(--line-soft)';
+            a.textContent = s.name + '  (' + s.security.toFixed(1) + ', ' + s.region + ')';
+            sug.appendChild(a);
+          });
+          sug.style.display = 'block';
+        });
+    }, 200);
+  });
+  document.addEventListener('click', function(e){
+    if (!sug.contains(e.target) && e.target !== box) sug.style.display = 'none';
+  });
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

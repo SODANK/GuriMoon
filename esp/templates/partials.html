@@ -1,0 +1,1293 @@
+{{define "npcform"}}
+{{/*
+  The Create NPC menu, shared by the create page (/npcs/new) and the edit page (/npc/{id}).
+  One <form> spans every tab, so a save posts all of them. Tab keys match the Tab of each
+  db.NPCSpecProblem, which is how a failed save opens the right tab. Fields show people units
+  (seconds, percent); esp/npcseed.go specFromForm converts them. docs/npc-authoring.md lists
+  what each field writes.
+*/}}
+{{$s := .Spec}}
+<style>
+.nf { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 0; align-items: start; margin-bottom: 70px; }
+.nf-nav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 12px; }
+.nf-nav button { text-align: left; background: none; border: 1px solid transparent; border-right: none; border-radius: 6px 0 0 6px; color: #9ca3af; padding: 8px 12px; font-size: 13px; }
+.nf-nav button:hover { background: var(--win); color: #e0e4ec; }
+.nf-nav button.on { background: var(--win); border-color: var(--line); color: #e0e4ec; font-weight: 600; }
+.nf-nav .num { display: inline-block; width: 18px; color: #6b7280; font-size: 11px; }
+.nf-nav button.err::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: #f87171; vertical-align: middle; }
+.nf-panel { background: var(--win); border: 1px solid var(--line); border-radius: 0 6px 6px 6px; padding: 16px 20px 18px; min-height: 420px; }
+.nf-panel > h3 { font-size: 16px; color: #e0e4ec; margin: 0 0 4px; }
+.nf-panel > .intro { font-size: 12px; color: #9ca3af; margin: 0 0 16px; max-width: 900px; line-height: 1.5; }
+.nf-panel h4 { font-size: 12px; color: #c5c8d0; text-transform: uppercase; letter-spacing: .5px; margin: 18px 0 8px; }
+.nf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px 22px; max-width: 1100px; }
+.nf-field label { display: block; font-size: 12px; color: #c5c8d0; margin-bottom: 4px; }
+.nf-field input[type="number"], .nf-field input[type="text"], .nf-field select { width: 100%; max-width: 240px; box-sizing: border-box; }
+.nf-field .u { font-size: 11px; color: #6b7280; margin-left: 4px; }
+.nf-field .h { font-size: 11px; color: #6b7280; margin-top: 4px; line-height: 1.4; }
+.nf-field.wide { grid-column: 1 / -1; }
+.nf-field.wide input[type="text"], .nf-field.wide textarea, .nf-field.wide select { max-width: 520px; width: 100%; }
+.nf-note { font-size: 12px; color: #9ca3af; background: var(--win-deep); border: 1px solid var(--line-soft); border-radius: 4px; padding: 8px 12px; margin-top: 14px; max-width: 900px; line-height: 1.5; }
+.nf-note.warn { color: #fbbf24; }
+.nf-res td { padding: 4px 8px; }
+.nf-res input { width: 90px; }
+.nf-arch { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; max-width: 1100px; }
+.nf-arch button { text-align: left; background: var(--win-deep); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; color: #e0e4ec; }
+.nf-arch button:hover { border-color: var(--accent); }
+.nf-arch button.on { border-color: var(--accent); background: var(--win-sel); }
+.nf-arch .t { font-weight: 600; display: block; }
+.nf-arch .d { font-size: 11px; color: #9ca3af; display: block; margin-top: 3px; font-weight: 400; }
+.nf-ewar { border: 1px solid var(--line-soft); border-radius: 4px; padding: 10px 12px; margin-bottom: 8px; max-width: 1100px; background: var(--win-deep); }
+.nf-ewar > label { font-weight: 600; color: #e0e4ec; cursor: pointer; }
+.nf-ewar .h { font-size: 11px; color: #6b7280; margin-left: 6px; font-weight: 400; }
+.nf-ewar .nf-grid { margin-top: 10px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.nf-ewar .nf-field input { max-width: 150px; }
+.nf-sum { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; max-width: 1100px; }
+.nf-sum div { background: var(--win-deep); border: 1px solid var(--line-soft); border-radius: 4px; padding: 10px 12px; }
+.nf-sum .k { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: .5px; }
+.nf-sum .v { font-size: 18px; color: #e0e4ec; margin-top: 2px; }
+.nf-warn li { color: #fbbf24; font-size: 12px; margin: 4px 0; }
+.nf-ok { color: #6ee7b7; font-size: 12px; }
+.nf-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: var(--win-deep); border-top: 1px solid var(--line); padding: 10px 24px; display: flex; gap: 14px; align-items: center; justify-content: flex-end; }
+.nf-bar .what { color: #9ca3af; font-size: 12px; margin-right: auto; }
+.nf-bar button[type="submit"] { padding: 8px 22px; font-weight: 600; }
+.nf-problems { margin: 0 0 14px; padding-left: 18px; }
+.nf-problems a { color: #fca5a5; }
+@media (max-width: 900px) { .nf { grid-template-columns: 1fr; } .nf-nav { flex-direction: row; flex-wrap: wrap; position: static; } .nf-nav button { border-radius: 6px; border-right: 1px solid transparent; } .nf-panel { border-radius: 6px; } }
+</style>
+
+{{if .Problems}}
+<div class="alert alert-error">
+  <div style="margin-bottom:6px">The NPC was not saved. Fix these, then save again:</div>
+  <ul class="nf-problems">
+    {{range .Problems}}<li><a href="#" data-goto="{{.Tab}}">{{.Msg}}</a></li>{{end}}
+  </ul>
+</div>
+{{end}}
+
+<input type="hidden" name="tab" id="nfTab" value="{{.OpenTab}}">
+<input type="hidden" name="archetype" id="nfArchetype" value="{{.Archetype}}">
+<input type="hidden" name="cloneFrom" value="{{$s.CloneFromTypeID}}">
+
+<div class="nf" id="npcForm" data-open="{{if .OpenTab}}{{.OpenTab}}{{else if .IsNew}}start{{else}}identity{{end}}">
+  <nav class="nf-nav">
+    {{range $i, $t := .Tabs}}
+    <button type="button" data-tab="{{$t.Key}}" {{if $.ErrTabs}}{{if index $.ErrTabs $t.Key}}class="err"{{end}}{{end}}><span class="num">{{add $i 1}}</span>{{$t.Label}}</button>
+    {{end}}
+  </nav>
+
+  <div>
+  <!-- 1. Start -->
+  <div class="nf-panel" data-panel="start">
+    <h3>Start from a hull class</h3>
+    <p class="intro">
+      Pick the class closest to what you want. It fills movement, defence, weapons, sensors, behaviour and bounty with
+      values that suit that class. Name, group, race and model are left alone. Then adjust any tab.
+      Nothing is saved until you press <b>{{if .IsNew}}Create NPC{{else}}Save NPC{{end}}</b>.
+    </p>
+    {{if $s.CloneFromTypeID}}
+    <div class="nf-note">Cloned from <a href="/npc/{{$s.CloneFromTypeID}}">{{if .CloneName}}{{.CloneName}}{{else}}type {{$s.CloneFromTypeID}}{{end}}</a> ({{$s.CloneFromTypeID}}).
+      Every value below came from it. Attributes this menu has no field for are copied across too when you create.</div>
+    {{end}}
+    <div class="nf-arch" style="margin-top:12px">
+      {{range .Archetypes}}
+      <button type="button" data-arch="{{.Key}}" {{if eq $.Archetype .Key}}class="on"{{end}}>
+        <span class="t">{{.Label}}</span><span class="d">{{.Note}}</span>
+      </button>
+      {{end}}
+    </div>
+  </div>
+
+  <!-- 2. Identity -->
+  <div class="nf-panel" data-panel="identity">
+    <h3>Identity</h3>
+    <p class="intro">What the NPC is called and what kind of entity the client treats it as.</p>
+    <div class="nf-grid">
+      <div class="nf-field wide">
+        <label for="nfName">Name</label>
+        <input type="text" id="nfName" name="typeName" value="{{$s.TypeName}}" placeholder="e.g. Guristas Shadow Raider">
+        <div class="h">Shown on the overview, in the bounty journal and on killmails.</div>
+      </div>
+      <div class="nf-field wide">
+        <label for="nfGroup">Group</label>
+        <select id="nfGroup" name="groupID">
+          <option value="">Pick an entity group</option>
+          {{range .Groups}}
+          <option value="{{.GroupID}}" {{if eq .GroupID $s.GroupID}}selected{{end}}>{{.GroupName}} ({{.GroupID}})</option>
+          {{end}}
+        </select>
+        <div class="h">The group sets the turret size the client draws, the loot table the NPC inherits, radio chatter,
+          and whether a 0-speed NPC counts as a structure.</div>
+        <div class="nf-note" id="nfLoot">
+          {{$gl := index .GroupLoot $s.GroupID}}
+          {{if $gl.Entries}}<b>Loot:</b> inherits {{$gl.Entries}} loot entries from this group{{if $gl.Cap}}, at most {{$gl.Cap}} drops per kill{{end}}.
+            <a href="/loot/group/{{$s.GroupID}}">Edit group loot</a>
+          {{else if $s.GroupID}}<b>Loot:</b> this group has no loot table, so the NPC drops nothing unless it gets its own.
+            <a href="/loot/group/{{$s.GroupID}}">Set up group loot</a>
+          {{else}}<b>Loot</b> comes from the group's loot table. Pick a group to see it.{{end}}
+        </div>
+      </div>
+      <div class="nf-field">
+        <label for="nfRace">Race</label>
+        <select id="nfRace" name="raceID">
+          {{$r := $s.RaceID}}
+          {{if not (inList "0,1,2,4,8,16" $r)}}<option value="{{$r}}" selected>Race {{$r}} (keep)</option>{{end}}
+          <option value="0" {{if eq $r 0}}selected{{end}}>None</option>
+          <option value="1" {{if eq $r 1}}selected{{end}}>Caldari</option>
+          <option value="2" {{if eq $r 2}}selected{{end}}>Minmatar</option>
+          <option value="4" {{if eq $r 4}}selected{{end}}>Amarr</option>
+          <option value="8" {{if eq $r 8}}selected{{end}}>Gallente</option>
+          <option value="16" {{if eq $r 16}}selected{{end}}>Jove</option>
+        </select>
+        <div class="h">Display only. Faction and hostility come from where it spawns (see Rewards &amp; spawning).</div>
+      </div>
+      <div class="nf-field">
+        <label><input type="checkbox" name="published" value="1" {{if $s.Published}}checked{{end}}> Published</label>
+        <div class="h">Visible in the client's type browser and show-info.</div>
+      </div>
+      <div class="nf-field wide">
+        <label for="nfDesc">Description</label>
+        <textarea id="nfDesc" name="description" rows="3">{{$s.Description}}</textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Model -->
+  <div class="nf-panel" data-panel="model">
+    <h3>Model</h3>
+    <p class="intro">The 3D hull the client draws. Without one the NPC is invisible, so a model is required.</p>
+    <input type="hidden" name="graphicID" id="graphicID" value="{{$s.GraphicID}}">
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+      <div style="min-width:280px;flex:1">
+        <div id="graphicSummary" style="font-size:13px">
+          {{if .Graphic}}
+            <div style="display:flex;gap:10px;align-items:center">
+              <img id="graphicSummaryIcon" src="/gidicon/{{.Graphic.GraphicID}}.png?size=64" width="48" height="48"
+                   data-gid="{{.Graphic.GraphicID}}" data-hasmodel="{{if .Graphic.HasModel}}1{{else}}0{{end}}"
+                   style="border-radius:4px;background:var(--bg);border:1px solid var(--line)"
+                   onerror="this.style.display='none';this.dataset.failed='1'">
+              <div>
+                <div style="font-weight:600">{{if .Graphic.Name}}{{.Graphic.Name}}{{else}}Graphic {{.Graphic.GraphicID}}{{end}}</div>
+                <div style="color:#6b7280;font-size:11px">{{.Graphic.Description}} · graphicID {{.Graphic.GraphicID}}</div>
+                <div style="color:#4b5563;font-size:11px">{{.Graphic.URL3D}}</div>
+              </div>
+            </div>
+          {{else}}
+            <span style="color:#fbbf24">No model picked yet.</span>
+          {{end}}
+        </div>
+        <button type="button" onclick="openModelPicker()" style="margin-top:10px">Choose model…</button>
+        <div class="h" style="font-size:11px;color:#6b7280;margin-top:6px">
+          Model → <code>eveGraphics.url3D</code>, the <code>.blue</code> file the client loads from its own resources.
+        </div>
+      </div>
+      {{if and .HasModels .Graphic}}{{if .Graphic.HasModel}}
+      <div style="flex:1;min-width:300px">
+        <div id="npcFormModelViewer" data-url="/api/graphicmodel/{{.Graphic.GraphicID}}.glb" style="width:100%;height:280px"></div>
+      </div>
+      {{end}}{{end}}
+    </div>
+  </div>
+
+  <!-- 4. Movement -->
+  <div class="nf-panel" data-panel="movement">
+    <h3>Size &amp; movement</h3>
+    <p class="intro">How big and heavy the hull is and how fast it flies.</p>
+    <div class="nf-grid">
+      <div class="nf-field">
+        <label>Cruise speed <span class="u">m/s</span></label>
+        <input type="number" name="cruiseSpeed" value="{{num $s.CruiseSpeed}}" step="any" min="0">
+        <div class="h">The speed it actually flies at. 0 makes it a still object: scenery, unless its group is a structure or sentry.</div>
+      </div>
+      <div class="nf-field">
+        <label>Max velocity <span class="u">m/s</span></label>
+        <input type="number" name="maxVelocity" value="{{num $s.MaxVelocity}}" step="any" min="0">
+        <div class="h">Only used when cruise speed is 0. Keep it equal to cruise speed.</div>
+      </div>
+      <div class="nf-field">
+        <label>Agility</label>
+        <input type="number" name="agility" value="{{num $s.Agility}}" step="any" min="0">
+        <div class="h">Inertia modifier: higher turns and accelerates slower.</div>
+      </div>
+      <div class="nf-field">
+        <label>Mass <span class="u">kg</span></label>
+        <input type="number" name="mass" value="{{num $s.Mass}}" step="any" min="0">
+      </div>
+      <div class="nf-field">
+        <label>Radius <span class="u">m</span></label>
+        <input type="number" name="radius" value="{{num $s.Radius}}" step="any" min="0">
+        <div class="h">Collision size; orbits and ranges are measured from this surface.</div>
+      </div>
+      <div class="nf-field">
+        <label>Volume <span class="u">m³</span></label>
+        <input type="number" name="volume" value="{{num $s.Volume}}" step="any" min="0">
+      </div>
+      <div class="nf-field">
+        <label>Capacity <span class="u">m³</span></label>
+        <input type="number" name="capacity" value="{{num $s.Capacity}}" step="any" min="0">
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Defence -->
+  <div class="nf-panel" data-panel="defence">
+    <h3>Defence</h3>
+    <p class="intro">Hit points per layer and how much of each damage type every layer resists. Damage goes shield → armor → structure.</p>
+    <div class="nf-grid">
+      <div class="nf-field">
+        <label>Shield HP</label>
+        <input type="number" name="shieldHP" value="{{num $s.ShieldHP}}" step="any" min="0">
+      </div>
+      <div class="nf-field">
+        <label>Armor HP</label>
+        <input type="number" name="armorHP" value="{{num $s.ArmorHP}}" step="any" min="0">
+      </div>
+      <div class="nf-field">
+        <label>Structure HP</label>
+        <input type="number" name="structureHP" value="{{num $s.StructureHP}}" step="any" min="0">
+        <div class="h">Must be above 0.</div>
+      </div>
+      <div class="nf-field">
+        <label>Shield recharge <span class="u">seconds</span></label>
+        <input type="number" name="shieldRechargeSec" value="{{msToSec $s.ShieldRechargeMs}}" step="any" min="0">
+        <div class="h">Time to refill an empty shield. Blank uses 100 s.</div>
+      </div>
+    </div>
+    <h4>Resists <span style="text-transform:none;letter-spacing:0;color:#6b7280;font-weight:400">percent of damage blocked: 0 = takes full damage, 75 = takes a quarter. Under 100.</span></h4>
+    <table class="nf-res" style="width:auto">
+      <tr><th></th><th>EM</th><th>Explosive</th><th>Kinetic</th><th>Thermal</th></tr>
+      <tr>
+        <td style="color:#9ca3af">Shield</td>
+        <td><input type="number" name="shieldResistEm" value="{{resistPct (index $s.ShieldRes 0)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="shieldResistExp" value="{{resistPct (index $s.ShieldRes 1)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="shieldResistKin" value="{{resistPct (index $s.ShieldRes 2)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="shieldResistTherm" value="{{resistPct (index $s.ShieldRes 3)}}" step="any" min="0" max="99.99"></td>
+      </tr>
+      <tr>
+        <td style="color:#9ca3af">Armor</td>
+        <td><input type="number" name="armorResistEm" value="{{resistPct (index $s.ArmorRes 0)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="armorResistExp" value="{{resistPct (index $s.ArmorRes 1)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="armorResistKin" value="{{resistPct (index $s.ArmorRes 2)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="armorResistTherm" value="{{resistPct (index $s.ArmorRes 3)}}" step="any" min="0" max="99.99"></td>
+      </tr>
+      <tr>
+        <td style="color:#9ca3af">Structure</td>
+        <td><input type="number" name="hullResistEm" value="{{resistPct (index $s.HullRes 0)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="hullResistExp" value="{{resistPct (index $s.HullRes 1)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="hullResistKin" value="{{resistPct (index $s.HullRes 2)}}" step="any" min="0" max="99.99"></td>
+        <td><input type="number" name="hullResistTherm" value="{{resistPct (index $s.HullRes 3)}}" step="any" min="0" max="99.99"></td>
+      </tr>
+    </table>
+    <div class="nf-note">An NPC that cannot be hurt at all is set per placement: the <b>Invulnerable</b> toggle on a dungeon ball, not a resist here.</div>
+  </div>
+
+  <!-- 6. Weapons -->
+  <div class="nf-panel" data-panel="weapons">
+    <h3>Weapons</h3>
+    <p class="intro">What the NPC shoots with. Damage is per cycle, before the target's resists.</p>
+    <div style="margin-bottom:14px">
+      <label style="margin-right:18px"><input type="radio" name="weaponKind" value="turret" {{if eq $s.WeaponKind "turret"}}checked{{end}}> Turrets</label>
+      <label style="margin-right:18px"><input type="radio" name="weaponKind" value="missile" {{if eq $s.WeaponKind "missile"}}checked{{end}}> Missiles</label>
+      <label><input type="radio" name="weaponKind" value="none" {{if eq $s.WeaponKind "none"}}checked{{end}}> Unarmed</label>
+    </div>
+    <div id="nfUnarmedNote" class="nf-note">Unarmed: the NPC never shoots. In belts an unarmed, moving NPC runs away when attacked. It can still use electronic warfare.</div>
+
+    <div id="weaponFields">
+      <h4>Damage</h4>
+      <div class="nf-grid">
+        <div class="nf-field">
+          <label>Damage type</label>
+          <select name="damageFlavour" id="damageFlavour">
+            {{range .Flavours}}
+            <option value="{{.Key}}" {{if eq $.Flavour .Key}}selected{{end}}>{{.Label}}</option>
+            {{end}}
+            <option value="custom" {{if eq .Flavour "custom"}}selected{{end}}>Custom (enter each type)</option>
+          </select>
+          <div class="h">A preset splits the total like that weapon family and makes the client draw matching guns.</div>
+        </div>
+        <div class="nf-field" id="damageTotalWrap">
+          <label>Total damage <span class="u">per cycle</span></label>
+          <input type="number" name="damageTotal" id="damageTotal" value="{{num (sumf $s.DamageEM $s.DamageExp $s.DamageKin $s.DamageTherm)}}" step="any" min="0">
+          <div class="h" id="dmgPreview"></div>
+        </div>
+      </div>
+      <div class="nf-grid" id="damageCustomRow" style="margin-top:10px">
+        <div class="nf-field"><label>EM</label><input type="number" name="damageEM" value="{{num $s.DamageEM}}" step="any" min="0"></div>
+        <div class="nf-field"><label>Explosive</label><input type="number" name="damageExp" value="{{num $s.DamageExp}}" step="any" min="0"></div>
+        <div class="nf-field"><label>Kinetic</label><input type="number" name="damageKin" value="{{num $s.DamageKin}}" step="any" min="0"></div>
+        <div class="nf-field"><label>Thermal</label><input type="number" name="damageTherm" value="{{num $s.DamageTherm}}" step="any" min="0"></div>
+        <div class="nf-field wide"><div class="h">The two biggest types pick the gun model: EM + thermal → laser, kinetic + thermal → hybrid, kinetic + explosive → projectile.</div></div>
+      </div>
+
+      <h4>Firing</h4>
+      <div class="nf-grid">
+        <div class="nf-field">
+          <label>Rate of fire <span class="u">seconds per cycle</span></label>
+          <input type="number" name="cycleTimeSec" value="{{msToSec $s.CycleTimeMs}}" step="any" min="0">
+        </div>
+        <div class="nf-field">
+          <label>Damage multiplier</label>
+          <input type="number" name="multiplier" value="{{num $s.Multiplier}}" step="any" min="0">
+          <div class="h">Scales every shot. 1 = as entered.</div>
+        </div>
+        <div class="nf-field">
+          <label>Optimal range <span class="u">m</span></label>
+          <input type="number" name="optimalRange" value="{{num $s.OptimalRange}}" step="any" min="0">
+        </div>
+        <div class="nf-field">
+          <label>Falloff <span class="u">m</span></label>
+          <input type="number" name="falloff" value="{{num $s.Falloff}}" step="any" min="0">
+          <div class="h">Past optimal, hit chance fades to zero over two falloffs.</div>
+        </div>
+        <div class="nf-field">
+          <label>Signature resolution <span class="u">m</span></label>
+          <input type="number" name="weaponSigRes" value="{{num $s.WeaponSigRes}}" step="any" min="0">
+          <div class="h">Target size the guns are built for. 0 picks by group: small 40, medium 125, large 400.</div>
+        </div>
+      </div>
+
+      <div class="turretOnly">
+        <h4>Turrets</h4>
+        <div class="nf-grid">
+          <div class="nf-field">
+            <label>Tracking speed <span class="u">rad/s</span></label>
+            <input type="number" name="trackingSpeed" value="{{num $s.TrackingSpeed}}" step="any" min="0">
+            <div class="h">How well it hits fast-orbiting targets. 0 = never misses from tracking.</div>
+          </div>
+          <div class="nf-field">
+            <label>Turret hardpoints</label>
+            <input type="number" name="turretSlots" value="{{num $s.TurretSlots}}" step="1" min="0">
+            <div class="h">How many guns the client draws on the hull.</div>
+          </div>
+          <div class="nf-field">
+            <label>Gun model override <span class="u">typeID</span></label>
+            <input type="number" name="turretTypeIDOverride" value="{{$s.TurretTypeIDOverride}}" step="1" min="0">
+            <div class="h">0 picks the gun from the damage type. Set a turret typeID for mining lasers, capital guns and the like.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="missileOnly">
+        <h4>Missiles</h4>
+        <div class="nf-grid">
+          <div class="nf-field wide">
+            <label>Missile type</label>
+            <input type="hidden" name="missileTypeID" id="missileTypeID" value="{{$s.MissileTypeID}}">
+            <span id="missileSummary">{{if $s.MissileTypeID}}{{.MissileName}} <span style="color:#6b7280">({{$s.MissileTypeID}})</span>{{else}}<span style="color:#fbbf24">none picked</span>{{end}}</span>
+            <button type="button" onclick="openMissilePicker()" style="margin-left:8px">Choose…</button>
+            <div class="h">Range is the missile's speed × flight time.</div>
+          </div>
+          <div class="nf-field">
+            <label>Missile damage multiplier</label>
+            <input type="number" name="missileMult" value="{{num $s.MissileMult}}" step="any" min="0">
+            <div class="h">Only used when the NPC's own damage is 0 and the missile's damage applies.</div>
+          </div>
+          <div class="nf-field">
+            <label>&nbsp;</label>
+            <button type="button" id="useMissileDamage">Use the missile's own damage</button>
+            <div class="h">Clears the NPC's damage so the missile type's damage × the multiplier above is used.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. Electronic warfare -->
+  <div class="nf-panel" data-panel="ewar">
+    <h3>Electronic warfare</h3>
+    <p class="intro">Tick what the NPC can use. Each cycle it rolls the chance against its current target when that target is in range.
+      Falloff lowers the chance past range. An NPC with any of these counts as armed even without guns.</p>
+    {{range $i, $k := .EwarKinds}}
+    {{$e := index $s.Ewar $i}}
+    <div class="nf-ewar">
+      <label><input type="checkbox" name="ewar_{{$k.Key}}_on" value="1" class="ewarOn" data-key="{{$k.Key}}" {{if ne $e.Chance 0.0}}checked{{end}}> {{$k.Label}}</label>
+      <span class="h">{{$k.Help}}</span>
+      <div class="nf-grid" id="ewar_{{$k.Key}}_fields"
+           data-default-chance="{{fracPct $k.Default.Chance}}" data-default-duration="{{msToSec $k.Default.DurationMs}}"
+           data-default-range="{{num $k.Default.Range}}" data-default-falloff="{{num $k.Default.Falloff}}"
+           data-default-effect="{{num ($k.EffectToForm $k.Default.Effect)}}">
+        <div class="nf-field">
+          <label>Chance <span class="u">% per cycle</span></label>
+          <input type="number" name="ewar_{{$k.Key}}_chance" value="{{if gt $e.Chance 0.0}}{{fracPct $e.Chance}}{{end}}" step="any" min="0" max="100">
+        </div>
+        {{if $k.HasDuration}}
+        <div class="nf-field">
+          <label>Duration <span class="u">seconds</span></label>
+          <input type="number" name="ewar_{{$k.Key}}_duration" value="{{if gt $e.Chance 0.0}}{{msToSec $e.DurationMs}}{{end}}" step="any" min="0">
+        </div>
+        {{end}}
+        <div class="nf-field">
+          <label>Range <span class="u">m</span></label>
+          <input type="number" name="ewar_{{$k.Key}}_range" value="{{if gt $e.Chance 0.0}}{{num $e.Range}}{{end}}" step="any" min="0">
+          {{if eq $k.Key "scram"}}<div class="h">Blank or 0 uses the weapon range, capped at 20 km.</div>{{end}}
+        </div>
+        {{if $k.HasFalloff}}
+        <div class="nf-field">
+          <label>Falloff <span class="u">m</span></label>
+          <input type="number" name="ewar_{{$k.Key}}_falloff" value="{{if gt $e.Chance 0.0}}{{num $e.Falloff}}{{end}}" step="any" min="0">
+        </div>
+        {{end}}
+        {{if $k.EffectLabel}}
+        <div class="nf-field">
+          <label>{{$k.EffectLabel}} <span class="u">{{$k.EffectUnit}}</span></label>
+          <input type="number" name="ewar_{{$k.Key}}_effect" value="{{if gt $e.Chance 0.0}}{{num ($k.EffectToForm $e.Effect)}}{{end}}" step="any" min="0">
+          <div class="h">{{$k.EffectHelp}}</div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+  </div>
+
+  <!-- 8. Sensors -->
+  <div class="nf-panel" data-panel="sensors">
+    <h3>Sensors &amp; signature</h3>
+    <p class="intro">How hard the NPC is to jam and how easy it is to hit.</p>
+    <div class="nf-grid">
+      <div class="nf-field">
+        <label>Sensor type</label>
+        <select name="sensorAttr">
+          <option value="208" {{if eq $s.SensorAttr 208}}selected{{end}}>Radar (Amarr)</option>
+          <option value="209" {{if eq $s.SensorAttr 209}}selected{{end}}>Ladar (Minmatar)</option>
+          <option value="210" {{if eq $s.SensorAttr 210}}selected{{end}}>Magnetometric (Gallente)</option>
+          <option value="211" {{if eq $s.SensorAttr 211}}selected{{end}}>Gravimetric (Caldari)</option>
+        </select>
+        <div class="h">Racial ECM of the matching type jams it best.</div>
+      </div>
+      <div class="nf-field">
+        <label>Sensor strength <span class="u">points</span></label>
+        <input type="number" name="sensorStrength" id="sensorStrength" value="{{num $s.SensorStrength}}" step="any" min="0">
+        <div class="h">Higher resists ECM. Frigates around 8, cruisers 14, battleships 20.</div>
+      </div>
+      <div class="nf-field">
+        <label>Signature radius <span class="u">m</span></label>
+        <input type="number" name="sigRadius" value="{{num $s.SigRadius}}" step="any" min="0">
+        <div class="h">How big a target it is: bigger is locked faster and hit harder. Blank uses 125 m.</div>
+      </div>
+    </div>
+    <div class="nf-note warn" id="nfSensorWarn">Sensor strength 0: every ECM cycle against this NPC jams it.</div>
+  </div>
+
+  <!-- 9. Behaviour -->
+  <div class="nf-panel" data-panel="behaviour">
+    <h3>Behaviour</h3>
+    <p class="intro">How the NPC moves around its target and when it engages.
+      Stance (aggressive, defensive, passive) is set where it spawns.</p>
+    <div class="nf-grid">
+      <div class="nf-field">
+        <label>Orbit range <span class="u">m</span></label>
+        <input type="number" name="flyRange" value="{{num $s.FlyRange}}" step="any" min="0">
+        <div class="h">Distance it orbits its target at.</div>
+      </div>
+      <div class="nf-field">
+        <label>Attack range <span class="u">m</span></label>
+        <input type="number" name="attackRange" id="attackRange" value="{{num $s.AttackRange}}" step="any" min="0">
+        <div class="h" id="attackFloor"></div>
+      </div>
+      <div class="nf-field">
+        <label>Chase range <span class="u">m</span></label>
+        <input type="number" name="chaseMaxDist" value="{{num $s.ChaseMaxDist}}" step="any" min="0">
+        <div class="h">How far it follows a target before giving up. It aggroes at the larger of attack and chase range.</div>
+      </div>
+      <div class="nf-field">
+        <label>First-shot delay, shortest <span class="u">seconds</span></label>
+        <input type="number" name="attackDelayMinSec" value="{{msToSec $s.AttackDelayMinMs}}" step="any" min="0">
+      </div>
+      <div class="nf-field">
+        <label>First-shot delay, longest <span class="u">seconds</span></label>
+        <input type="number" name="attackDelayMaxSec" value="{{msToSec $s.AttackDelayMaxMs}}" step="any" min="0">
+        <div class="h">Random wait before its first shot at a new target. Capped at 5 s. Blank uses 1 s.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 10. Rewards & spawning -->
+  <div class="nf-panel" data-panel="rewards">
+    <h3>Rewards &amp; spawning</h3>
+    <p class="intro">What a pilot gets for the kill, and where to make the NPC appear.</p>
+    <div class="nf-grid">
+      <div class="nf-field">
+        <label>Bounty <span class="u">ISK</span></label>
+        <input type="number" name="bounty" value="{{num $s.Bounty}}" step="any" min="0">
+        <div class="h">Before the server's bounty rate. With 0 the kill also costs no faction standing.</div>
+      </div>
+      <div class="nf-field">
+        <label>Security status gain <span class="u">% of gap to +5.0</span></label>
+        <input type="text" name="secBonusPct" value="{{if $s.HasSecStatusBonus}}{{fracPct $s.SecStatusBonus}}{{end}}" placeholder="blank = server default">
+        <div class="h">Share of the killer's distance to +5.0 a kill gives. Stock rats use 0.1 to 1. Blank uses the server's flat rate (only with a bounty); 0 gives nothing.</div>
+      </div>
+    </div>
+    <h4>Where it spawns</h4>
+    <div class="nf-note">
+      Faction, owner corporation and role (normal, commander, officer) are set where the NPC is placed, not here.
+      The faction decides who it fights alongside and whose standing drops when it dies; the role picks commander and officer loot.
+      <ul style="margin:8px 0 0 18px">
+        <li><b>Asteroid belts:</b> add it to a region on <a href="/region-spawns">Region Spawns</a> with a faction and role.</li>
+        <li><b>Dungeons and sites:</b> place it in a room in the <a href="/dungeons">dungeon editor</a>; the dungeon sets the faction.</li>
+        <li><b>Testing:</b> in space, type <code>/spawn {{if $s.TypeID}}{{$s.TypeID}}{{else}}&lt;typeID&gt;{{end}}</code>. It spawns with no faction, so it fights everyone.</li>
+      </ul>
+    </div>
+    {{if .SpawnListings}}
+    <h4>Belt listings for this NPC</h4>
+    <table class="rows" style="width:auto">
+      <tr><th>Region</th><th>Max sec</th><th>Weight</th><th>Class</th><th>Role</th><th>Faction</th></tr>
+      {{range .SpawnListings}}
+      <tr><td><a href="/region-spawns/{{.RegionID}}">{{if .RegionName}}{{.RegionName}}{{else}}{{.RegionID}}{{end}}</a></td>
+        <td>{{printf "%.1f" .MaxSec}}</td><td>{{.Weight}}</td><td>{{.ShipClass}}</td><td>{{.Role}}</td><td>{{if .FactionID}}{{.FactionID}}{{else}}<span class="sub">default</span>{{end}}</td></tr>
+      {{end}}
+    </table>
+    {{else if not .IsNew}}
+    <p style="font-size:12px;color:#6b7280;margin-top:10px">Not listed in any region's belts yet.</p>
+    {{end}}
+  </div>
+
+  <!-- 11. Review -->
+  <div class="nf-panel" data-panel="review">
+    <h3>Review</h3>
+    <p class="intro">A summary of what you entered, updated as you type. Problems the server would refuse are also checked when you save.</p>
+    <div class="nf-sum" id="nfSummary"></div>
+    <h4>Check before saving</h4>
+    <ul class="nf-warn" id="nfWarnings" style="padding-left:18px"></ul>
+  </div>
+  </div>
+</div>
+
+<div class="nf-bar">
+  <span class="what" id="nfBarWhat"></span>
+  {{if and (not .IsNew) (not .IsCustom)}}
+  <label style="font-size:12px;color:#fbbf24"><input type="checkbox" name="confirmStock" value="1"> Overwrite this stock game type</label>
+  {{end}}
+  <button type="button" id="nfPrev">&larr; Back</button>
+  <button type="button" id="nfNext">Next &rarr;</button>
+  <button type="submit">{{if .IsNew}}Create NPC{{else}}Save NPC{{end}}</button>
+</div>
+
+<!-- Model picker -->
+<div id="modelPicker" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;overflow:auto;padding:40px 20px">
+  <div style="max-width:1000px;margin:0 auto;background:var(--win-deep);border:1px solid var(--line);border-radius:6px;padding:16px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;flex:1">Choose a model</h3>
+      <select id="modelScope" onchange="loadModels()">
+        <option value="ship">Ship hulls</option>
+        <option value="all">All models</option>
+      </select>
+      <input type="text" id="modelQuery" placeholder="Search name / class / path…" style="width:260px" oninput="modelSearchDebounced()">
+      <button type="button" onclick="rescanModels()" title="Re-index the converted .glb directories on disk">Rescan models</button>
+      <button type="button" onclick="closeModelPicker()">Close</button>
+    </div>
+    <div id="modelStatus" style="font-size:11px;color:#6b7280;margin-bottom:8px"></div>
+    <div id="modelResults" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px"></div>
+  </div>
+</div>
+
+<!-- Missile picker -->
+<div id="missilePicker" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:100;overflow:auto;padding:40px 20px">
+  <div style="max-width:700px;margin:0 auto;background:var(--win-deep);border:1px solid var(--line);border-radius:6px;padding:16px">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;flex:1">Choose a missile type</h3>
+      <input type="text" id="missileQuery" placeholder="Search…" style="width:240px" oninput="missileSearchDebounced()">
+      <button type="button" onclick="closeMissilePicker()">Close</button>
+    </div>
+    <div id="missileResults"></div>
+  </div>
+</div>
+
+<script>
+var HAS_MODELS = {{if .HasModels}}true{{else}}false{{end}};
+var NPC_ARCHETYPES = {{.Archetypes}};
+var NPC_FLAVOURS = {{.Flavours}};
+var NPC_GROUP_LOOT = {{.GroupLoot}};
+var NPC_STRUCTURE_GROUPS = {{.StructureGroups}};
+
+(function () {
+  var form = document.getElementById('npcForm').closest('form');
+  function field(name) { return form.elements[name]; }
+  function num(name) { var f = field(name); return f ? (parseFloat(f.value) || 0) : 0; }
+  function set(name, v) { var f = field(name); if (f) f.value = v; }
+  function round(v) { return Math.round(v * 10000) / 10000; }
+  var dirty = false;
+  form.addEventListener('input', function () { dirty = true; });
+  form.addEventListener('submit', function () { dirty = false; });
+  window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  // ── Tabs ──────────────────────────────────────────────────────────────
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.nf-nav button'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.nf-panel'));
+  var order = tabs.map(function (b) { return b.dataset.tab; });
+  var current = '';
+  function showTab(name) {
+    if (order.indexOf(name) < 0) name = order[0];
+    current = name;
+    tabs.forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+    panels.forEach(function (p) { p.style.display = p.dataset.panel === name ? '' : 'none'; });
+    document.getElementById('nfTab').value = name;
+    var i = order.indexOf(name);
+    document.getElementById('nfPrev').disabled = i <= 0;
+    document.getElementById('nfNext').disabled = i >= order.length - 1;
+    document.getElementById('nfBarWhat').textContent = 'Step ' + (i + 1) + ' of ' + order.length + ': ' + tabs[i].textContent.replace(/^\d+/, '');
+    if (history.replaceState) history.replaceState(null, '', '#' + name);
+    if (name === 'model') initViewer();
+    if (name === 'review') review();
+  }
+  tabs.forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tab); }); });
+  document.getElementById('nfPrev').addEventListener('click', function () { showTab(order[order.indexOf(current) - 1]); });
+  document.getElementById('nfNext').addEventListener('click', function () { showTab(order[order.indexOf(current) + 1]); });
+  document.querySelectorAll('[data-goto]').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); showTab(a.dataset.goto); });
+  });
+
+  // ── Weapons ───────────────────────────────────────────────────────────
+  function flavour(key) { for (var i = 0; i < NPC_FLAVOURS.length; i++) if (NPC_FLAVOURS[i].Key === key) return NPC_FLAVOURS[i]; return null; }
+  function weaponKind() { var r = form.querySelector('input[name=weaponKind]:checked'); return r ? r.value : 'none'; }
+  function syncWeapon() {
+    var kind = weaponKind();
+    document.getElementById('weaponFields').style.display = kind === 'none' ? 'none' : '';
+    document.getElementById('nfUnarmedNote').style.display = kind === 'none' ? '' : 'none';
+    document.querySelectorAll('.turretOnly').forEach(function (el) { el.style.display = kind === 'turret' ? '' : 'none'; });
+    document.querySelectorAll('.missileOnly').forEach(function (el) { el.style.display = kind === 'missile' ? '' : 'none'; });
+  }
+  var flavourSel = document.getElementById('damageFlavour');
+  var lastFlavour = flavourSel.value;
+  function syncDamage() {
+    var f = flavour(flavourSel.value);
+    document.getElementById('damageCustomRow').style.display = f ? 'none' : '';
+    document.getElementById('damageTotalWrap').style.display = f ? '' : 'none';
+    if (f) {
+      var t = num('damageTotal');
+      document.getElementById('dmgPreview').textContent = 'EM ' + round(f.EM * t) + ' · Explosive ' + round(f.Exp * t) +
+        ' · Kinetic ' + round(f.Kin * t) + ' · Thermal ' + round(f.Therm * t) + '. Guns drawn: ' + f.Turret + '.';
+    }
+  }
+  flavourSel.addEventListener('change', function () {
+    // Carry the numbers across so switching modes never loses damage.
+    var from = flavour(lastFlavour), to = flavour(flavourSel.value);
+    if (from && !to) {
+      var t = num('damageTotal');
+      set('damageEM', round(from.EM * t)); set('damageExp', round(from.Exp * t));
+      set('damageKin', round(from.Kin * t)); set('damageTherm', round(from.Therm * t));
+    } else if (!from && to) {
+      set('damageTotal', round(num('damageEM') + num('damageExp') + num('damageKin') + num('damageTherm')));
+    }
+    lastFlavour = flavourSel.value;
+    syncDamage();
+  });
+  form.querySelectorAll('input[name=weaponKind]').forEach(function (r) { r.addEventListener('change', syncWeapon); });
+  document.getElementById('useMissileDamage').addEventListener('click', function () {
+    flavourSel.value = 'custom'; lastFlavour = 'custom';
+    ['damageEM', 'damageExp', 'damageKin', 'damageTherm'].forEach(function (n) { set(n, 0); });
+    set('damageTotal', 0);
+    syncDamage(); dirty = true;
+  });
+  function damageTotal() {
+    return flavour(flavourSel.value) ? num('damageTotal') : num('damageEM') + num('damageExp') + num('damageKin') + num('damageTherm');
+  }
+
+  // ── EWAR ──────────────────────────────────────────────────────────────
+  function syncEwar(box) {
+    var fields = document.getElementById('ewar_' + box.dataset.key + '_fields');
+    fields.style.display = box.checked ? '' : 'none';
+    if (!box.checked) return;
+    // Ticking an empty kind fills sensible starting values.
+    ['chance', 'duration', 'range', 'falloff', 'effect'].forEach(function (k) {
+      var f = field('ewar_' + box.dataset.key + '_' + k);
+      if (f && f.value === '') f.value = fields.dataset['default' + k.charAt(0).toUpperCase() + k.slice(1)];
+    });
+  }
+  document.querySelectorAll('.ewarOn').forEach(function (box) {
+    box.addEventListener('change', function () { syncEwar(box); });
+    syncEwar(box);
+  });
+
+  // ── Identity: inherited loot ─────────────────────────────────────────
+  field('groupID').addEventListener('change', function () {
+    var id = field('groupID').value, el = document.getElementById('nfLoot');
+    var l = NPC_GROUP_LOOT[id];
+    el.textContent = '';
+    var b = document.createElement('b'); b.textContent = 'Loot: '; el.appendChild(b);
+    if (!id) { el.appendChild(document.createTextNode("comes from the group's loot table. Pick a group to see it.")); return; }
+    if (l && l.Entries > 0) {
+      el.appendChild(document.createTextNode('inherits ' + l.Entries + ' loot entries from this group' + (l.Cap ? ', at most ' + l.Cap + ' drops per kill' : '') + '. '));
+    } else {
+      el.appendChild(document.createTextNode('this group has no loot table, so the NPC drops nothing unless it gets its own. '));
+    }
+    var a = document.createElement('a'); a.href = '/loot/group/' + id; a.textContent = (l && l.Entries > 0) ? 'Edit group loot' : 'Set up group loot';
+    el.appendChild(a);
+  });
+
+  // ── Behaviour and sensors live notes ─────────────────────────────────
+  function syncNotes() {
+    var floor = num('optimalRange') + 2 * num('falloff');
+    var el = document.getElementById('attackFloor');
+    if (weaponKind() === 'none') {
+      el.textContent = 'How close a target must be before it engages.';
+    } else if (num('attackRange') < floor) {
+      el.textContent = 'Raised to ' + Math.round(floor) + ' m at spawn (optimal + 2 × falloff), so it fires wherever it can hit.';
+      el.style.color = '#fbbf24';
+      return;
+    } else {
+      el.textContent = 'How close a target must be before it engages.';
+    }
+    el.style.color = '';
+  }
+  function syncSensors() { document.getElementById('nfSensorWarn').style.display = num('sensorStrength') > 0 ? 'none' : ''; }
+  function onEdit() { syncNotes(); syncSensors(); if (flavour(flavourSel.value)) syncDamage(); if (current === 'review') review(); }
+  form.addEventListener('input', onEdit);
+  form.addEventListener('change', onEdit);
+
+  // ── Start: archetypes ────────────────────────────────────────────────
+  function applyArchetype(key) {
+    var a = null;
+    NPC_ARCHETYPES.forEach(function (x) { if (x.Key === key) a = x; });
+    if (!a) return;
+    if (dirty && !confirm('Replace the movement, defence, weapon, sensor, behaviour and bounty values with the ' + a.Label + ' preset?')) return;
+    var s = a.Spec;
+    set('mass', s.Mass); set('radius', s.Radius); set('volume', s.Volume); set('capacity', s.Capacity);
+    set('cruiseSpeed', s.CruiseSpeed); set('maxVelocity', s.MaxVelocity); set('agility', s.Agility);
+    set('shieldHP', s.ShieldHP); set('armorHP', s.ArmorHP); set('structureHP', s.StructureHP);
+    set('shieldRechargeSec', round(s.ShieldRechargeMs / 1000));
+    var dmg = ['Em', 'Exp', 'Kin', 'Therm'];
+    [['shield', s.ShieldRes], ['armor', s.ArmorRes], ['hull', s.HullRes]].forEach(function (l) {
+      dmg.forEach(function (d, i) { set(l[0] + 'Resist' + d, round((1 - l[1][i]) * 100)); });
+    });
+    form.querySelectorAll('input[name=weaponKind]').forEach(function (r) { r.checked = r.value === s.WeaponKind; });
+    var total = s.DamageEM + s.DamageExp + s.DamageKin + s.DamageTherm, match = 'custom';
+    NPC_FLAVOURS.forEach(function (f) {
+      if (total > 0 && Math.abs(s.DamageEM / total - f.EM) < 1e-6 && Math.abs(s.DamageExp / total - f.Exp) < 1e-6 &&
+          Math.abs(s.DamageKin / total - f.Kin) < 1e-6 && Math.abs(s.DamageTherm / total - f.Therm) < 1e-6) match = f.Key;
+    });
+    flavourSel.value = match; lastFlavour = match;
+    set('damageTotal', round(total));
+    set('damageEM', s.DamageEM); set('damageExp', s.DamageExp); set('damageKin', s.DamageKin); set('damageTherm', s.DamageTherm);
+    set('multiplier', s.Multiplier); set('cycleTimeSec', round(s.CycleTimeMs / 1000));
+    set('optimalRange', s.OptimalRange); set('falloff', s.Falloff); set('weaponSigRes', s.WeaponSigRes);
+    set('trackingSpeed', s.TrackingSpeed); set('turretSlots', s.TurretSlots); set('turretTypeIDOverride', s.TurretTypeIDOverride);
+    set('missileMult', s.MissileMult);
+    document.querySelectorAll('.ewarOn').forEach(function (box) {
+      box.checked = false;
+      ['chance', 'duration', 'range', 'falloff', 'effect'].forEach(function (k) { set('ewar_' + box.dataset.key + '_' + k, ''); });
+      syncEwar(box);
+    });
+    set('sensorStrength', s.SensorStrength); set('sigRadius', s.SigRadius);
+    set('flyRange', s.FlyRange); set('attackRange', s.AttackRange); set('chaseMaxDist', s.ChaseMaxDist);
+    set('attackDelayMinSec', round(s.AttackDelayMinMs / 1000)); set('attackDelayMaxSec', round(s.AttackDelayMaxMs / 1000));
+    set('bounty', s.Bounty);
+    document.getElementById('nfArchetype').value = key;
+    document.querySelectorAll('.nf-arch button').forEach(function (b) { b.classList.toggle('on', b.dataset.arch === key); });
+    syncWeapon(); syncDamage(); syncNotes(); syncSensors();
+    dirty = true;
+  }
+  document.querySelectorAll('.nf-arch button').forEach(function (b) {
+    b.addEventListener('click', function () { applyArchetype(b.dataset.arch); });
+  });
+
+  // ── Review ───────────────────────────────────────────────────────────
+  function ehp(hp, layer) {
+    var sum = 0;
+    ['Em', 'Exp', 'Kin', 'Therm'].forEach(function (d) { sum += 1 - num(layer + 'Resist' + d) / 100; });
+    var avg = sum / 4;
+    return avg > 0 ? hp / avg : 0;
+  }
+  function fmt(v) { return Math.round(v).toLocaleString(); }
+  function review() {
+    var kind = weaponKind();
+    var total = damageTotal() * (num('multiplier') || 1);
+    var cyc = num('cycleTimeSec');
+    var ewarOn = [];
+    document.querySelectorAll('.ewarOn').forEach(function (b) { if (b.checked) ewarOn.push(b.parentNode.textContent.trim()); });
+    var shield = ehp(num('shieldHP'), 'shield'), armor = ehp(num('armorHP'), 'armor'), hull = ehp(num('structureHP'), 'hull');
+    var cells = [
+      ['Name', field('typeName').value || '—'],
+      ['Group', field('groupID').selectedIndex > 0 ? field('groupID').options[field('groupID').selectedIndex].text : '—'],
+      ['Speed', fmt(num('cruiseSpeed')) + ' m/s'],
+      ['Effective HP (even damage)', fmt(shield + armor + hull)],
+      ['Shield / armor / structure', fmt(shield) + ' / ' + fmt(armor) + ' / ' + fmt(hull)],
+      ['Weapon', kind === 'none' ? 'Unarmed' : (kind === 'missile' ? 'Missiles' : 'Turrets')],
+      ['Damage per second', kind === 'none' || cyc <= 0 ? '—' : (Math.round(total / cyc * 10) / 10) + ' (' + Math.round(total) + ' every ' + cyc + ' s)'],
+      ['Range', kind === 'none' ? '—' : fmt(num('optimalRange')) + ' m + ' + fmt(num('falloff')) + ' m falloff'],
+      ['Electronic warfare', ewarOn.length ? ewarOn.join(', ') : 'None'],
+      ['Bounty', fmt(num('bounty')) + ' ISK'],
+    ];
+    var box = document.getElementById('nfSummary');
+    box.textContent = '';
+    cells.forEach(function (c) {
+      var d = document.createElement('div');
+      var k = document.createElement('div'); k.className = 'k'; k.textContent = c[0];
+      var v = document.createElement('div'); v.className = 'v'; v.textContent = c[1];
+      d.appendChild(k); d.appendChild(v); box.appendChild(d);
+    });
+
+    var warn = [];
+    if (!field('typeName').value.trim()) warn.push(['identity', 'No name.']);
+    if (!field('groupID').value) warn.push(['identity', 'No group picked.']);
+    if (!(parseInt(field('graphicID').value, 10) > 0)) warn.push(['model', 'No model picked: the client would draw nothing.']);
+    if (num('structureHP') <= 0) warn.push(['defence', 'Structure HP is 0.']);
+    if (num('cruiseSpeed') <= 0 && NPC_STRUCTURE_GROUPS.indexOf(parseInt(field('groupID').value, 10)) < 0)
+      warn.push(['movement', 'Cruise speed 0 and the group is not a structure: in dungeons it spawns as scenery that never fights.']);
+    if (kind === 'turret' && damageTotal() <= 0) warn.push(['weapons', 'Turrets with no damage: it would spawn unarmed.']);
+    if (kind === 'missile' && !(parseInt(field('missileTypeID').value, 10) > 0)) warn.push(['weapons', 'Missiles picked but no missile type chosen.']);
+    if (kind !== 'none' && cyc <= 0) warn.push(['weapons', 'Rate of fire is 0.']);
+    if (num('sensorStrength') <= 0) warn.push(['sensors', 'Sensor strength 0: any ECM jams it every time.']);
+    if (num('attackDelayMaxSec') > 0 && num('attackDelayMinSec') > num('attackDelayMaxSec')) warn.push(['behaviour', 'First-shot delay: shortest is above longest.']);
+    var list = document.getElementById('nfWarnings');
+    list.textContent = '';
+    if (!warn.length) {
+      var ok = document.createElement('li'); ok.className = 'nf-ok'; ok.textContent = 'Nothing to fix. Ready to save.'; list.appendChild(ok);
+    }
+    warn.forEach(function (w) {
+      var li = document.createElement('li');
+      var a = document.createElement('a'); a.href = '#'; a.textContent = w[1]; a.style.color = '#fbbf24';
+      a.addEventListener('click', function (e) { e.preventDefault(); showTab(w[0]); });
+      li.appendChild(a); list.appendChild(li);
+    });
+  }
+
+  // ── Model viewer, started when its tab is first shown ────────────────
+  var viewerStarted = false;
+  function initViewer() {
+    var el = document.getElementById('npcFormModelViewer');
+    if (viewerStarted || !el || !el.dataset.url || !window.initNPCViewer) return;
+    viewerStarted = true;
+    initNPCViewer('npcFormModelViewer', el.dataset.url);
+  }
+  window.addEventListener('load', function () { if (current === 'model') initViewer(); });
+
+  syncWeapon(); syncDamage(); syncNotes(); syncSensors();
+  var start = document.getElementById('npcForm').dataset.open;
+  var hash = (location.hash || '').replace('#', '');
+  showTab(order.indexOf(hash) >= 0 && !{{if .Problems}}true{{else}}false{{end}} ? hash : start);
+})();
+
+// ── Model picker ──────────────────────────────────────────────────────────
+var modelTimer = null;
+function modelSearchDebounced() {
+  clearTimeout(modelTimer);
+  modelTimer = setTimeout(loadModels, 250);
+}
+
+function openModelPicker() {
+  document.getElementById('modelPicker').style.display = 'block';
+  loadModelStatus();
+  loadModels();
+}
+function closeModelPicker() {
+  document.getElementById('modelPicker').style.display = 'none';
+}
+
+// Generation counter from the server's model index — appended to .glb URLs so
+// a rescan busts whatever the browser cached from the previous scan.
+var MODEL_GEN = 0;
+
+function setModelStatus(text) {
+  var el = document.getElementById('modelStatus');
+  if (el) el.textContent = text;
+}
+
+function loadModelStatus() {
+  if (!HAS_MODELS) { setModelStatus('No model directories configured (esp.modelsDirs in config.json) — thumbnails and 3D previews are unavailable.'); return; }
+  fetch('/api/models/status')
+    .then(function (r) { return r.json(); })
+    .then(function (st) {
+      MODEL_GEN = st.generation || 0;
+      setModelStatus(st.files + ' .glb files indexed across ' + st.directories +
+        ' directories · scanned ' + (st.scannedAt || '').replace('T', ' ').substring(0, 19));
+    })
+    .catch(function () { setModelStatus(''); });
+}
+
+function rescanModels() {
+  setModelStatus('Rescanning…');
+  fetch('/api/models/rescan', { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (st) {
+      MODEL_GEN = st.generation || 0;
+      if (window.clearModelThumbCache) clearModelThumbCache();
+      setModelStatus('Rescanned: ' + st.files + ' .glb files across ' + st.directories + ' directories.');
+      loadModels();
+    })
+    .catch(function (e) { setModelStatus('Rescan failed: ' + e); });
+}
+
+/** URL for a graphic's converted model, cache-busted by the index generation. */
+function graphicModelURL(graphicID) {
+  return '/api/graphicmodel/' + graphicID + '.glb?g=' + MODEL_GEN;
+}
+
+// Renders a thumbnail from the .glb when the client's Gids snapshot cache has
+// no icon for this graphic. Deferred until the card scrolls into view — the
+// picker lists up to 600 models and each thumbnail is a real GL render.
+var thumbObserver = null;
+function observeThumb(img, graphicID) {
+  if (!HAS_MODELS || !window.renderModelThumb) return;
+  if (!('IntersectionObserver' in window)) { fillThumb(img, graphicID); return; }
+  if (!thumbObserver) {
+    thumbObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        thumbObserver.unobserve(en.target);
+        fillThumb(en.target, +en.target.dataset.gid);
+      });
+    }, { rootMargin: '200px' });
+  }
+  img.dataset.gid = graphicID;
+  thumbObserver.observe(img);
+}
+
+function fillThumb(img, graphicID) {
+  renderModelThumb(graphicModelURL(graphicID), 96).then(function (dataURL) {
+    if (!dataURL) return;
+    img.src = dataURL;
+    img.style.visibility = '';
+    img.style.display = '';
+  });
+}
+
+function loadModels() {
+  var q = encodeURIComponent(document.getElementById('modelQuery').value);
+  var scope = document.getElementById('modelScope').value;
+  var box = document.getElementById('modelResults');
+  box.innerHTML = '<div style="color:#6b7280">Loading…</div>';
+  fetch('/npcs/graphics/api?scope=' + scope + '&q=' + q)
+    .then(function (r) { return r.json(); })
+    .then(function (rows) {
+      box.innerHTML = '';
+      if (!rows || !rows.length) {
+        box.innerHTML = '<div style="color:#6b7280">No models matched.</div>';
+        return;
+      }
+      rows.forEach(function (g) {
+        var card = document.createElement('div');
+        card.style.cssText = 'border:1px solid var(--line);border-radius:4px;padding:8px;cursor:pointer;background:var(--win)';
+        card.onmouseover = function () { card.style.borderColor = 'var(--accent)'; };
+        card.onmouseout = function () { card.style.borderColor = 'var(--line)'; };
+        card.onclick = function () { pickModel(g); };
+
+        var img = document.createElement('img');
+        img.src = '/gidicon/' + g.GraphicID + '.png?size=64';
+        img.width = 48; img.height = 48;
+        img.style.cssText = 'float:left;margin-right:8px;border-radius:3px;background:var(--bg)';
+        img.onerror = function () {
+          // No client snapshot for this graphic — render one from the .glb.
+          img.onerror = null;
+          img.removeAttribute('src');
+          img.style.visibility = 'hidden';
+          if (g.HasModel) observeThumb(img, g.GraphicID);
+        };
+        card.appendChild(img);
+
+        var name = document.createElement('div');
+        name.style.cssText = 'font-weight:600;font-size:13px';
+        name.textContent = g.Name || ('Graphic ' + g.GraphicID);
+        card.appendChild(name);
+
+        var desc = document.createElement('div');
+        desc.style.cssText = 'color:#6b7280;font-size:11px';
+        desc.textContent = g.Description || '';
+        card.appendChild(desc);
+
+        var meta = document.createElement('div');
+        meta.style.cssText = 'clear:both;color:#4b5563;font-size:10px;margin-top:4px;word-break:break-all';
+        meta.textContent = 'gid ' + g.GraphicID + ' · used by ' + g.UsedBy + ' type(s)';
+        card.appendChild(meta);
+
+        if (HAS_MODELS) {
+          var badge = document.createElement('span');
+          badge.style.cssText = 'font-size:10px;padding:1px 5px;border-radius:3px;' +
+            (g.HasModel ? 'background:#14331f;color:#5fbf7f' : 'background:#332014;color:#bf8f5f');
+          badge.textContent = g.HasModel ? '3D preview' : 'no .glb';
+          card.appendChild(badge);
+        }
+        box.appendChild(card);
+      });
+    })
+    .catch(function (e) { box.textContent = String(e); });
+}
+
+function pickModel(g) {
+  document.getElementById('graphicID').value = g.GraphicID;
+  var sum = document.getElementById('graphicSummary');
+  sum.innerHTML = '';
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex;gap:10px;align-items:center';
+  var img = document.createElement('img');
+  img.src = '/gidicon/' + g.GraphicID + '.png?size=64';
+  img.width = 48; img.height = 48;
+  img.style.cssText = 'border-radius:4px;background:var(--bg);border:1px solid var(--line)';
+  img.onerror = function () {
+    img.onerror = null;
+    img.removeAttribute('src');
+    img.style.display = 'none';
+    if (g.HasModel) fillThumb(img, g.GraphicID);
+  };
+  wrap.appendChild(img);
+  var text = document.createElement('div');
+  var t1 = document.createElement('div');
+  t1.style.fontWeight = '600';
+  t1.textContent = g.Name || ('Graphic ' + g.GraphicID);
+  var t2 = document.createElement('div');
+  t2.style.cssText = 'color:#6b7280;font-size:11px';
+  t2.textContent = (g.Description || '') + ' · graphicID ' + g.GraphicID;
+  var t3 = document.createElement('div');
+  t3.style.cssText = 'color:#4b5563;font-size:11px';
+  t3.textContent = g.URL3D;
+  text.appendChild(t1); text.appendChild(t2); text.appendChild(t3);
+  wrap.appendChild(text);
+  sum.appendChild(wrap);
+
+  if (HAS_MODELS && g.HasModel && window.initNPCViewer) {
+    var viewer = document.getElementById('npcFormModelViewer');
+    if (!viewer) {
+      viewer = document.createElement('div');
+      viewer.id = 'npcFormModelViewer';
+      viewer.style.cssText = 'width:100%;height:280px;margin-top:12px';
+      sum.parentNode.appendChild(viewer);
+    }
+    viewer.innerHTML = '';
+    initNPCViewer('npcFormModelViewer', graphicModelURL(g.GraphicID));
+  }
+  closeModelPicker();
+}
+
+// ── Missile picker ────────────────────────────────────────────────────────
+var missileTimer = null;
+function missileSearchDebounced() {
+  clearTimeout(missileTimer);
+  missileTimer = setTimeout(loadMissiles, 250);
+}
+function openMissilePicker() {
+  document.getElementById('missilePicker').style.display = 'block';
+  loadMissiles();
+}
+function closeMissilePicker() {
+  document.getElementById('missilePicker').style.display = 'none';
+}
+function loadMissiles() {
+  var q = encodeURIComponent(document.getElementById('missileQuery').value);
+  var box = document.getElementById('missileResults');
+  box.innerHTML = '<div style="color:#6b7280">Loading…</div>';
+  fetch('/npcs/missiles/api?q=' + q)
+    .then(function (r) { return r.json(); })
+    .then(function (rows) {
+      box.innerHTML = '';
+      if (!rows || !rows.length) {
+        box.innerHTML = '<div style="color:#6b7280">No charges matched.</div>';
+        return;
+      }
+      var table = document.createElement('table');
+      rows.forEach(function (m) {
+        var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = function () {
+          document.getElementById('missileTypeID').value = m.TypeID;
+          document.getElementById('missileSummary').textContent = m.TypeName + ' (' + m.TypeID + ')';
+          closeMissilePicker();
+        };
+        var a = document.createElement('td'); a.textContent = m.TypeName;
+        var b = document.createElement('td'); b.style.color = '#6b7280'; b.textContent = m.GroupName;
+        var c = document.createElement('td'); c.style.color = '#4b5563'; c.textContent = m.TypeID;
+        tr.appendChild(a); tr.appendChild(b); tr.appendChild(c);
+        table.appendChild(tr);
+      });
+      box.appendChild(table);
+    })
+    .catch(function (e) { box.textContent = String(e); });
+}
+
+// The summary icon comes from the client's Gids snapshot cache, which only
+// covers graphics that client has drawn. Where it 404s, fall back to a render
+// of the converted .glb once the viewer bundle has loaded.
+window.addEventListener('load', function () {
+  var icon = document.getElementById('graphicSummaryIcon');
+  if (!icon || !HAS_MODELS || !window.renderModelThumb) return;
+  var failed = icon.dataset.failed === '1' || (icon.complete && icon.naturalWidth === 0);
+  if (!failed || icon.dataset.hasmodel !== '1') return;
+  loadModelStatus();
+  fillThumb(icon, +icon.dataset.gid);
+});
+</script>
+{{end}}
+{{/*
+  lootShareSliderJS — the 100% budget editor, shared by the group and NPC-type
+  loot pages (defined once; both include it).
+
+  Every slider in a pool is tied to the same budget: dragging one hands the
+  difference to (or takes it from) its siblings in proportion to what they held
+  when the drag started, so the pool always reads exactly 100%. That mirrors
+  what the roller actually does — dropChance is a relative weight, so an
+  entry's number only ever means "this slice of the picks".
+
+  Shares are kept as exact floats in JS and posted from the hidden
+  share_<entryID> inputs. The range element is display only: its value snaps to
+  step="0.1", and an earlier version redistributed by reading those snapped
+  values back. Scaling siblings UP during a drag moves each one by less than a
+  step per event (5.0 × 1.005 = 5.026 → 5.0), so the increase rounded away and
+  the whole freed budget piled onto one row. Never read a share back off a
+  slider.
+
+  Pools are per role: commander-only entries are drawn separately (one
+  guaranteed pick on a commander kill) and carry their own 100%.
+*/}}
+{{define "lootShareSliderJS"}}
+<style>
+input[type=range].share-slider { accent-color:#b91c1c; height:18px; width:100%; }
+</style>
+<script>
+(function(){
+  const form = document.getElementById('shareForm');
+  if (!form) return;
+  const status = document.getElementById('budgetStatus');
+  // Mean general-pool items per kill — the gate roll times the mean haul size,
+  // straight from the server so this can't drift from spawnNPCLoot.
+  const EXPECTED = {{.ExpectedDrops}};
+
+  // Bucket the rows by role pool. The hidden input carries the authoritative
+  // share; the slider only ever mirrors it.
+  const pools = {};
+  document.querySelectorAll('tr[data-pool]').forEach(tr => {
+    const slider = tr.querySelector('.share-slider');
+    const field = tr.querySelector('.share-value');
+    if (!slider || !field) return;
+    (pools[tr.dataset.pool] ||= []).push({
+      slider, field,
+      readout: tr.querySelector('.share-readout'),
+      perKill: tr.querySelector('.perkill'),
+      pool: tr.dataset.pool,
+      share: parseFloat(field.value) || 0,
+    });
+  });
+
+  function paint(rows) {
+    let sum = 0;
+    rows.forEach(r => {
+      sum += r.share;
+      r.field.value = r.share.toFixed(4);
+      r.slider.value = r.share.toFixed(1);
+      r.readout.textContent = r.share.toFixed(1) + '%';
+      // A commander pool always yields exactly one pick, so the share IS the
+      // per-kill odds; the general pool has to clear the drop gate first.
+      const perKill = r.pool === 'general' ? r.share * EXPECTED : r.share;
+      r.perKill.textContent = Math.min(perKill, 100).toFixed(1) + '%';
+    });
+    return sum;
+  }
+
+  function refresh() {
+    const parts = [];
+    for (const [name, rows] of Object.entries(pools)) {
+      const sum = paint(rows);
+      const label = name === 'general' ? 'any kill' : name;
+      parts.push(label + ': ' + sum.toFixed(1) + '% of ' + rows.length + ' items');
+    }
+    status.textContent = parts.join(' · ') + ' — sliders trade against each other; nothing is saved until you press the button.';
+  }
+
+  // One drag = one baseline. Redistributing against the siblings' values at
+  // drag start (rather than against whatever they hold mid-drag) keeps the
+  // split exactly proportional however many input events the browser fires.
+  let drag = null;
+  function beginDrag(rows, moved) {
+    const others = rows.filter(r => r !== moved);
+    drag = {
+      moved, others,
+      base: others.map(r => r.share),
+      baseSum: others.reduce((a, r) => a + r.share, 0),
+    };
+  }
+
+  function onInput(rows, moved) {
+    if (!drag || drag.moved !== moved) beginDrag(rows, moved);
+    let v = parseFloat(moved.slider.value) || 0;
+    v = Math.min(Math.max(v, 0), 100);
+    moved.share = v;
+    const remaining = 100 - v;
+    if (!drag.others.length) {
+      moved.share = 100;
+    } else if (drag.baseSum > 1e-9) {
+      // Entries deliberately parked at 0 stay at 0 — a zero baseline share
+      // scales to zero, so freed budget only goes to items that want some.
+      drag.others.forEach((r, i) => { r.share = drag.base[i] * remaining / drag.baseSum; });
+    } else {
+      // Nothing else holds any share — split what's left evenly rather than
+      // leaving a pool that can't add up.
+      drag.others.forEach(r => { r.share = remaining / drag.others.length; });
+    }
+    refresh();
+  }
+
+  Object.values(pools).forEach(rows => {
+    rows.forEach(r => {
+      r.slider.addEventListener('input', () => onInput(rows, r));
+      // Release ends the drag so the next one snapshots a fresh baseline.
+      r.slider.addEventListener('change', () => { drag = null; });
+    });
+  });
+  refresh();
+})();
+</script>
+{{end}}
+
+{{define "jobtable"}}
+{{/* Takes a slice of ESPJobRow, not the page dict — the station drill-down
+     renders one list and the factories page renders two, and a partial that
+     reaches for .Jobs on its parent can only ever draw the first. */}}
+<table class="rows jobs">
+  <tr>
+    <th>Job</th><th>Activity</th><th>Blueprint</th><th>Installer</th>
+    <th>Station</th><th>Progress</th><th>Finishes</th><th>Actions</th>
+  </tr>
+  {{range .}}
+  <tr>
+    <td style="color:#9ca3af">{{.JobID}}</td>
+    <td title="{{.ActivityName}}{{if .LineTypeName}} &middot; {{.LineTypeName}}{{end}}">{{.ActivityShort}}</td>
+    <td><a href="/industry/blueprint/{{.BlueprintTypeID}}" class="clip" title="{{.BlueprintName}}">{{.BlueprintName}}</a>
+      {{/* Every research and copy activity writes the blueprint's own typeID
+           back as the output, so the arrow is only drawn when it leads
+           somewhere else. */}}
+      {{if .DistinctOutput}}<span class="sub">&rarr;</span> <span class="clip" style="max-width:160px" title="{{.OutputName}}">{{.OutputName}}</span>{{end}}
+      {{if .ShowLevels}}<span class="sub">ME{{.MaterialLevel}} PE{{.ProductivityLev}}</span>{{end}}
+      {{if gt .Runs 1}}<span class="sub">&times;{{.Runs}}</span>{{end}}</td>
+    <td><span class="clip" style="max-width:140px" title="{{.InstallerName}}">{{.InstallerName}}</span></td>
+    <td>{{if .StationName}}<a href="/industry/factory/{{.StationID}}" class="clip" title="{{.StationName}} &middot; {{.SystemName}}{{if .RegionName}} &middot; {{.RegionName}}{{end}}">{{.StationName}}</a>{{else}}<span style="color:#f87171">station {{.StationID}} missing</span>{{end}}
+      <span class="sub">{{.SystemName}}</span></td>
+    <td>
+      <div style="display:inline-block;width:70px;background:var(--bg);border:1px solid var(--line);border-radius:3px;height:8px;overflow:hidden;vertical-align:middle">
+        <div style="height:100%;width:{{.ProgressPct}}%;background:{{if ge .StatusID 101}}#4b5563{{else if eq .StatusID 1}}#1a4731{{else}}var(--btn-hi){{end}}"></div>
+      </div>
+      <span style="font-size:11px;color:{{if eq .Status "Ready"}}#6ee7b7{{else if eq .Status "Aborted"}}#f87171{{else}}#9ca3af{{end}}">{{.Status}} {{.ProgressPct}}%</span>
+      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time but still flagged running - the job ticker has not swept since">&middot; overdue</span>{{end}}
+    </td>
+    <td>
+      {{if .EndTimeUnix}}{{unixTime .EndTimeUnix}}
+        <span class="sub" style="color:{{if lt .RemainingSec 0}}#6ee7b7{{else}}#6b7280{{end}}">
+          {{if lt .RemainingSec 0}}done{{else}}{{secs .RemainingSec}} left{{end}}</span>
+      {{else}}<span style="color:#6b7280">&mdash;</span>{{end}}
+    </td>
+    <td class="actions">
+      {{if .Active}}
+      <form method="POST">
+        <input type="hidden" name="jobID" value="{{.JobID}}">
+        {{if eq .StatusID 0}}
+        <button type="submit" name="action" value="rush" title="Pull the end time to now so the installer can collect it in-game">Rush</button>
+        {{end}}
+        <button type="submit" name="action" value="cancel" style="background:#3a1414;border-color:#5f1e1e"
+                onclick="return confirm('Abort job {{.JobID}}? The blueprint goes back to the hangar; consumed materials are not refunded.')">Cancel</button>
+        <button type="submit" name="action" value="release" style="background:#3a1414;border-color:#5f1e1e"
+                title="Delete the job row and free its blueprint - for jobs whose line or station no longer exists"
+                onclick="return confirm('Delete job {{.JobID}} outright and free its blueprint? No output is produced.')">Release</button>
+      </form>
+      {{if eq .StatusID 0}}
+      <form method="POST" style="display:inline;margin-left:4px">
+        <input type="hidden" name="jobID" value="{{.JobID}}">
+        <input type="hidden" name="action" value="nudge">
+        <input type="number" name="deltaSec" value="-3600" style="width:70px" title="seconds to add; negative pulls it in">
+        <button type="submit">Shift</button>
+      </form>
+      {{end}}
+      {{else}}
+      <span style="color:#4b5563">&mdash;</span>
+      {{end}}
+    </td>
+  </tr>
+  {{else}}
+  <tr class="empty"><td colspan="8" style="color:#6b7280">No jobs match.</td></tr>
+  {{end}}
+</table>
+{{end}}

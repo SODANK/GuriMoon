@@ -1,0 +1,52 @@
+{
+  "server": {
+    "listen": ":26000",
+    "logFile": "data/server.log",
+    "crashLogFile": "data/server.crash.log",
+    "logAppend": true
+  },
+  "database": {
+    "host": "mariadb",
+    "port": 3306,
+    "user": "gurimoon",
+    "password": "gurimoon",
+    "db": "gurimoon_rmr"
+  },
+  "authentication": {
+    "autoaccount": true,
+    "role": 1073741826,
+    "slashRoles": 262200
+  },
+  "character": {
+    "startBalance": 100000
+  },
+  "jumpClone": {
+    "minStanding": 8.0
+  },
+  "rates": {
+    "skillTraining": 1.0,
+    "npcBounty": 1.0,
+    "miningYield": 1.0,
+    "lootDrop": 1.0,
+    "playerDamage": 1.0,
+    "npcDamage": 1.0,
+    "industrySpeed": 1.0,
+    "productionSpeed": 1.0,
+    "researchSpeed": 1.0
+  },
+  "esp": {
+    "enabled": true,
+    "listen": ":26080",
+    "minRole": 2,
+    "staffRoles": 56,
+    "newsListen": ":80",
+    // Client files for admin panel icons, portraits and 3D previews (see config.example.json for
+    // everything this path feeds). The container cannot see your PC: add a read-only volume to the
+    // gurimoon service in docker-compose.yml, e.g. "D:/Games/EVE:/client:ro", then set this to
+    // "/client". Leave empty to run without them.
+    "clientPath": "",
+    // Converted .glb model folders, as container paths (mount them the same way).
+    "modelsDirs": []
+  },
+  "modules": {}
+}

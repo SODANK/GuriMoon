@@ -1,0 +1,61 @@
+GuriMoon — Dependencies
+=======================
+
+Everything needed to build and run this server. All of it runs locally;
+the server makes no outbound network connections of any kind.
+
+1. Required to build & run the server
+-------------------------------------
+
+Go toolchain
+    Version:  Go 1.24.0 or newer (see go.mod)
+    Download: https://go.dev/dl/
+    Build:    rebuild.bat (Windows) or ./rebuild.sh (Linux, macOS)
+
+Go module dependencies (fetched automatically by `go build`)
+    github.com/go-sql-driver/mysql v1.9.3   — MySQL/MariaDB driver (only direct dependency)
+    filippo.io/edwards25519 v1.1.0          — indirect, pulled in by the mysql driver
+
+Database server
+    MariaDB 11+ (docker-compose uses mariadb:11) or MySQL 8+
+    Schema and seed data: sql/ directory (~180 files, about 160 MB, includes
+    large seed files such as mapdenormalize.sql ~54MB, evenames.sql ~14MB).
+    Credentials/host configured in config.json ("database" block).
+    On Linux the server needs --lower-case-table-names=1.
+
+Database command-line client (mysql / mariadb)
+    Ships with the database server. Used to create the database and to
+    load sql/ (the server does not import the dumps itself).
+
+Windows PowerShell 5.1 (ships with Windows 10/11)
+    rebuild.bat runs rebuild.ps1 with an execution-policy bypass.
+
+Configuration
+    config.json at the repo root (listen address, DB credentials,
+    authentication mode, rates, ESP panel settings). Copy it from
+    config.example.json.
+
+2. Docker alternative (replaces local Go + MariaDB install)
+-----------------------------------------------------------
+
+Docker + Docker Compose
+    docker compose up -d
+    Images used: golang:1.24 (build stage, runs rebuild.sh),
+    debian:bookworm-slim (runtime), mariadb:11 (database).
+    Host ports: 26000, 26080, 80; database on 127.0.0.1:3307.
+
+3. Required to play (not part of this repo)
+-------------------------------------------
+
+EVE Online client, Red Moon Rising, v2.10.3913
+    This clean-room repo does not ship any client files.
+    Type the server's address in the login screen's Server field; the
+    client connects to port 26000. No client patch is required.
+
+4. Optional
+-----------
+
+Client asset folders - only for extra ESP/editor visuals
+    (portraits, type icons, .glb ship models, nebula skyboxes), served
+    from directories configured via esp.clientPath / esp.modelsDirs in
+    config.json. Everything works without them; visuals just fall back.

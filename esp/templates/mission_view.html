@@ -1,0 +1,574 @@
+{{define "content"}}
+<style>
+/* Mission template editor -------------------------------------------------
+   Two columns: the words the player reads on the left, the numbers and wiring
+   that produce them on the right. Both stack below 1180px. */
+.mv-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px }
+.mv-head h2 { margin:0 }
+.mv-head .sub { color:#6b7280; font-size:13px }
+.mv-badge { font-size:11px; letter-spacing:.5px; text-transform:uppercase; padding:3px 9px;
+            border-radius:10px; border:1px solid var(--line); color:#6b7280; background:var(--win-deep) }
+.mv-badge.on { color:#6ee7b7; border-color:#1a4731; background:#0f2a1f }
+.mv-badge.off { color:#d55b5b; border-color:#4a2020; background:#2a0f0f }
+
+.mv-grid { display:grid; grid-template-columns:minmax(420px,1.15fr) minmax(360px,1fr);
+           gap:16px; align-items:start }
+@media (max-width:1180px) { .mv-grid { grid-template-columns:1fr } }
+
+.mv-section { margin-bottom:16px }
+.mv-section h3 { font-size:13px; color:#9ca3af; text-transform:uppercase; letter-spacing:.5px;
+                 margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px }
+.mv-section h3 .h3note { float:right; text-transform:none; letter-spacing:0; color:#6b7280;
+                         font-size:11px; font-weight:400 }
+
+.mv-fields { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px 14px }
+.mv-fields.two { grid-template-columns:repeat(auto-fill,minmax(220px,1fr)) }
+.mv-fields .form-group { margin-bottom:0 }
+.mv-fields label { display:block; font-size:11px; color:#6b7280; margin-bottom:3px;
+                   text-transform:uppercase; letter-spacing:.5px }
+.mv-fields input, .mv-fields select, .mv-fields textarea { width:100%; padding:6px 8px; font-size:12px }
+.mv-fields small { display:block; color:#6b7280; font-size:11px; margin-top:3px; line-height:1.5 }
+.mv-wide { grid-column:1/-1 }
+
+.mv-text { margin-bottom:12px }
+.mv-text:last-child { margin-bottom:0 }
+.mv-text label { display:block; font-size:11px; color:#6b7280; margin-bottom:3px;
+                 text-transform:uppercase; letter-spacing:.5px }
+.mv-text textarea { width:100%; font-size:12px; padding:7px 9px; line-height:1.55 }
+.mv-text small { display:block; color:#6b7280; font-size:11px; margin-top:3px; line-height:1.5 }
+
+.mv-hint { color:#6b7280; font-size:12px; line-height:1.65; margin-bottom:10px }
+.mv-hint b { color:#c9d1d9 }
+
+/* Placeholder cheat-sheet */
+.mv-ph { background:var(--win-hover); border:1px solid var(--line); border-radius:4px; padding:8px 12px;
+         margin-bottom:12px; font-size:11px; color:#9ca3af }
+.mv-ph .cols { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+               gap:2px 16px; margin-top:4px }
+.mv-ph code { color:#fcd37d }
+
+/* Player choices: caption slot with the generic caption as its placeholder */
+.mv-choice { display:grid; grid-template-columns:150px 1fr; gap:8px 12px; align-items:center;
+             padding:6px 0; border-bottom:1px solid var(--line-soft) }
+.mv-choice:last-child { border-bottom:0 }
+.mv-choice .btn-generic { font-size:12px; color:#c9d1d9 }
+.mv-choice .btn-generic small { display:block; color:#6b7280; font-size:11px; margin-top:2px; line-height:1.45 }
+.mv-choice input { width:100%; padding:6px 8px; font-size:12px }
+@media (max-width:640px) { .mv-choice { grid-template-columns:1fr } }
+
+/* Standings */
+.mv-std td { padding:6px 8px; vertical-align:top }
+.mv-std td:first-child { color:#9ca3af; font-size:12px; white-space:nowrap }
+.mv-std td:last-child { color:#6b7280; font-size:11px; line-height:1.5 }
+.mv-std input { width:110px; padding:5px 8px; font-size:12px; text-align:right }
+.mv-std tr.zero input { color:#6b7280 }
+
+.mv-factions { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:6px 10px }
+.mv-factions label { display:flex; align-items:center; gap:5px; font-size:12px; color:#c9d1d9 }
+
+.mv-save { position:sticky; bottom:0; background:var(--bg); border-top:1px solid var(--line);
+           padding:12px 0; margin-top:4px; display:flex; gap:10px; align-items:center; z-index:5 }
+.mv-save .note { color:#6b7280; font-size:11px }
+.mv-danger { margin-top:18px; padding-top:14px; border-top:1px solid var(--line-soft) }
+</style>
+
+<div class="mv-head">
+  <h2>{{.Template.MissionName}}</h2>
+  {{if .Template.Enabled}}<span class="mv-badge on">enabled</span>{{else}}<span class="mv-badge off">disabled</span>{{end}}
+  <span class="mv-badge">{{.Template.MissionType}}</span>
+  {{if .Template.Storyline}}<span class="mv-badge on">storyline</span>{{end}}
+  <span class="mv-badge">level {{.Template.AgentLevel}}</span>
+  <span class="sub">#{{.Template.TemplateID}} &middot; <a href="/missions">back to mission templates</a></span>
+</div>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<form method="POST" action="/mission/{{.Template.TemplateID}}">
+<input type="hidden" name="action" value="update_template">
+
+<div class="mv-grid">
+
+  <!-- ── Left column: what the player reads ───────────────────────────── -->
+  <div>
+
+  <div class="card mv-section">
+    <h3>General</h3>
+    <div class="mv-fields">
+      <div class="form-group mv-wide">
+        <label>Mission Name</label>
+        <input type="text" name="missionName" value="{{.Template.MissionName}}" required>
+      </div>
+      <div class="form-group">
+        <label>Type</label>
+        <select name="missionType" id="missionType" onchange="toggleSections()">
+          <option value="kill" {{if eq .Template.MissionType "kill"}}selected{{end}}>Kill (Combat)</option>
+          <option value="courier" {{if eq .Template.MissionType "courier"}}selected{{end}}>Courier</option>
+          <option value="trade" {{if eq .Template.MissionType "trade"}}selected{{end}}>Trade</option>
+          <option value="mining" {{if eq .Template.MissionType "mining"}}selected{{end}}>Mining</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Agent Level</label>
+        <select name="agentLevel">
+          <option value="1" {{if eq .Template.AgentLevel 1}}selected{{end}}>1</option>
+          <option value="2" {{if eq .Template.AgentLevel 2}}selected{{end}}>2</option>
+          <option value="3" {{if eq .Template.AgentLevel 3}}selected{{end}}>3</option>
+          <option value="4" {{if eq .Template.AgentLevel 4}}selected{{end}}>4</option>
+          <option value="5" {{if eq .Template.AgentLevel 5}}selected{{end}}>5</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Enabled</label>
+        <select name="enabled">
+          <option value="1" {{if .Template.Enabled}}selected{{end}}>Yes</option>
+          <option value="0" {{if not .Template.Enabled}}selected{{end}}>No</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Deck</label>
+        <select name="storyline" id="storyline" onchange="markStoryline()">
+          <option value="0" {{if not .Template.Storyline}}selected{{end}}>Regular</option>
+          <option value="1" {{if .Template.Storyline}}selected{{end}}>Storyline</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Expires After (days)</label>
+        <input type="number" name="expiryDays" value="{{.Template.ExpiryDays}}" min="1">
+        <small>From acceptance. Not handed in by then, it fails and the agent sends the failure letter.</small>
+      </div>
+      <div class="form-group mv-wide" id="storylineNote" style="display:none">
+        <p class="mv-hint" style="margin:0">
+          <b>Storyline deck.</b> Only storyline agents draw this template, and they draw
+          nothing else. They have nothing for a pilot who has not been invited &mdash; an
+          invite is earned by finishing a run of missions for one faction, and the run
+          length is set on
+          <a href="/agents/distribution">Mission Distribution</a>. Level and faction filter
+          still apply: they decide which storyline agents can pull it.
+        </p>
+      </div>
+      <div class="form-group mv-wide">
+        <label>Next Mission (chain)</label>
+        <select name="nextMissionID">
+          <option value="">None</option>
+          {{range .AllMissions}}
+          <option value="{{.TemplateID}}" {{if and $.Template.NextMissionID.Valid (eq $.Template.NextMissionID.Int64 .TemplateID)}}selected{{end}}>
+            [{{.MissionType}}] {{.MissionName}} ({{.TemplateID}})
+          </option>
+          {{end}}
+        </select>
+        <small>Auto-offer this mission on completion.</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Briefing<span class="h3note">what the agent says when the mission is offered</span></h3>
+    <div class="mv-ph">
+      <b style="color:#c9d1d9">Text placeholders</b> &mdash; usable in every text field on this page:
+      <div class="cols">
+        <span><code>{charName}</code> Player</span>
+        <span><code>{agentName}</code> Agent</span>
+        <span><code>{systemName}</code> Dest system</span>
+        <span><code>{stationName}</code> Dest station</span>
+        <span><code>{itemName}</code> Mission item</span>
+        <span><code>{itemQty}</code> Item qty</span>
+        <span><code>{rewardISK}</code> ISK reward</span>
+        <span><code>{bonusISK}</code> Bonus ISK</span>
+        <span><code>{rewardLP}</code> LP reward</span>
+      </div>
+    </div>
+    <div class="mv-text">
+      <label>Briefing body</label>
+      <textarea name="briefingText" rows="10">{{.Template.BriefingText}}</textarea>
+      <small>Shown on the offer and again whenever the player reopens the conversation.</small>
+    </div>
+    <div class="mv-text">
+      <label>Objective text</label>
+      <textarea name="objectiveText" rows="3">{{.Template.ObjectiveText.String}}</textarea>
+      <small>The one-line goal in the mission info panel.</small>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Player Choices<span class="h3note">leave blank for the generic wording</span></h3>
+    <p class="mv-hint">
+      These are the buttons the player picks from in the agent conversation. Each slot
+      replaces one caption &mdash; an empty slot keeps the generic one shown beside it,
+      so a template only words the choices it cares about.
+      <b>More Information</b> only appears at all while its reply text below is set.
+    </p>
+    <div class="mv-choice">
+      <div class="btn-generic">Accept<small>takes the mission</small></div>
+      <input type="text" name="acceptLabel" maxlength="64" placeholder="Accept"
+             value="{{.Template.AcceptLabel.String}}">
+    </div>
+    <div class="mv-choice">
+      <div class="btn-generic">Decline<small>refuses it &mdash; costs the agent standing below</small></div>
+      <input type="text" name="declineLabel" maxlength="64" placeholder="Decline"
+             value="{{.Template.DeclineLabel.String}}">
+    </div>
+    <div class="mv-choice">
+      <div class="btn-generic">View Mission<small>opens objectives, rewards, destination</small></div>
+      <input type="text" name="viewMissionLabel" maxlength="64" placeholder="View Mission"
+             value="{{.Template.ViewMissionLabel.String}}">
+    </div>
+    <div class="mv-choice">
+      <div class="btn-generic">More Information<small>only while the reply below is set</small></div>
+      <input type="text" name="moreInfoLabel" maxlength="64" placeholder="More Information"
+             value="{{.Template.MoreInfoLabel.String}}">
+    </div>
+    <div class="mv-choice">
+      <div class="btn-generic">Complete Mission<small>hands the mission in</small></div>
+      <input type="text" name="completeLabel" maxlength="64" placeholder="Complete Mission"
+             value="{{.Template.CompleteLabel.String}}">
+    </div>
+    <div class="mv-choice">
+      <div class="btn-generic">Quit Mission<small>abandons an accepted mission</small></div>
+      <input type="text" name="quitMissionLabel" maxlength="64" placeholder="Quit Mission"
+             value="{{.Template.QuitMissionLabel.String}}">
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Agent Replies<span class="h3note">what the agent says after a choice</span></h3>
+    <p class="mv-hint">An empty reply falls back to the server's generic line for that choice.</p>
+    <div class="mv-text">
+      <label>On accept</label>
+      <textarea name="acceptText" rows="3">{{.Template.AcceptText.String}}</textarea>
+      <small>Generic: "Mission accepted. Good luck out there."</small>
+    </div>
+    <div class="mv-text">
+      <label>On decline</label>
+      <textarea name="declineText" rows="3">{{.Template.DeclineText.String}}</textarea>
+      <small>Generic: "I am disappointed. Come back when you are ready."</small>
+    </div>
+    <div class="mv-text">
+      <label>On completion</label>
+      <textarea name="completeText" rows="3">{{.Template.CompleteText.String}}</textarea>
+    </div>
+    <div class="mv-text">
+      <label>On failure (letter)</label>
+      <textarea name="failText" rows="4">{{.Template.FailText.String}}</textarea>
+      <small>Mailed by the agent when the mission expires (see Expires After). Generic: "{agentName} here. You accepted this assignment and never saw it through, so I have given it to someone else. That will not be forgotten."</small>
+    </div>
+    <div class="mv-text">
+      <label>More Information</label>
+      <textarea name="moreInfoText" rows="4">{{.Template.MoreInfoText.String}}</textarea>
+      <small>While this is empty the More Information button is not shown at all.</small>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- ── Right column: the wiring and the numbers ─────────────────────── -->
+  <div>
+
+  <div class="card mv-section" id="sec-kill">
+    <h3>Combat (Kill)</h3>
+    <div class="mv-fields">
+      <div class="form-group mv-wide">
+        <label>Dungeon</label>
+        <select name="dungeonVID">
+          <option value="">None</option>
+          {{range .Dungeons}}
+          <option value="{{.DungeonVID}}" {{if and $.Template.DungeonVID.Valid (eq $.Template.DungeonVID.Int64 .DungeonVID)}}selected{{end}}>{{.Name}} ({{.DungeonVID}})</option>
+          {{end}}
+        </select>
+        <small>A kill template with no dungeon &mdash; or a dungeon with no rooms &mdash; is rejected at offer time and the agent falls back to another mission.</small>
+      </div>
+      <div class="form-group">
+        <label>Room Index</label>
+        <input type="number" name="dungeonRoomIdx" value="{{.Template.DungeonRoomIdx}}" min="1">
+      </div>
+      <div class="form-group">
+        <label>Completion Type</label>
+        <select name="completionType" id="completionType" onchange="toggleKillItemFields()">
+          <option value="killAll" {{if eq .Template.CompletionType "killAll"}}selected{{end}}>Kill All</option>
+          <option value="killTarget" {{if eq .Template.CompletionType "killTarget"}}selected{{end}}>Kill Target</option>
+          <option value="killStructure" {{if eq .Template.CompletionType "killStructure"}}selected{{end}}>Kill Structure</option>
+          <option value="killItem" {{if eq .Template.CompletionType "killItem"}}selected{{end}}>Retrieve Item</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Target TypeID</label>
+        <input type="number" name="targetTypeID" value="{{if .Template.TargetTypeID.Valid}}{{.Template.TargetTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Target Count</label>
+        <input type="number" name="targetCount" value="{{.Template.TargetCount}}" min="1">
+      </div>
+      <div class="form-group mv-wide">
+        <label>Enemy Faction</label>
+        <select name="enemyFactionID">
+          <option value="">None</option>
+          {{range .Factions}}
+          <option value="{{.FactionID}}" {{if and $.Template.EnemyFactionID.Valid (eq $.Template.EnemyFactionID.Int64 .FactionID)}}selected{{end}}>{{.FactionName}}</option>
+          {{end}}
+        </select>
+        <small>Takes the enemy standing hit below. "None" or Unknown means no faction is on the receiving end.</small>
+      </div>
+    </div>
+
+    <div id="killItemFields" style="display:none;margin-top:12px">
+      <h3 style="font-size:12px">Retrieve Item</h3>
+      <div class="mv-fields">
+        <div class="form-group">
+          <label>Item TypeID</label>
+          <input type="number" name="killItemTypeID" value="{{if .Template.KillItemTypeID.Valid}}{{.Template.KillItemTypeID.Int64}}{{end}}">
+        </div>
+        <div class="form-group">
+          <label>Item Quantity</label>
+          <input type="number" name="killItemQty" value="{{.Template.KillItemQty}}" min="1">
+        </div>
+        <div class="form-group">
+          <label>Dropoff Mode</label>
+          <select name="killItemDropoffMode">
+            <option value="agent" {{if eq .Template.KillItemDropoffMode "agent"}}selected{{end}}>Agent Station</option>
+            <option value="specific" {{if eq .Template.KillItemDropoffMode "specific"}}selected{{end}}>Specific Station</option>
+            <option value="nearby" {{if eq .Template.KillItemDropoffMode "nearby"}}selected{{end}}>Nearby (auto)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Dropoff Station ID</label>
+          <input type="number" name="killItemDropoffStationID" value="{{if .Template.KillItemDropoffStationID.Valid}}{{.Template.KillItemDropoffStationID.Int64}}{{end}}" placeholder="specific mode only">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section" id="sec-courier">
+    <h3>Courier</h3>
+    <div class="mv-fields">
+      <div class="form-group">
+        <label>Item TypeID</label>
+        <input type="number" name="courierTypeID" value="{{if .Template.CourierTypeID.Valid}}{{.Template.CourierTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" name="courierQty" value="{{.Template.CourierQty}}" min="1">
+      </div>
+      <div class="form-group">
+        <label>Pickup Mode</label>
+        <select name="pickupMode">
+          <option value="agent" {{if eq .Template.PickupMode "agent"}}selected{{end}}>Agent Station</option>
+          <option value="specific" {{if eq .Template.PickupMode "specific"}}selected{{end}}>Specific Station</option>
+          <option value="nearby" {{if eq .Template.PickupMode "nearby"}}selected{{end}}>Nearby (auto)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Pickup Station ID</label>
+        <input type="number" name="pickupStationID" value="{{if .Template.PickupStationID.Valid}}{{.Template.PickupStationID.Int64}}{{end}}" placeholder="specific mode only">
+      </div>
+      <div class="form-group">
+        <label>Dropoff Mode</label>
+        <select name="dropoffMode">
+          <option value="agent" {{if eq .Template.DropoffMode "agent"}}selected{{end}}>Agent Station</option>
+          <option value="specific" {{if eq .Template.DropoffMode "specific"}}selected{{end}}>Specific Station</option>
+          <option value="nearby" {{if eq .Template.DropoffMode "nearby"}}selected{{end}}>Nearby (auto)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Dropoff Station ID</label>
+        <input type="number" name="dropoffStationID" value="{{if .Template.DropoffStationID.Valid}}{{.Template.DropoffStationID.Int64}}{{end}}" placeholder="specific mode only">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section" id="sec-trade">
+    <h3>Trade</h3>
+    <div class="mv-fields">
+      <div class="form-group">
+        <label>Item TypeID</label>
+        <input type="number" name="tradeTypeID" value="{{if .Template.TradeTypeID.Valid}}{{.Template.TradeTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" name="tradeQty" value="{{.Template.TradeQty}}" min="1">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section" id="sec-mining">
+    <h3>Mining</h3>
+    <div class="mv-fields">
+      <div class="form-group">
+        <label>Ore TypeID</label>
+        <input type="number" name="miningTypeID" value="{{if .Template.MiningTypeID.Valid}}{{.Template.MiningTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Quantity</label>
+        <input type="number" name="miningQty" value="{{.Template.MiningQty}}" min="1">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Destination<span class="h3note">security band for the rolled system</span></h3>
+    <div class="mv-fields">
+      <div class="form-group">
+        <label>Min Security</label>
+        <input type="text" name="minSecurity" value="{{if .Template.MinSecurity.Valid}}{{num .Template.MinSecurity.Float64}}{{end}}" placeholder="any">
+      </div>
+      <div class="form-group">
+        <label>Max Security</label>
+        <input type="text" name="maxSecurity" value="{{if .Template.MaxSecurity.Valid}}{{num .Template.MaxSecurity.Float64}}{{end}}" placeholder="any">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Rewards</h3>
+    <div class="mv-fields">
+      <div class="form-group">
+        <label>Reward ISK</label>
+        <input type="number" name="baseRewardISK" value="{{.Template.BaseRewardISK}}">
+      </div>
+      <div class="form-group">
+        <label>Reward LP</label>
+        <input type="number" name="baseRewardLP" value="{{.Template.BaseRewardLP}}">
+      </div>
+      <div class="form-group">
+        <label>Bonus ISK</label>
+        <input type="number" name="baseBonusISK" value="{{.Template.BaseBonusISK}}">
+      </div>
+      <div class="form-group">
+        <label>Bonus Time (sec)</label>
+        <input type="number" name="bonusTimeSec" value="{{.Template.BonusTimeSec}}">
+      </div>
+      <div class="form-group">
+        <label>Reward Item TypeID</label>
+        <input type="number" name="baseRewardItemTypeID" value="{{if .Template.BaseRewardItemTypeID.Valid}}{{.Template.BaseRewardItemTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Reward Item Qty</label>
+        <input type="number" name="baseRewardItemQty" value="{{.Template.BaseRewardItemQty}}" min="1">
+      </div>
+      <div class="form-group">
+        <label>Bonus Item TypeID</label>
+        <input type="number" name="bonusRewardItemTypeID" value="{{if .Template.BonusRewardItemTypeID.Valid}}{{.Template.BonusRewardItemTypeID.Int64}}{{end}}">
+      </div>
+      <div class="form-group">
+        <label>Bonus Item Qty</label>
+        <input type="number" name="bonusRewardItemQty" value="{{.Template.BonusRewardItemQty}}" min="1">
+      </div>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Standings<span class="h3note">0 = no change</span></h3>
+    <p class="mv-hint">
+      Every field here is optional. <b>Zero means the mission does not touch that standing
+      at all</b> &mdash; nothing is written and the client is not notified. Values are in
+      displayed standing units; losses are stored negative.
+      Rats killed inside the dungeon still carry their own per-kill faction hit, which is a
+      property of the NPC, not of this template.
+    </p>
+    <table class="mv-std">
+      <tr>
+        <td>Agent, on completion</td>
+        <td><input type="text" name="standingGain" value="{{num .Template.StandingGain}}"></td>
+        <td>the agent's own opinion</td>
+      </tr>
+      <tr>
+        <td>Corporation, on completion</td>
+        <td><input type="text" name="corpStandingGain" value="{{num .Template.CorpStandingGain}}"></td>
+        <td>the agent's corporation</td>
+      </tr>
+      <tr>
+        <td>Faction, on completion</td>
+        <td><input type="text" name="factionStandingGain" value="{{num .Template.FactionStandingGain}}"></td>
+        <td>the faction owning the agent's corporation</td>
+      </tr>
+      <tr>
+        <td>Enemy faction, on completion</td>
+        <td><input type="text" name="factionStandingLoss" value="{{num .Template.FactionStandingLoss}}"></td>
+        <td>applied to Enemy Faction above; a positive number is flipped to a loss</td>
+      </tr>
+      <tr>
+        <td>Agent, on decline</td>
+        <td><input type="text" name="standingLoss" value="{{num .Template.StandingLoss}}"></td>
+        <td>negative; also taken when an accepted mission is quit or expires</td>
+      </tr>
+    </table>
+    <div style="margin-top:10px">
+      <button type="button" onclick="zeroStandings()"
+              style="padding:5px 12px;font-size:11px">Zero all standings</button>
+    </div>
+  </div>
+
+  <div class="card mv-section">
+    <h3>Faction Filter<span class="h3note">none checked = every faction</span></h3>
+    <p class="mv-hint">Which NPC factions' agents may offer this mission.</p>
+    <div class="mv-factions">
+      {{range .Factions}}
+      <label>
+        <input type="checkbox" name="allowedFactions" value="{{.FactionID}}"
+          {{if inList $.Template.AllowedFactions.String .FactionID}}checked{{end}}>
+        {{.FactionName}}
+      </label>
+      {{end}}
+    </div>
+  </div>
+
+  </div>
+</div>
+
+<div class="mv-save">
+  <button type="submit">Save Template</button>
+  <span class="note">Saves every section on this page.</span>
+</div>
+</form>
+
+<div class="mv-danger">
+  <form method="POST" action="/mission/{{.Template.TemplateID}}" onsubmit="return confirm('Delete this mission template?')">
+    <input type="hidden" name="action" value="delete_template">
+    <button type="submit" style="background:var(--btn);border-color:var(--btn-hi);padding:6px 14px;font-size:12px">Delete Template</button>
+  </form>
+</div>
+
+<script>
+function toggleSections() {
+  var t = document.getElementById('missionType').value;
+  document.getElementById('sec-kill').style.display = t === 'kill' ? '' : 'none';
+  document.getElementById('sec-courier').style.display = t === 'courier' ? '' : 'none';
+  document.getElementById('sec-trade').style.display = t === 'trade' ? '' : 'none';
+  document.getElementById('sec-mining').style.display = t === 'mining' ? '' : 'none';
+  toggleKillItemFields();
+}
+function toggleKillItemFields() {
+  var el = document.getElementById('killItemFields');
+  if (!el) return;
+  var ct = document.getElementById('completionType');
+  el.style.display = (ct && ct.value === 'killItem') ? 'block' : 'none';
+}
+// Greys the value of a standing field that is doing nothing, so "this mission
+// changes no standings" is readable at a glance instead of five zeroes to scan.
+function markZeroStandings() {
+  var rows = document.querySelectorAll('.mv-std tr');
+  for (var i = 0; i < rows.length; i++) {
+    var inp = rows[i].querySelector('input');
+    if (!inp) continue;
+    var v = parseFloat(inp.value);
+    if (!v) { rows[i].classList.add('zero'); } else { rows[i].classList.remove('zero'); }
+  }
+}
+function zeroStandings() {
+  var inputs = document.querySelectorAll('.mv-std input');
+  for (var i = 0; i < inputs.length; i++) { inputs[i].value = '0'; }
+  markZeroStandings();
+}
+document.addEventListener('input', function (e) {
+  if (e.target && e.target.closest && e.target.closest('.mv-std')) { markZeroStandings(); }
+});
+function markStoryline() {
+  var sel = document.getElementById('storyline');
+  var note = document.getElementById('storylineNote');
+  if (sel && note) { note.style.display = sel.value === '1' ? '' : 'none'; }
+}
+toggleSections();
+markZeroStandings();
+markStoryline();
+</script>
+{{end}}
+
+{{template "layout" .}}

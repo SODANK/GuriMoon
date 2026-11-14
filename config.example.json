@@ -1,0 +1,131 @@
+{
+  "server": {
+    "listen": "127.0.0.1:26000",
+    "logFile": "server.log",
+    "crashLogFile": "server.crash.log",
+    "logAppend": false,
+    "writeTimeoutSec": 15,
+    "handshakeTimeoutSec": 30,
+    "unauthIdleKickSec": 120,
+    "shutdownWaitSec": 20,
+    "shutdownFlushSec": 60
+  },
+  "database": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "gurimoon",
+    "password": "gurimoon",
+    "db": "gurimoon_rmr",
+    "maxOpenConns": 96,
+    "maxIdleConns": 96,
+    "connMaxLifetimeMinutes": 30,
+    "connMaxIdleMinutes": 10,
+    "dialTimeoutSec": 10,
+    "readTimeoutSec": 60,
+    "writeTimeoutSec": 60
+  },
+  "authentication": {
+    "autoaccount": true,
+    "role": 1073741826,
+    "slashRoles": 262200
+  },
+  "character": {
+    "startBalance": 1000000
+  },
+  "rates": {
+    "skillTraining": 5.0,
+    "npcBounty": 1.0,
+    "miningYield": 1.0,
+    "lootDrop": 1.0,
+    "playerDamage": 1.0,
+    "npcDamage": 1.0,
+    "industrySpeed": 2.0,
+    "productionSpeed": 2.0,
+    "researchSpeed": 2.0,
+    "missionReward": 1.0,
+    "loyaltyPoints": 1.0,
+    "standingGain": 1.0,
+    "ratStandingLoss": 1.0
+  },
+  "npcMarket": {
+    "dynamics": true,
+    "tickMinutes": 60
+  },
+  "agents": {
+    "locatorDelayMinutes": 3
+  },
+  "jumpClone": {
+    "minStanding": 8.0
+  },
+  "esp": {
+    "enabled": true,
+    "listen": "127.0.0.1:26080",
+    "minRole": 2,
+    "staffRoles": 56,
+    "skillMarkup": 1.10,
+    "newsListen": "127.0.0.1:80",
+    // CLIENT PATHS. Both are optional: leave them empty and the server runs, the admin panel just
+    // shows no pictures or 3D models. Use forward slashes or doubled backslashes on Windows.
+
+    // Your Red Moon Rising client install, the folder that holds eve.exe, e.g. "D:/Games/EVE".
+    // The server only reads from it. Used for:
+    //   icons/                       item and type icons in the admin panel
+    //   cache/Pictures/Portraits/    character and agent portraits (/portrait/<id> falls back to it)
+    //   cache/Pictures/Gids/         rendered type snapshots where a type has no 2D icon
+    //   res/, extracted_res*/, *.stuff   model pipeline: .blue/.tri/.red/.dds source files the
+    //                                admin panel builds 3D previews from, plus nebula cubemaps,
+    //                                corporation and alliance logo atlases
+    //   res/introMovie.txt           intro movie subtitles sent to the client
+    // The tools in cmd/audiorestore and cmd/clientpatch also default to this path when run
+    // without -client; they write into it (station sounds and client patches).
+    "clientPath": "",
+
+    // Folders of already converted .glb models (one per ship, station or structure type).
+    // The admin panel indexes them for its 3D viewer; folders that do not exist are skipped.
+    // A sibling folder named "nebulas" next to the first entry supplies skybox models.
+    // Not needed if clientPath is set and the model pipeline can build from the client files.
+    // Example: ["D:/GuriMoon/models", "D:/more-models"]
+    "modelsDirs": [],
+    "pprof": true,
+    "sessionDays": 30
+  },
+  "settings": {
+    "calendar.ycYearOffset": 1898,
+    "audio.npcChatter": true,
+    "concord.responseDelaySec": [5, 8, 10, 12, 16],
+    "concord.lingerSec": 90,
+    "sentry.respawnMinutes": 15,
+    "dungeon.fixedRespawnMinutes": 10,
+    "gate.cloakSec": 60,
+    "npc.lockTimeSec": 3,
+    "npc.lockTimeCapSec": 30,
+    "npc.leashMult": 1.5,
+    "npc.fleeAlignSec": 12,
+    "loot.playerDropChance": 0.5,
+    "loot.containerHours": 2,
+    "loot.npcAnyChance": 0.65,
+    "loot.npcLuckyChance": 0.20,
+    "loot.npcJackpotChance": 0.05,
+    "security.killRightDays": 30,
+    "starbase.aggressionMemoryMinutes": 15,
+    "starbase.freezeFuelWhileDown": true,
+    "sov.flipGraceHours": 24,
+    "market.npcBuyFactor": 0.90,
+    "market.impactSpill": 0.40,
+    "market.secBidMul": [0.95, 1.10, 1.22],
+    "market.secVolMul": [0.50, 1.00, 1.25],
+    "market.secImpactDepth": [0.18, 0.10, 0.07],
+    "market.secImpactFloor": [0.45, 0.62, 0.72],
+    "market.secImpactRecovery": [0.10, 0.18, 0.24],
+    "repair.costFactor": 0.02,
+    "reprocessing.taxBase": 0.05,
+    "reprocessing.taxPerStanding": 0.0075,
+    "reprocessing.skillYieldBase": 0.375,
+    "missions.qualityStep": 0.05,
+    "missions.qualityFloor": 0.1,
+    "missions.jumpWeights": [20, 35, 30, 15],
+    "missions.defaultExpiryDays": 7,
+    "corp.memberLimitFormula": [10, 10, 50, 200, 1000]
+  },
+  "modules": {}
+}

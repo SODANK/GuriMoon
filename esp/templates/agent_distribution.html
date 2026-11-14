@@ -1,0 +1,327 @@
+{{define "content"}}
+<h2>Mission Distribution</h2>
+
+<p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
+  One weighted roll over the agent's division (<code>RollMissionType</code>), then a random
+  enabled template of that type at the agent's level. Weights are <strong>relative</strong>,
+  not percentages &mdash; <em>Roll</em> is each type's share of its division's total.
+  <em>Effective</em> is what pilots get: a rolled type with no usable template at that level
+  falls back to <strong>kill</strong>, and if kill is empty too the agent answers
+  &ldquo;no missions available&rdquo;. Template <code>allowedFactions</code> filtering is not
+  modelled and can only narrow coverage further.
+</p>
+
+{{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
+
+<style>
+.mixbar { display:flex; height:12px; border-radius:3px; overflow:hidden; background:#1f2937; width:110px }
+.mixbar span { display:block; height:100% }
+.mix-kill { background:var(--accent) } .mix-courier { background:#5b8fd5 }
+.mix-trade { background:#d5b45b } .mix-mining { background:#5bd58f }
+.mix-dead { background:#4b5563 }
+.mixkey { font-size:11px; color:#9ca3af; display:flex; gap:12px; flex-wrap:wrap; margin-top:6px }
+.mixkey i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px }
+/* Weight fields sit four abreast; the spinners double their width for nothing. */
+.wt { width:46px; text-align:right; -moz-appearance:textfield }
+.wt::-webkit-outer-spin-button, .wt::-webkit-inner-spin-button { -webkit-appearance:none; margin:0 }
+.dist-eff { font-size:11px; color:#9ca3af; white-space:nowrap }
+.roll-cell { display:flex; align-items:center; gap:8px }
+.roll-readout { font-size:11px; color:#9ca3af; white-space:nowrap }
+/* Warnings are collapsed by default: with a thin template library every row
+   has three or four, and expanded they bury the weights being edited. */
+.warnchip { border:1px solid #5c3a1a; background:#2a1a0f; color:#e0a35b; border-radius:3px;
+            font-size:11px; padding:1px 6px; cursor:pointer; white-space:nowrap }
+.warnchip:hover { background:#3a2413 }
+.warnrow td { padding-top:0; border-bottom:1px solid var(--line-soft) }
+.warnlist { font-size:11px; color:#e0a35b; line-height:1.6; columns:2; column-gap:24px }
+/* Summary and inventory share one band so the editable table starts near the top. */
+.dist-top { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; margin-bottom:16px }
+.dist-top .card { flex:1 1 340px; margin-bottom:0 }
+.dist-top table.compact { max-width:none }
+/* Storyline panel: a second deck with its own staffing, its own stock and its
+   own way of going nowhere. */
+.sl-grid { display:grid; grid-template-columns:minmax(240px,1fr) minmax(280px,1.2fr); gap:16px; align-items:start }
+@media (max-width:900px) { .sl-grid { grid-template-columns:1fr } }
+.sl-run { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap }
+.sl-run input { width:70px; text-align:right; padding:6px 8px; font-size:12px }
+.sl-run label { display:block; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px }
+.sl-stats { display:flex; gap:18px; flex-wrap:wrap; margin:10px 0 4px }
+.sl-stats div { font-size:12px; color:#9ca3af }
+.sl-stats b { display:block; color:#e0e4ec; font-size:16px; font-weight:600 }
+.sl-warn { border:1px solid #5c3a1a; background:#2a1a0f; color:#e0a35b; border-radius:4px;
+           padding:8px 10px; font-size:11px; line-height:1.6; margin-top:10px }
+.sl-warn ul { margin:0; padding-left:16px }
+.sl-fac { max-height:260px; overflow-y:auto }
+.sl-fac td { padding:4px 8px }
+</style>
+
+<div class="dist-top">
+<div class="card">
+  <h3 style="margin-bottom:8px">Server-wide mix</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
+    Effective share across all {{.Summary.Agents}} mission agents, weighted by division headcount
+    (R&amp;D and non-agents excluded).
+  </p>
+  <div class="mixbar" style="height:18px;width:100%">
+    {{range .Summary.Cells}}<span class="mix-{{.Type}}" style="width:{{printf "%.3f" .EffPct}}%" title="{{.Type}} {{printf "%.1f" .EffPct}}%"></span>{{end}}
+    {{if gt .Summary.DeadPct 0.0}}<span class="mix-dead" style="width:{{printf "%.3f" .Summary.DeadPct}}%" title="no mission available {{printf "%.1f" .Summary.DeadPct}}%"></span>{{end}}
+  </div>
+  <div class="mixkey">
+    {{range .Summary.Cells}}<span><i class="mix-{{.Type}}"></i>{{.Type}} {{printf "%.1f" .EffPct}}% &middot; {{.Templates}} tmpl</span>{{end}}
+    {{if gt .Summary.DeadPct 0.0}}<span><i class="mix-dead"></i>no mission {{printf "%.1f" .Summary.DeadPct}}%</span>{{end}}
+  </div>
+  <p style="font-size:12px;color:#9ca3af;margin-top:10px">
+    {{.Summary.Divisions}} divisions &middot; {{.Summary.AgentDivisions}} staffed &middot;
+    {{.Summary.NoRow}} on the 50/50 fallback &middot; {{.Summary.Gaps}} with warnings
+  </p>
+
+  <h3 style="margin:14px 0 8px">Mission cap</h3>
+  <form method="POST" action="/agents/distribution" class="sl-run">
+    <input type="hidden" name="action" value="cooldown">
+    <div>
+      <label>Missions per window</label>
+      <input type="number" name="missionCap" min="0" value="{{.MissionCap}}">
+    </div>
+    <div>
+      <label>Window (hours)</label>
+      <input type="number" name="cooldownHours" min="1" value="{{.CooldownHours}}">
+    </div>
+    <button type="submit">Save</button>
+  </form>
+  <p style="font-size:11px;color:#6b7280;margin-top:6px">
+    Per pilot per agent, counted on <em>accepted</em> missions in a rolling window &mdash;
+    declines do not count, and the agent info window shows &ldquo;Available Again&rdquo;
+    while the cap is hit. The refusal line is authorable per division on
+    <a href="/agents/dialogue">Dialogue</a> (<code>shell.cooldown</code>). 0 disables the cap.
+    Storyline agents are exempt (the invite is their gate).
+  </p>
+
+  <h3 style="margin:14px 0 8px">Free declines</h3>
+  <form method="POST" action="/agents/distribution" class="sl-run">
+    <input type="hidden" name="action" value="declines">
+    <div>
+      <label>Window (hours)</label>
+      <input type="number" name="declineHours" min="0" value="{{.DeclineHours}}">
+    </div>
+    <button type="submit">Save</button>
+  </form>
+  <p style="font-size:11px;color:#6b7280;margin-top:6px">
+    Per pilot per agent: the first decline in the window is free; another decline with the same
+    agent inside it costs the template&rsquo;s standing loss. 0 makes every decline cost standing.
+    The agent&rsquo;s lines are authorable on <a href="/agents/dialogue">Dialogue</a>
+    (<code>shell.decline.free</code>, <code>shell.decline.penalty</code>).
+  </p>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:8px">Template inventory</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
+    Enabled templates the offer path can actually hand out, per agent level. A kill template
+    with no <code>dungeonVID</code>, or a dungeon with no rooms, is rejected at offer time.
+  </p>
+  <table class="compact">
+    <tr><th>Level</th><th style="text-align:right">Kill</th><th style="text-align:right">Courier</th>
+        <th style="text-align:right">Trade</th><th style="text-align:right">Mining</th></tr>
+    {{range .Summary.Inventory}}
+    <tr>
+      <td>L{{.Level}}</td>
+      <td style="text-align:right{{if eq .KillUsable 0}};color:#e0a35b{{end}}">
+        {{.KillUsable}}{{if .KillUnusable}}<span style="color:#e0a35b" title="{{.Kill}} authored, {{.KillUnusable}} rejected at offer time"> &minus;{{.KillUnusable}}</span>{{end}}
+      </td>
+      <td style="text-align:right{{if eq .Courier 0}};color:#6b7280{{end}}">{{.Courier}}</td>
+      <td style="text-align:right{{if eq .Trade 0}};color:#6b7280{{end}}">{{.Trade}}</td>
+      <td style="text-align:right{{if eq .Mining 0}};color:#6b7280{{end}}">{{.Mining}}</td>
+    </tr>
+    {{else}}
+    <tr><td colspan="5" style="color:#6b7280">No mission templates yet &mdash; see <a href="/missions">Missions</a>.</td></tr>
+    {{end}}
+  </table>
+</div>
+</div>
+
+<div class="card">
+  <h3>Storyline deck</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:10px;max-width:1000px">
+    Storyline agents run the same offer pipeline, on an exclusive deck: they draw only
+    templates flagged <strong>storyline</strong> on the
+    <a href="/missions">mission template</a> page, nobody else draws those, and they have
+    nothing at all for a pilot who has not been invited. An invite is earned by completing
+    <strong>consecutive missions for agents of one faction</strong> &mdash; switching
+    faction restarts the count &mdash; at which point a storyline agent of that faction
+    mails the pilot and waits for them. The run is only spent when an agent is actually
+    found, so a faction with no storyline agent holds the count rather than wasting it.
+    These agents are excluded from the division coverage above, because they no longer
+    answer an ordinary mission request.
+  </p>
+  <div class="sl-grid">
+    <div>
+      <form method="POST" action="/agents/distribution" class="sl-run">
+        <input type="hidden" name="action" value="storyline">
+        <div>
+          <label>Missions per run</label>
+          <input type="number" name="storylineThreshold" min="1" value="{{.Storyline.Threshold}}">
+        </div>
+        <button type="submit">Save</button>
+      </form>
+      <div class="sl-stats">
+        <div><b>{{.Storyline.Agents}}</b>storyline agents</div>
+        <div><b>{{.Storyline.Usable}}</b>usable templates{{if ne .Storyline.Templates .Storyline.Usable}} <span style="color:#e0a35b">of {{.Storyline.Templates}}</span>{{end}}</div>
+        <div><b>{{.Storyline.Pending}}</b>invites outstanding</div>
+      </div>
+      <table class="compact">
+        <tr><th>Level</th><th style="text-align:right">Agents</th><th style="text-align:right">Templates</th></tr>
+        {{range .Storyline.Levels}}
+        <tr>
+          <td>L{{.Level}}</td>
+          <td style="text-align:right{{if eq .Agents 0}};color:#6b7280{{end}}">{{.Agents}}</td>
+          <td style="text-align:right{{if eq .Usable 0}};color:#e0a35b{{end}}">
+            {{.Usable}}{{if ne .Templates .Usable}}<span style="color:#e0a35b" title="{{.Templates}} authored, {{sub .Templates .Usable}} rejected at offer time"> &minus;{{sub .Templates .Usable}}</span>{{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="3" style="color:#6b7280">No storyline agents and no storyline templates.</td></tr>
+        {{end}}
+      </table>
+      {{if .Storyline.Warnings}}
+      <div class="sl-warn">
+        <ul>{{range .Storyline.Warnings}}<li>{{.}}</li>{{end}}</ul>
+      </div>
+      {{end}}
+    </div>
+    <div>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:6px">
+        Who can pay out a run. A faction missing from this list can never issue an invite,
+        so its pilots run forever and hear nothing.
+      </p>
+      <div class="sl-fac">
+        <table class="compact">
+          <tr><th>Faction</th><th style="text-align:right">Agents</th></tr>
+          {{range .Storyline.Factions}}
+          <tr><td>{{if .FactionName}}{{.FactionName}}{{else}}faction {{.FactionID}}{{end}}</td>
+              <td style="text-align:right">{{.Agents}}</td></tr>
+          {{else}}
+          <tr><td colspan="2" style="color:#e0a35b">No faction staffs a storyline agent.</td></tr>
+          {{end}}
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:6px">
+    <h3>Division weights</h3>
+    <button type="button" id="warnToggle" class="warnchip" style="margin-left:auto">Expand all warnings</button>
+  </div>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
+    Edit the numbers and Save &mdash; percentages update as you type, only Save writes the row,
+    and a division with no row is stored on first save. Agent counts are a hover tooltip for the
+    per-level breakdown; the <span class="warnchip">&#9888;</span> chip opens that division's
+    coverage warnings.
+  </p>
+  <table class="compact">
+    <tr>
+      <th>ID</th><th>Division</th><th style="text-align:right">Agents</th>
+      <th style="text-align:right">Kill</th><th style="text-align:right">Courier</th>
+      <th style="text-align:right">Trade</th><th style="text-align:right">Mining</th>
+      <th>Roll</th><th>Effective</th><th></th>
+    </tr>
+    {{range .Divisions}}
+    <tr id="div-{{.DivisionID}}">
+      <form method="POST" action="/agents/distribution">
+        <input type="hidden" name="divisionID" value="{{.DivisionID}}">
+        <td>{{.DivisionID}}</td>
+        <td style="white-space:nowrap">
+          {{.DivisionName}}
+          {{if not .HasRow}}<span style="font-size:11px;color:#e0a35b" title="No agtDivisionMissionWeights row — GetDivisionWeights falls back to 50/50 kill/courier. Saving creates it.">&nbsp;(no row)</span>{{end}}
+        </td>
+        <td style="text-align:right;font-size:12px;color:#9ca3af"
+            title="{{range .Levels}}L{{.Level}}&times;{{.Agents}} {{end}}">
+          {{if .Agents}}{{.Agents}}{{else}}&mdash;{{end}}
+        </td>
+        {{range .Cells}}
+        <td style="text-align:right"><input class="wt" type="number" min="0" name="{{.Type}}Weight" value="{{.Weight}}"></td>
+        {{end}}
+        <td>
+          <div class="roll-cell">
+            <div class="mixbar">
+              {{range .Cells}}<span class="mix-{{.Type}}" style="width:{{printf "%.3f" .Pct}}%"></span>{{end}}
+            </div>
+            <span class="roll-readout">{{range $i, $c := .Cells}}{{if $i}}/{{end}}{{printf "%.0f" $c.Pct}}{{end}}</span>
+          </div>
+        </td>
+        <td class="dist-eff">
+          {{range .Cells}}{{if ge .EffPct 0.5}}{{.Type}} {{printf "%.0f" .EffPct}}% {{end}}{{end}}
+          {{if ge .DeadPct 0.5}}<span style="color:#e0a35b">none {{printf "%.0f" .DeadPct}}%</span>{{end}}
+        </td>
+        <td style="white-space:nowrap;text-align:right">
+          {{if .Warnings}}<button type="button" class="warnchip" data-warn="{{.DivisionID}}">&#9888; {{len .Warnings}}</button>{{end}}
+          <button type="submit">Save</button>
+        </td>
+      </form>
+    </tr>
+    {{if .Warnings}}
+    <tr class="warnrow" id="warn-{{.DivisionID}}" hidden>
+      <td colspan="10">
+        <div class="warnlist">
+          {{range .Warnings}}<div>{{.}}</div>{{end}}
+        </div>
+      </td>
+    </tr>
+    {{end}}
+    {{end}}
+  </table>
+</div>
+
+
+<script>
+// Live percentages while editing. Nothing is persisted until Save; this only
+// keeps the Roll bar honest so the numbers being typed can be read as a mix.
+(function () {
+  var types = ['kill', 'courier', 'trade', 'mining'];
+  document.querySelectorAll('tr[id^="div-"]').forEach(function (row) {
+    var inputs = types.map(function (t) { return row.querySelector('input[name="' + t + 'Weight"]'); });
+    var bars = row.querySelectorAll('.mixbar span');
+    var readout = row.querySelector('.roll-readout');
+    if (!readout) return;
+    function update() {
+      var vals = inputs.map(function (el) { return Math.max(0, parseInt(el.value, 10) || 0); });
+      var total = vals.reduce(function (a, b) { return a + b; }, 0);
+      var texts = [];
+      vals.forEach(function (v, i) {
+        var p = total > 0 ? v * 100 / total : (i === 0 ? 100 : 0);
+        if (bars[i]) bars[i].style.width = p.toFixed(3) + '%';
+        texts.push(Math.round(p));
+      });
+      readout.textContent = total === 0 ? 'all zero → kill' : texts.join('/');
+    }
+    inputs.forEach(function (el) { el.addEventListener('input', update); });
+  });
+
+  // Warning rows: per-division chip, plus one expand/collapse-all.
+  function setOpen(id, open) {
+    var row = document.getElementById('warn-' + id);
+    if (row) row.hidden = !open;
+  }
+  document.querySelectorAll('.warnchip[data-warn]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var row = document.getElementById('warn-' + chip.dataset.warn);
+      if (row) row.hidden = !row.hidden;
+    });
+  });
+  var all = document.getElementById('warnToggle');
+  if (all) {
+    all.addEventListener('click', function () {
+      var open = all.dataset.open !== '1';
+      all.dataset.open = open ? '1' : '0';
+      all.textContent = open ? 'Collapse all warnings' : 'Expand all warnings';
+      document.querySelectorAll('.warnchip[data-warn]').forEach(function (chip) {
+        setOpen(chip.dataset.warn, open);
+      });
+    });
+  }
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

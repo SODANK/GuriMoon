@@ -1,0 +1,20 @@
+.git/
+sql/
+docs/
+Dockerfile
+docker-compose.yml
+
+# Build outputs and local run artifacts.
+*.sql
+**/*.exe
+**/*.log
+gurimoon
+/build/
+
+# Per-install state. The image ships only the static string table.
+data/*
+!data/strings.txt
+
+# Local config. The image uses config.docker.json.
+config.json
+config.example.json

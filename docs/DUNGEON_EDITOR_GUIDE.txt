@@ -1,0 +1,734 @@
+================================================================================
+                     GuriMoon - Dungeon Editor Guide
+================================================================================
+
+Table of Contents
+-----------------
+  1. Overview
+  2. ESP Web Interface
+     2.1 Accessing the ESP
+     2.2 Dungeon List Page
+     2.3 3D Layout Editor (/editor/)
+     2.4 Item Type Browser
+     2.5 Dungeon Logic Page (/dungeon/{vid})
+     2.6 Live Refresh (Save & Refresh Players)
+  3. In-Game Dungeon Editor (Client UI)
+     3.1 The "scenario" Service
+     3.2 Supported Client Commands
+     3.3 The "dungeon" / "dungeonMgr" RPC Service
+  4. Slash Commands
+  5. Database Schema
+  6. Seed Data
+  7. Dungeon Helper (NPC Manager & Destiny Integration)
+  8. Workflow Examples
+  9. Dungeon Logic (Triggers, Leash, Transmissions)
+ 10. 3D Editor Setup (models, icons, nebulas — optional client art)
+
+
+================================================================================
+1. Overview
+================================================================================
+
+NOTE (July 2026): the old 2D canvas layout editor has been REMOVED. Layout
+editing (placing/moving objects) now happens exclusively in the 3D editor
+at /editor/ (section 2.3). The /dungeon/{vid} page has been repurposed as
+the "Dungeon Logic" tool: triggers (transmission popups, local chat, message
+boxes), NPC AI setup, leashes, gate music, and beacon descriptions. See
+section 9 for the full reference.
+
+The Dungeon Editor is a two-part system for creating and editing dungeon
+encounters (NPC combat sites, mission rooms, etc.) in GuriMoon:
+
+  - ESP Web Interface: the 3D layout editor (/editor/) plus the Dungeon
+    Logic page (/dungeon/{vid}) for everything behavioral.
+
+  - In-Game Client UI: The EVE client's built-in dungeon editor (from
+    dungeoneditor.py) communicates with the server via the "scenario" and
+    "dungeon"/"dungeonMgr" RPC services to load, edit, and preview dungeons
+    in 3D space.
+
+Both interfaces share the same database tables and can work together. Edits
+made on the ESP web page can be pushed live to connected in-game clients.
+
+
+================================================================================
+2. ESP Web Interface
+================================================================================
+
+2.1 Accessing the ESP
+---------------------
+The ESP (EVE Server Pages) admin panel is a built-in HTTP server.
+
+  URL:           http://localhost:26080
+  Dungeon Page:  http://localhost:26080/dungeons
+
+Configuration is in config.json:
+
+  {
+    "esp": {
+      "enabled": true,
+      "listen": ":26080",
+      "minRole": 2
+    }
+  }
+
+  - enabled   : Set to true to start the ESP HTTP server.
+  - listen    : The address and port to bind (default ":26080").
+  - minRole   : Minimum account role required to log in. Accounts with a
+                role value >= this number can authenticate.
+
+Authentication: the panel serves a cookie-based login form at /login — sign
+in with your EVE account username and password. Plain HTTP Basic Auth also
+still works for scripts and curl. The login form is EVE-HTML compatible, so
+the in-game browser (/ig/ portal) can log in too. Your account's role must
+carry a staff bit (esp.staffRoles) and clear the esp.minRole floor.
+
+  Sessions last 30 days and are refreshed on use, so an active admin is
+  never logged out. The cookie is self-contained and HMAC-signed with a key
+  stored in data/esp-session.key (generated on first run, mode 0600), which
+  is what lets a login survive a server restart. Delete that file to log
+  every ESP session out at once; never commit it — anyone holding it can
+  forge a logged-in cookie. Raising esp.minRole also invalidates sessions
+  issued to accounts below the new threshold.
+
+Account Role Requirements:
+  The account table has a "role" column (integer bitmask). The ESP lets an
+  account in when its role carries ANY bit of esp.staffRoles (default 56 =
+  GML 8 | GMH 16 | ADMIN 32) and is also >= esp.minRole (default 2). The
+  test is a bit test, never a numeric comparison.
+
+  Common role values:
+    1073741826     = Default role for auto-created accounts
+                     (DUNGEONMASTER | PLAYER). Carries no staff bit, so a
+                     fresh account cannot open the ESP or the editor.
+    56             = The staff trio. OR it into an account to admit it.
+
+  No account ships with a staff bit. To grant ESP access to an account:
+
+    UPDATE account SET role = role | 56 WHERE accountName = 'someuser';
+
+  The same bits satisfy authentication.slashRoles, so that account can also
+  run the in-game slash commands. Roles are cached for up to a minute; log
+  out and in to pick up the change at once.
+
+  To revoke ESP access:
+
+    UPDATE account SET role = role & ~56 WHERE accountName = 'someuser';
+
+  The in-game dungeon editor (scenario/dungeon services) does NOT have a
+  separate role check — any logged-in character can call those RPC methods.
+  Access control for the in-game editor is left to the client UI (which
+  only shows the dungeon editor to users with appropriate client-side
+  permissions).
+
+
+2.2 Dungeon List Page (/dungeons)
+---------------------------------
+Shows all dungeons grouped by faction. From here you can:
+
+  - View existing dungeons (click the dungeon name to open the editor).
+  - Create a new dungeon by entering a name and selecting a faction, then
+    clicking "Create Dungeon".
+  - Filter by faction using the faction dropdown.
+
+Each dungeon entry shows:
+  - Dungeon VID (virtual ID)
+  - Name
+  - Faction name
+  - Number of rooms
+
+
+2.3 3D Layout Editor (/editor/)
+--------------------------------
+All layout editing (placing, moving, rotating objects) happens in the 3D
+editor — a React + Three.js single-page app served at:
+
+  http://localhost:26080/editor/
+  Deep link to a dungeon:  /editor/?dungeon=VID
+
+It is embedded in the server binary (go:embed of esp/editor/dist), shares
+the ESP login session, and talks to the /api/* dungeon endpoints in
+esp/dungeon_api.go. Nothing extra to install — it ships with `go build`.
+A "Back to ESP admin panel" button in the toolbar returns to /dungeons.
+
+Layout of the app:
+
+  Left panel   : Dungeon list (create, open, filter by faction), room
+                 navigator with drag & drop reordering (persisted as
+                 dunRooms.roomOrder), JSON import, JSON/SQL export.
+  Viewport     : Full 3D scene. Orbit/pan/zoom camera, click to select,
+                 translate/rotate gizmos, grid. Objects render with their
+                 real ship/structure models when models are configured
+                 (see section 10), otherwise as simple placeholder shapes.
+  Right panel  : Object palette (browse/search types to place), outliner
+                 (all objects in the room, color-coded by kind: NPC,
+                 celestial, structure...), inspector (position, rotation,
+                 radius, aggression range, spawn wave assignment).
+
+Every edit saves straight to the database via PATCH /api/objects/{id}.
+
+The 3D editor owns LAYOUT only: positions, rotations, radius, and wave
+group assignment (dunObjects.spawnWave). Everything behavioral — triggers,
+NPC AI profiles, leashes, gate music, beacon descriptions — is authored on
+the Dungeon Logic page (section 2.5 / section 9).
+
+Rebuilding the editor from source is only needed if you change its code
+(esp/editor/src). See section 10.
+
+
+2.4 Item Type Browser (/dungeons/items)
+---------------------------------------
+A searchable catalog of EVE item types for finding typeIDs to place in rooms.
+
+  - Search by name: Enter a partial name and results are filtered (up to 200).
+  - Browse by category: Select a category, then a group, to see all types.
+  - Each result shows: typeID, typeName, groupName, categoryName, radius.
+  - Click a type to go back to the dungeon editor with that typeID prefilled.
+
+There is also a JSON API endpoint at /dungeons/items/api that the dungeon
+view page uses for inline search/autocomplete. (Inside the 3D editor, use
+the built-in object palette instead.)
+
+
+2.5 Dungeon Logic Page (/dungeon/{vid})
+----------------------------------------
+The former 2D dungeon view page is now the Dungeon Logic tool. It no longer
+edits layout; it authors behavior for each room:
+
+  - Logic triggers  : event -> action rules (transmission popups, local
+                      chat NPC talk, message boxes, wave releases).
+  - NPC Setup       : stance, faction override, aggression range,
+                      leash-to-object patrol orbits.
+  - Gate Setup      : acceleration gate music.
+  - Beacon Setup    : Show Info / bookmark descriptions for beacons.
+
+Full reference in section 9. The object table on this page shows a
+[wave N] tag for objects assigned to spawn waves in the 3D editor.
+
+
+2.6 Live Refresh (Save & Refresh Players)
+------------------------------------------
+When you edit a dungeon on the ESP while players are viewing that dungeon
+in-game, you can push the changes live:
+
+  1. Make your edits on the ESP (move objects, add/remove, etc.).
+  2. Click "Save & Refresh Players" on the dungeon view page.
+  3. The ESP looks up all connected game clients that are currently viewing
+     any room in this dungeon.
+  4. Each matching client receives a signal on its DungeonRefresh channel.
+  5. The server automatically clears the old dungeon balls from the client's
+     ballpark and respawns the room with updated data.
+  6. The player sees the changes in-game without needing to relog.
+
+This is powered by the SessionRegistry in esp/session.go, which tracks
+each connected client's current dungeon room and refresh channel.
+
+
+================================================================================
+3. In-Game Dungeon Editor (Client UI)
+================================================================================
+
+The EVE client has a built-in dungeon editor UI (dungeoneditor.py). When the
+player opens it, the client makes RPC calls to two server-side services:
+"scenario" and "dungeon"/"dungeonMgr".
+
+3.1 The "scenario" Service
+--------------------------
+The scenario service handles the client's dungeon editor UI actions. These
+are bound-object style calls that the client makes via:
+
+    eve.RemoteSvc('scenario').EditRoom(...)
+
+Supported methods:
+
+  EditRoom(dungeonVID, roomIndex)
+      Load a dungeon room for editing. Spawns the room's objects as rigid
+      balls in the player's ballpark. Objects appear at their stored
+      positions relative to the player's current location.
+
+  PlayDungeon(dungeonVID, roomIndex)
+      Same as EditRoom. In the future this may enable NPC AI, but currently
+      it behaves identically.
+
+  GotoRoom(dungeonVID, roomID)
+      Switch to a different room within the same dungeon. Clears existing
+      dungeon balls and spawns the new room.
+
+  ResetD()
+      Remove all dungeon balls from the player's ballpark and clear the
+      current dungeon state.
+
+  GetDunObjects()
+      Returns a list of all dungeon object entity IDs currently spawned
+      in the player's ballpark.
+
+  GetSelObjects()
+      Returns the list of currently selected dungeon object entity IDs.
+
+  SetSelectionByID(entityIDs)
+      Set which dungeon objects are selected in the editor.
+
+  SetSelectedRadius(radius)
+      Update the radius of all currently selected objects.
+
+  SetSelectedAggressionRange(range)
+      Update the aggression range of all currently selected objects.
+
+  TranslateSelected(dx, dy, dz)
+      Move all selected objects by the given offset. Updates both the
+      in-memory ball positions and the database.
+
+  RotateSelected(...)
+      Stub - returns success but rotation is not yet implemented.
+
+  RefreshSelection()
+      Stub - returns success.
+
+
+3.2 The "dungeon" / "dungeonMgr" RPC Service
+---------------------------------------------
+This service provides CRUD operations and type browsing for the dungeon
+editor. The client calls these as remote service methods.
+
+Dungeon CRUD:
+
+  DEGetFactions()
+      Returns a list of all factions that have dungeons.
+
+  DEGetDungeons(factionID) or DEGetDungeons(dungeonVID)
+      List dungeons for a faction, or get a specific dungeon by VID.
+
+  DEGetRooms(dungeonVID)
+      List all rooms in a dungeon.
+
+  DEGetObjects(roomID)
+      Get all objects in a room as a rowset.
+
+  DECreateDungeon(name, factionID)
+      Create a new dungeon. Returns the new dungeonVID.
+
+  DECreateRoom(dungeonVID, roomName)
+      Create a new room in a dungeon. Returns the new roomID.
+
+  DEAddObject(roomID, typeID, x, y, z)
+      Add an object to a room. Returns the new objectID.
+
+  EditObject(objectID, x, y, z, yaw, pitch, roll, radius, aggressionRange)
+      Update any combination of an object's properties. Supports partial
+      updates (only fields present in the keyword args are changed).
+
+  CopyObject(objectID, offsetX, offsetY, offsetZ)
+      Duplicate an object at an offset from its current position.
+      Returns the new objectID.
+
+  RemoveObject(objectID)
+      Delete an object from its room.
+
+Type Browsing:
+
+  DEGetCategories()
+      List all item categories (for the type browser).
+
+  DEGetGroups(categoryID)
+      List item groups within a category.
+
+  DEGetTypes(groupID)
+      List item types within a group.
+
+  DESearchTypes(query)
+      Search for item types by name (regex/RLIKE match).
+
+
+================================================================================
+4. Slash Commands
+================================================================================
+
+The following slash commands are related to dungeon/spawning but are currently
+stubs (not yet implemented):
+
+  /spawn <typeID>            - Spawn an NPC entity (stub).
+  /roid <typeID> <radius>    - Spawn an asteroid (stub).
+  /growbelt                  - Trigger asteroid belt growth (stub).
+  /summon                    - Spawn an item (stub).
+
+These commands are recognized by the slash command handler but return a
+"not yet implemented" message. Future work will connect them to the NPC
+manager and destiny simulation.
+
+All other dungeon editing is done through the ESP web interface or the
+in-game dungeon editor UI (scenario service), not through slash commands.
+
+
+================================================================================
+5. Database Schema
+================================================================================
+
+The dungeon system uses four tables plus the NPC behavior profile table.
+All are created (and upgraded — the ALTERs are idempotent) automatically at
+server startup by EnsureDungeonTables() in db/dungeondb.go. No manual
+migrations needed: point the server at a database and start it.
+
+  dunDungeons
+  -----------
+    dungeonVID    INT AUTO_INCREMENT PRIMARY KEY
+    dungeonVName  VARCHAR(255)       -- Dungeon display name
+    factionID     INT                -- Faction ID (e.g. 500020=Serpentis)
+    version       INT DEFAULT 1      -- Schema version
+    status        INT DEFAULT 4      -- Status flag (4 = active)
+
+  dunRooms
+  --------
+    roomID        INT AUTO_INCREMENT PRIMARY KEY
+    dungeonVID    INT                -- FK to dunDungeons
+    roomName      VARCHAR(255)       -- Room display name
+    roomOrder     INT NULL           -- Manual ordering (3D editor drag &
+                                     -- drop); NULL = roomID order
+
+  dunObjects
+  ----------
+    objectID        INT AUTO_INCREMENT PRIMARY KEY
+    roomID          INT              -- FK to dunRooms
+    typeID          INT              -- invTypes typeID
+    x, y, z         DOUBLE DEFAULT 0 -- Position (meters)
+    yaw, pitch, roll DOUBLE NULL     -- Rotation (degrees)
+    radius          DOUBLE NULL      -- Visual/collision radius
+    aggressionRange DOUBLE NULL      -- NPC aggro range (NULL = non-hostile)
+    stance          VARCHAR(16) NULL -- aggressive | defensive | passive;
+                                     -- NULL = aggressive
+    orbitDistance   DOUBLE NULL      -- Per-entity combat orbit override /
+                                     -- leash idle orbit radius (m)
+    followRange     DOUBLE NULL      -- Per-entity follow range override
+    leashRange      DOUBLE NULL      -- Per-entity leash range override
+    npcFactionID    INT NULL         -- Per-NPC faction override
+                                     -- (NULL = dungeon's factionID)
+    musicUrl        VARCHAR(255) NULL -- Acceleration gates: res:/Sound/...
+                                     -- url played on activation
+    leashObjectID   INT NULL         -- NPC idles by orbiting this object
+                                     -- (another dunObjects row, same room)
+    description     VARCHAR(1000) NULL -- Beacons: emitted as
+                                     -- slimItem.dunDescription (Show Info)
+    spawnWave       INT NULL         -- Wave group; NULL/0 spawns with the
+                                     -- room, N>=1 waits for a spawnWave
+                                     -- trigger (section 9.4)
+
+  dunTriggers
+  -----------
+    triggerID        INT AUTO_INCREMENT PRIMARY KEY
+    roomID           INT             -- FK to dunRooms (INDEX idx_room)
+    event            VARCHAR(32)     -- roomEnter | npcDamaged | npcKilled |
+                                     -- roomCleared | gateActivated
+    targetObjectID   INT NULL        -- Scope npcDamaged/npcKilled to one
+                                     -- authored object
+    action           VARCHAR(32)     -- transmission | localChat | popup |
+                                     -- spawnWave
+    header           VARCHAR(255)    -- Transmission window title
+    icon             VARCHAR(64)     -- eveGraphics graphicID (transmission)
+    body             TEXT            -- Transmission HTML / chat line /
+                                     -- popup text
+    senderName       VARCHAR(128)    -- localChat: NPC sender display name
+    deferUntilLanded TINYINT DEF 0   -- Transmission: hold until warp lands
+    onceOnly         TINYINT DEF 1   -- Fire once per room load
+    delayMs          INT DEFAULT 0   -- Delay before the action fires
+    spawnWave        INT NULL        -- Wave number (spawnWave action)
+    chatColor        VARCHAR(16)     -- localChat text color ("RRGGBB")
+
+  NPC behaviour is not a table. What a ball can DO (move, shoot, run its
+  EWAR) is derived from its type at spawn; the only authored choice is
+  dunObjects.stance:
+    aggressive  engages any hostile it sees (the default)
+    defensive   fights only what shoots it (or its group)
+    passive     never engages, even when shot
+  Ranges come from the type's weapon attributes.
+
+Cascade behavior:
+  - Deleting a room deletes all its objects and triggers.
+  - Deleting a dungeon deletes all its rooms (and therefore all objects).
+
+Export/import: the 3D editor exports a dungeon as JSON (full round-trip,
+object references in triggers are remapped to new objectIDs on import) or
+as a self-contained SQL script.
+
+
+================================================================================
+6. Seed Data
+================================================================================
+
+A fresh install ships the project's dungeons with their rooms, objects,
+per-ball loot and Dungeon Logic triggers, the open-site spawners and the
+mission templates. They load with the rest of sql/ (dundungeons.sql,
+dunrooms.sql, dunobjects.sql, dunobjectloot.sql, duntriggers.sql,
+dunspawners.sql, missiontemplates.sql). Build more in the 3D editor at
+/editor/ (section 3), or import a dungeon exported from another install
+with the editor's Export / Import buttons. 
+
+
+================================================================================
+7. Dungeon Helper (NPC Manager & Destiny Integration)
+================================================================================
+
+When dungeon objects are spawned in-game, they integrate with the server's
+physics and NPC systems:
+
+  Destiny Integration (destiny/manager.go)
+  -----------------------------------------
+  Each spawned dungeon object gets a destiny.Manager instance that tracks:
+    - Position (X, Y, Z) and velocity
+    - Navigation state (stop, goto, follow, orbit, warp)
+    - Speed fraction (0.0 to 1.0)
+    - Stamp counter for client synchronization
+
+  Dungeon objects are spawned as "rigid" balls (non-moving) using the
+  AddBall destiny update. They appear at their database-stored positions
+  offset from the player's current location.
+
+  Per-Connection Dungeon State (destinyConn)
+  -------------------------------------------
+  Each connected client tracks dungeon state:
+    - dunRoomID    : The currently loaded dungeon room ID.
+    - dunObjects   : Map of ballpark entity IDs to dungeon objectIDs.
+    - dunNextID    : Counter for assigning entity IDs (starts at 800,000,000).
+    - dunSelected  : List of currently selected entity IDs in the editor.
+    - dungeonRefresh : Channel for receiving ESP live-refresh signals.
+
+  NPC Manager (npc/manager.go)
+  ----------------------------
+  The NPC Manager handles spawning and ticking NPC entities:
+    - SpawnNPC() creates an NPC with position, mass, agility, max velocity,
+      radius, and HP stats. It returns a destiny.Entity for broadcasting.
+    - A tick loop runs every second, calling each NPC brain's Think()
+      method and broadcasting resulting actions.
+    - The Brain interface allows plugging in custom AI behaviors for
+      different NPC types.
+
+  Dungeon NPCs are fully wired into the brain system: when a room spawns
+  (mission warp-in, gate arrival, PlayDungeon), each NPC object gets a live
+  brain: its role derived from the type (armed and mobile orbits and
+  fires, armed and immobile holds and fires, unarmed holds) and its
+  dunObjects.stance. They aggress within aggressionRange, use their
+  weapons and EWAR, respect leash ranges, and
+  idle on patrol orbits when leashed to an object (section 9.2).
+
+
+================================================================================
+8. Workflow Examples
+================================================================================
+
+Example A: Creating a Dungeon via ESP
+--------------------------------------
+  1. Open http://localhost:26080/editor/ in your browser.
+  2. Log in with an account that has role >= 2.
+  3. In the left panel, enter a dungeon name (e.g. "Rogue Drone Hive"),
+     pick a faction, and click "+".
+  4. Add a room named "Entrance" in the room navigator.
+  5. Use the object palette to place objects in the 3D viewport:
+     - An acceleration gate.
+     - Several NPC drones (set aggression ranges in the inspector).
+     - A cargo container with loot.
+  6. Arrange the encounter with the translate gizmo; every move saves
+     automatically.
+  7. Add a second room ("Hive Core") and populate it.
+  8. Open /dungeon/{vid} (Dungeon Logic) to add triggers, stances,
+     or waves as desired.
+  9. Click "Save & Refresh Players" on the Dungeon Logic page to push
+     changes to anyone testing the dungeon in-game.
+
+Example B: Testing a Dungeon In-Game
+-------------------------------------
+  1. Log into the EVE client and undock into space.
+  2. Open the dungeon editor UI (client-side dungeoneditor.py).
+  3. The client calls DEGetFactions() and DEGetDungeons() to populate
+     the dungeon browser.
+  4. Select a dungeon and room. The client calls scenario.EditRoom()
+     which spawns the room's objects around your ship.
+  5. Objects appear in your overview and in space.
+  6. Use the in-game editor to select, move, and modify objects.
+  7. Switch rooms with GotoRoom(). Reset with ResetD().
+
+Example C: Live Editing Workflow
+---------------------------------
+  1. Player A opens a dungeon room in-game via the dungeon editor.
+  2. Admin opens the same dungeon on the ESP web page.
+  3. Admin moves an NPC in the 3D editor, then clicks "Save & Refresh
+     Players" on the Dungeon Logic page.
+  4. Player A's client automatically clears and respawns the room with
+     the updated layout - no relog required.
+
+================================================================================
+
+================================================================================
+9. Dungeon Logic (Triggers, Leash, Transmissions)  [added July 2026]
+================================================================================
+
+The /dungeon/{vid} ESP page is the Dungeon Logic tool. Layout lives in the
+3D editor; this page authors behavior.
+
+9.1 Logic Triggers (dunTriggers table)
+--------------------------------------
+Each room owns a list of event -> action rules, evaluated server-side per
+connection against the currently loaded room (state resets on every room
+load, so once-only triggers re-arm when the room respawns).
+
+Events:
+  roomEnter      fires right after spawnDungeonRoom delivers the room
+                 (PlayDungeon, gate arrival, mission warp-in, GotoRoom)
+  npcDamaged     first (and, if not once-only, subsequent) player damage to
+                 a dungeon NPC; optional target = specific authored object
+  npcKilled      a dungeon NPC died; optional target object
+  roomCleared    the last living dungeon NPC of the room died
+  gateActivated  an acceleration gate in the room was activated
+
+Actions:
+  transmission   OnIncomingTransmission(util.KeyVal{header, icon, text}, 0)
+                 -> the client's TRANSMISSIONS window ("AUTOMATED MESSAGE"
+                 style popup, parklife/transmissionMgr.py).
+                 - header: window title line. The defer flag prefixes "[d]"
+                   so the client holds the popup until it lands from warp.
+                 - icon: an eveGraphics graphicID as a string. The graphic's
+                   icon column is used; "c_*" icons resolve against the corp
+                   logo sheets (res:/UI/Texture/Corps/). Empty = default
+                   icon 40_14.
+                 - text: an HTML fragment (rendered with dungeontm.css).
+                   Inline client images work:
+                     <img src=corplogo:1000125 width=64 height=64>
+                     <img src=typeicon:587>  <img src=portrait:CHARID>
+                     <img src=icon:38_14>    <img src=res:/UI/...>
+  localChat      OnLSC SendMessage in the player's Local channel from a
+                 named non-player sender (senderName field). This is how
+                 NPCs "talk" when the player pulls a trigger.
+                   Body starting "/emote " -> roleplay "* Name does x" line.
+                   Body starting "/"       -> narrator line: the client
+                     drops the "sender >" prefix entirely and prints the
+                     rest of the body verbatim (retail flavor-text style,
+                     e.g. "/EoM Priest: Purge the unbelievers!"). Default
+                     color is cyan; the chat color picker overrides it.
+  popup          OnRemoteMessage('CustomInfo', {info: body}) -> plain
+                 message box.
+  spawnWave      Spawns the room's dunObjects rows whose spawnWave group
+                 matches the trigger's wave number (see 9.4 Waves).
+
+Options: onceOnly (default), delayMs, deferUntilLanded (transmission only),
+targetObjectID (npcDamaged/npcKilled scoping), spawnWave (wave number,
+spawnWave action only).
+
+Triggers survive JSON export/import (object references are remapped to the
+new objectIDs) and are included in the SQL export.
+
+9.2 NPC Leash (patrol orbits)
+-----------------------------
+dunObjects.leashObjectID + dunObjects.orbitDistance. An NPC leashed to
+another object in the room idles by flying a circle around that object at
+orbitDistance metres (default 5000) instead of holding still - patrol ships
+around a structure, haulers circling a can, etc. Combat behavior is
+unchanged: the NPC still aggresses per its stance and returns to its
+loop when the grid is quiet. Works with every stance and role, including
+passive/hold decoration NPCs.
+
+Edited in Dungeon Logic > NPC Setup ("Leash to" + "Orbit m"), or via
+PATCH /api/objects/{id} {"leashObjectID": N, "orbitDistance": M}.
+
+9.3 Beacon descriptions
+-----------------------
+dunObjects.description -> slimItem.dunDescription. Shown by the client as
+the Show Info description and bookmark hint. Edited in Dungeon Logic >
+Beacon Setup (groupID 310 objects).
+
+9.4 Waves (staged NPC spawns)
+-----------------------------
+dunObjects.spawnWave assigns an object to a wave group. Wave 0 / unset
+spawns with the room; wave N >= 1 stays hidden until a spawnWave trigger
+with that wave number fires. Assign waves in the 3D editor Inspector
+("Wave" field, PATCH /api/objects/{id} {"spawnWave": N}); the Dungeon
+Logic object table shows a [wave N] tag.
+
+Author the release in Dungeon Logic with spawnWave triggers, e.g.:
+  roomCleared -> spawnWave 2   (once only)
+  roomCleared -> spawnWave 3   (once only)
+Only the first unfired spawnWave trigger runs per event, so stacking
+once-only roomCleared triggers releases wave 2 on the first clear, wave 3
+when wave 2 dies, and so on. Any event works - npcKilled on a specific
+boss object or gateActivated can also release a wave. delayMs delays the
+spawn (e.g. reinforcements 5s after the warning transmission).
+
+Wave NPCs inherit the room's placement offset, dungeon faction, and
+mission kill-tracking; already-spawned objects are skipped, so a re-fired
+trigger cannot double-spawn. Room reload (respawn/refresh) resets all
+trigger state and hides the waves again.
+
+9.5 Client mechanics discovered from the RMR scripts
+----------------------------------------------------
+  - OnIncomingTransmission reads exactly .header/.icon/.text off a
+    util.KeyVal; isAgentMission arg is ignored by this client build.
+  - "[d]" header prefix defers the popup until StopWarpIndication.
+  - Gates require slimItem.dunDirection (already emitted); dunOpenUntil
+    (blue time) drives the gate open/closed animation - not yet authored.
+  - dunMusicUrl on a gate plays for the activating pilot (already
+    supported via Gate Setup).
+  - OnLSC 'who' tuples may carry an eveowners row so unknown NPC senders
+    get a display name with no lookup round-trip.
+
+
+================================================================================
+10. 3D Editor Setup (models, icons, nebulas — optional client art)
+================================================================================
+
+10.1 It works out of the box
+----------------------------
+The 3D editor needs NO setup. The production bundle is included in
+esp/editor/dist and embedded into the server binary at build time, so a
+plain `go build ./cmd/gurimoon/` gives you a working editor at /editor/.
+Without any client art configured, objects render as clean placeholder
+shapes (boxes/spheres sized by radius, color-coded by kind) — perfectly
+usable for layout work.
+
+Everything below is optional polish.
+
+10.2 Borrowing art from your own client install
+-----------------------------------------------
+This is a clean-room server, so the repository ships none of the client's
+art. But if you have the RMR client installed anyway (you need it to play!),
+the ESP can politely borrow its icons, portraits, and textures at runtime —
+read-only, straight from your install. Nothing in the client folder is
+modified, and nothing is copied into the repo.
+
+Set esp.clientPath in config.json to your client install directory:
+
+  "esp": {
+    ...
+    "clientPath": "C:\\Path\\To\\Your\\EVE-RMR-Client"
+  }
+
+The ESP then serves, directly from that folder:
+  - Type icons        (<clientPath>/icons)
+  - Character portraits (<clientPath>/cache/Pictures/Portraits)
+  - Corp logos        (<clientPath>/cache/Pictures/Gids)
+  - Nebula skyboxes   (auto-discovered .dds under res/Texture/Nebula and
+                       any extracted_res* directories)
+
+Leave clientPath empty and the panel simply shows text/placeholders instead.
+
+10.3 Real 3D ship & structure models
+-------------------------------------
+The editor renders real models when esp.modelsDirs lists one or more
+directories of .glb files:
+
+  "esp": {
+    ...
+    "modelsDirs": [
+      "D:\\eve-models\\res",
+      "D:\\eve-models\\dungeons\\res"
+    ]
+  }
+
+Lookup chain per object: invTypes.graphicID -> eveGraphics.url3D -> a
+matching .glb under one of the modelsDirs, served at
+/api/model/{typeID}.glb. Any type without a model quietly falls back to a
+placeholder shape — a partial model set is fine.
+
+The .glb files are a one-time, offline conversion of the client's own
+model assets — again, borrowed from your legally installed client for your
+own server's use, not something this repository can ship. The converter
+scripts live alongside the client tooling (outside this repo). If you skip
+this step entirely, the editor remains fully functional.
+
+A "nebulas/" directory next to the first modelsDirs entry is auto-detected
+and populates the editor's skybox picker.

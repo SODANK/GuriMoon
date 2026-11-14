@@ -1,0 +1,159 @@
+{{define "content"}}
+<h2>Moons</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">What each moon gives a Moon Harvesting Array. Every moon in the galaxy is rolled from one world seed, in the classic layout: most moons hold gas or nothing; <b style="color:{{moonClassColor 1}}">R8</b> metals follow the race of the space (the racial carbide chain); <b style="color:{{moonClassColor 2}}">R16</b> clusters by constellation; <b style="color:{{moonClassColor 3}}">R32</b> follows the region's rat faction (Technetium in Guristas space); <b style="color:{{moonClassColor 4}}">R64</b> is rare everywhere. Each class is about half as common as the one below it. Highsec moons hold <b style="color:{{moonClassColor 0}}">R4</b> only, since a harvester cannot anchor above 0.4. A quantity is <b>batches per cycle</b> (100 units each), which the harvester caps at its quality (Array I = 1).</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+{{if .JobRunning}}<div class="alert alert-success">A rescramble is running (started {{.JobAge}} ago). Refresh to see the result.</div>{{end}}
+{{if .JobErr}}<div class="alert alert-error">Last rescramble failed: {{.JobErr}}</div>{{end}}
+{{if .JobLast}}<div class="alert alert-success">Last rescramble: {{.JobLast}}</div>{{end}}
+
+{{with .Census}}
+<div class="card">
+  <h3>Galaxy state</h3>
+  <div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:14px">
+    <div><div style="font-size:22px">{{commas .Surveyed}} / {{commas .TotalMoons}}</div><div style="font-size:12px;color:#6b7280">moons rolled</div></div>
+    <div><div style="font-size:22px">{{commas .Empty}}</div><div style="font-size:12px;color:#6b7280">empty</div></div>
+    {{range $c, $n := .WithClass}}
+    <div><div style="font-size:22px;color:{{moonClassColor $c}}">{{commas $n}}</div><div style="font-size:12px;color:#6b7280">moons with {{moonClassName $c}}</div></div>
+    {{end}}
+    <div><div style="font-size:22px">{{commas .Towers}}</div><div style="font-size:12px;color:#6b7280">towers on moons</div></div>
+    <div><div style="font-size:22px;{{if .OffPool}}color:#f87171{{end}}">{{commas .OffPool}}</div><div style="font-size:12px;color:#6b7280">harvesters on a missing material</div></div>
+    <div><div style="font-size:22px">{{commas .Edited}}</div><div style="font-size:12px;color:#6b7280">hand-edited</div></div>
+  </div>
+  <div style="font-size:13px;color:#c5c8d0">
+    Profile <b>{{.Settings.Profile}}</b> · world seed <code>{{$.SeedStr}}</code> · generator v{{.GenVersion}}
+    {{if $.LastGenAge}}· last rolled {{$.LastGenAge}} ago{{end}}
+    {{if .Stale}}· <span style="color:#fbbf24">{{commas .Stale}} moon(s) from an older generator</span>{{end}}
+  </div>
+  <table style="margin-top:12px;max-width:640px">
+    <tr><th>Band</th><th style="text-align:right">Moons</th><th style="text-align:right">Holding anything</th><th style="text-align:right">Empty</th></tr>
+    {{range $b, $n := .BandMoons}}
+    <tr><td>{{index $.Bands $b}}</td><td style="text-align:right">{{commas $n}}</td>
+      <td style="text-align:right">{{commas (index $.Census.BandNonEmpty $b)}}</td>
+      <td style="text-align:right">{{commas (index $.Census.BandEmpty $b)}}</td></tr>
+    {{end}}
+  </table>
+</div>
+
+<div class="card">
+  <h3>Rescramble every moon</h3>
+  <p style="font-size:13px;color:#6b7280;margin:-4px 0 12px">Re-rolls the whole galaxy under a new world seed. <b>Moons under towers are re-rolled too</b>: a harvester set to a material its moon no longer holds yields nothing until its owner picks another. The profile and seed are saved before the run starts.</p>
+  {{with $.Profile}}
+  <p style="font-size:12px;color:#6b7280;margin:-4px 0 12px">Current profile <b>{{.Name}}</b>: empty high/low/null/deep {{printf "%.0f" (index .EmptyPct 0)}}/{{printf "%.0f" (index .EmptyPct 1)}}/{{printf "%.0f" (index .EmptyPct 2)}}/{{printf "%.0f" (index .EmptyPct 3)}}% · R8 chance low/null/deep {{printf "%.0f" (index .R8Pct 1)}}/{{printf "%.0f" (index .R8Pct 2)}}/{{printf "%.0f" (index .R8Pct 3)}}% (halving per class) · 2/3-batch lines {{printf "%.0f" .Abundance2Pct}}/{{printf "%.0f" .Abundance3Pct}}%. <b>classic</b> is the sparse 2005 layout; <b>generous</b> fills every low/null moon, makes rares about three times as common, and adds 2- and 3-batch lines for Harvesting Array II/III.</p>
+  {{end}}
+  <form method="POST" action="/industry/moons" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <label style="display:block;font-size:12px;color:#6b7280">Profile<br>
+      <select name="profile">{{range $.Profiles}}<option value="{{.}}" {{if eq . $.Census.Settings.Profile}}selected{{end}}>{{.}}</option>{{end}}</select>
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">World seed (blank = random)<br>
+      <input type="text" name="seed" value="" placeholder="{{$.SeedStr}}" style="width:180px">
+    </label>
+    <label style="font-size:12px;color:#6b7280"><input type="checkbox" name="keepEdited" value="1" checked> keep hand-edited moons</label>
+    <label style="display:block;font-size:12px;color:#6b7280">Type RESCRAMBLE<br>
+      <input type="text" name="confirm" value="" autocomplete="off" style="width:130px">
+    </label>
+    <button type="submit" name="action" value="rescramble" {{if $.JobRunning}}disabled{{end}}>&#9851; Rescramble</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Materials</h3>
+  <table>
+    <tr><th>Class</th><th>Material</th><th style="text-align:right">Moons</th><th style="text-align:right">Highsec</th><th style="text-align:right">Lowsec</th><th style="text-align:right">Nullsec</th><th style="text-align:right">2 batches</th><th style="text-align:right">3 batches</th><th></th></tr>
+    {{range .Materials}}
+    <tr>
+      <td><b style="color:{{moonClassColor .Class}}">{{moonClassName .Class}}</b></td>
+      <td>{{.Name}}</td>
+      <td style="text-align:right">{{commas .Moons}}</td>
+      <td style="text-align:right">{{commas .High}}</td>
+      <td style="text-align:right">{{commas .Low}}</td>
+      <td style="text-align:right">{{commas .Null}}</td>
+      <td style="text-align:right">{{commas .Abund2}}</td>
+      <td style="text-align:right">{{commas .Abund3}}</td>
+      <td><a href="/industry/moons?type={{.TypeID}}">list</a></td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <div style="display:flex;gap:16px;margin-bottom:10px">
+    <a href="/industry/moons" {{if ne .View "regions"}}style="font-weight:600"{{end}}>Find moons</a>
+    <a href="/industry/moons?view=regions" {{if eq .View "regions"}}style="font-weight:600"{{end}}>Regions</a>
+  </div>
+  {{if eq .View "regions"}}
+  <p style="font-size:12px;color:#6b7280;margin:0 0 8px">Moons holding each class, per region, with the leading material of each class: R8 shows the racial lean, R32 the rat faction's.</p>
+  <table>
+    <tr><th>Region</th><th>Sec</th><th>Rats</th><th style="text-align:right">Moons</th><th style="text-align:right">Empty</th>
+      <th style="text-align:right;color:{{moonClassColor 1}}">R8</th><th style="text-align:right;color:{{moonClassColor 2}}">R16</th>
+      <th style="text-align:right;color:{{moonClassColor 3}}">R32</th><th style="text-align:right;color:{{moonClassColor 4}}">R64</th>
+      <th>Lead R8</th><th>Lead R16</th><th>Lead R32</th><th>Lead R64</th></tr>
+    {{range .RegionRows}}
+    <tr>
+      <td><a href="/industry/moons?region={{.RegionID}}&class=1">{{.RegionName}}</a></td>
+      <td style="font-size:12px">{{printf "%.1f" .MinSec}}…{{printf "%.1f" .MaxSec}}</td>
+      <td style="font-size:12px">{{.RatFaction}}</td>
+      <td style="text-align:right">{{commas .Moons}}</td>
+      <td style="text-align:right">{{commas .Empty}}</td>
+      <td style="text-align:right">{{commas (index .Class 1)}}</td>
+      <td style="text-align:right">{{commas (index .Class 2)}}</td>
+      <td style="text-align:right">{{commas (index .Class 3)}}</td>
+      <td style="text-align:right">{{commas (index .Class 4)}}</td>
+      <td style="font-size:12px">{{.TopR8}}</td><td style="font-size:12px">{{.TopR16}}</td>
+      <td style="font-size:12px">{{.TopR32}}</td><td style="font-size:12px">{{.TopR64}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <form method="GET" action="/industry/moons" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+    <label style="display:block;font-size:12px;color:#6b7280">System<br>
+      <input type="text" name="system" value="{{.Filter.System}}" placeholder="name or ID" style="width:150px">
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">Region<br>
+      <select name="region"><option value="">any</option>
+        {{range .Regions}}<option value="{{.RegionID}}" {{if eq .RegionID $.Filter.RegionID}}selected{{end}}>{{.RegionName}}</option>{{end}}
+      </select>
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">Material<br>
+      <select name="type"><option value="">any</option>
+        {{range .Materials}}<option value="{{.TypeID}}" {{if eq .TypeID $.Filter.TypeID}}selected{{end}}>{{moonClassName .Class}} · {{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">At least<br>
+      <select name="class"><option value="">any</option>
+        {{range $i, $n := .Classes}}<option value="{{$i}}" {{if eq $i $.Filter.MinClass}}selected{{end}}>{{$n}}</option>{{end}}
+      </select>
+    </label>
+    <label style="display:block;font-size:12px;color:#6b7280">Band<br>
+      <select name="band"><option value="">any</option>
+        {{range $i, $n := .Bands}}<option value="{{$i}}" {{if eq $i $.Filter.Band}}selected{{end}}>{{$n}}</option>{{end}}
+      </select>
+    </label>
+    <label style="font-size:12px;color:#6b7280"><input type="checkbox" name="towers" value="1" {{if .Filter.Towers}}checked{{end}}> towers only</label>
+    <label style="font-size:12px;color:#6b7280"><input type="checkbox" name="empty" value="1" {{if .Filter.Empty}}checked{{end}}> empty only</label>
+    <button type="submit">Find</button>
+  </form>
+
+  {{if .Moons}}
+  <p style="font-size:12px;color:#6b7280;margin:12px 0 6px">{{commas .Total}} moon(s) · page {{add .Filter.Page 1}} of {{.Pages}}
+    {{if .PrevURL}} · <a href="{{.PrevURL}}">&laquo; prev</a>{{end}}{{if .NextURL}} · <a href="{{.NextURL}}">next &raquo;</a>{{end}}</p>
+  <table>
+    <tr><th>Moon</th><th>Sec</th><th>Region</th><th>Materials</th><th>Tower</th></tr>
+    {{range .Moons}}
+    <tr>
+      <td><a href="/industry/moon/{{.MoonID}}">{{.MoonName}}</a>{{if .Edited}} <span style="font-size:11px;color:#fbbf24">edited</span>{{end}}</td>
+      <td>{{printf "%.1f" .Security}}</td>
+      <td style="font-size:12px">{{.RegionName}}</td>
+      <td>{{range .Resources}}<span style="display:inline-block;margin:1px 6px 1px 0;color:{{moonClassColor .Class}}">{{.Name}}{{if gt .Quantity 1}} ×{{.Quantity}}{{end}}</span>{{else}}<span style="color:#6b7280">empty</span>{{end}}</td>
+      <td style="font-size:12px">{{if .TowerID}}{{if .TowerOwner}}{{.TowerOwner}}{{else}}tower {{.TowerID}}{{end}}{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else if .Filter.HasFilter}}
+  <p style="color:#6b7280;margin-top:12px">No moons match.</p>
+  {{end}}
+  {{end}}
+</div>
+{{end}}

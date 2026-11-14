@@ -1,0 +1,26 @@
+{{define "content"}}
+<h2>Slash Command Console</h2>
+<div class="card">
+  <form method="POST" action="/console">
+    <div class="form-group">
+      <label>Command</label>
+      <input type="text" name="command" placeholder="/search Tritanium" value="{{.Command}}" style="width:100%;max-width:600px">
+    </div>
+    <button type="submit">Execute</button>
+  </form>
+</div>
+
+{{if .Result}}
+<div class="card">
+  <h3>Result</h3>
+  <pre>{{.Result}}</pre>
+</div>
+{{end}}
+
+<div class="card" style="color:#6b7280;font-size:12px">
+  <p>Runs slash commands against the database. Some commands that require an active client session (e.g. /moveto session change) will update the DB but note "relog required".</p>
+  <p style="margin-top:8px">Available: /search, /giveisk, /giveskill, /giveallskill, /createitem, /moveto, /fit, /setcorp, /help</p>
+</div>
+{{end}}
+
+{{template "layout" .}}

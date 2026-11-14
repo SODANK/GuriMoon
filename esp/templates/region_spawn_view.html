@@ -1,0 +1,465 @@
+{{define "content"}}
+<style>
+  /* Number fields sized so the spin buttons never sit on top of the value. */
+  .spawn-num { width: 78px; padding-right: 2px; }
+  .spawn-table td, .spawn-table th { white-space: nowrap; }
+  .spawn-table select { max-width: 190px; }
+  .owner-hint { font-size: 11px; color: #6b7280; }
+  /* An edited-but-unsaved row is flagged until "Save all changes" writes it. */
+  .spawn-table tr.dirty td { background: #2b2410; }
+  .spawn-table tr.dirty td:first-child::before { content: "\2022 "; color: #fbbf24; }
+  .save-all { background: #1e3a1e; border-color: #2f5c2f; }
+  .save-all[disabled] { opacity: .5; cursor: default; }
+</style>
+
+<h2>Region Spawns: {{.RegionName}}</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Every NPC listed here can appear at this region's belts, in systems at or below its <b>max sec</b>. How many spawn comes from <a href="/spawner-rules">NPC Spawner Rules</a>, and how hard a given belt is from <a href="/spawner-rules#tiers">Squad Tiers</a>. <b>Weight</b> sets how often a listing is picked relative to the others in <em>its own pool</em>. Faction &amp; corp own each spawned ball.</p>
+
+<div class="card" style="max-width:1180px;background:#0a1017">
+  <p style="font-size:12px;color:#9ca3af;margin:0">
+    <b style="color:#e0e4ec">Role decides the pool</b>, and that is new. An ordinary wave draws only from the <b style="color:#6ee7b7">base</b> pool — the normal and hauler listings. A <b style="color:#f0a868">commander</b> is a separate roll that replaces one slot; an <b style="color:#f87171">officer</b> is a separate roll again, appends an extra ball, and is capped at one alive per region with a cool-down after each kill. Role still tags the ball for role-gated <a href="/loot">loot</a>, but it is no longer <em>only</em> a label: a listing's role now decides whether it can appear in an ordinary belt at all.
+  </p>
+  <p style="font-size:12px;color:#9ca3af;margin:8px 0 0">
+    <b style="color:#e0e4ec">Ship class</b> is no longer decoration either — a squad tier's hull bias multiplies the weight of its favoured classes, so a mislabelled hull gets the wrong nudge.
+  </p>
+</div>
+
+{{if .BadOfficers}}
+<div class="alert alert-error">
+  ⚠ <b>{{.BadOfficers}}</b> officer listing(s) here are eligible above 0.0 security. Officers are meant to be a null-sec event — above 0.0 they can turn up in empire space.
+  <form method="POST" action="/region-spawns/{{.RegionID}}" style="display:inline;margin-left:8px">
+    <input type="hidden" name="action" value="fix_officer_maxsec">
+    <button type="submit" onclick="return confirm('Set every officer-group listing in this region to max sec 0.0, role officer, battleship class?')">Fix them</button>
+  </form>
+</div>
+{{end}}
+{{if .BadCommander}}
+<div class="alert alert-error">⚠ <b>{{.BadCommander}}</b> commander listing(s) here are eligible above 0.8 security. No shipped commander goes that high; a 0.9+ belt is meant to hold nothing but ordinary rats.</div>
+{{end}}
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<!-- Add NPC (shotgun: current region + any extra tagged regions) -->
+<div class="card">
+  <h3>Add NPC</h3>
+  <form class="inline-form" method="POST" action="/region-spawns/{{.RegionID}}" id="addForm">
+    <input type="hidden" name="action" value="add">
+    <div class="form-group">
+      <label>NPC Type</label>
+      <div style="position:relative">
+        <input type="text" id="npcSearch" placeholder="Search NPC types..." autocomplete="off" style="width:220px">
+        <input type="hidden" name="typeID" id="npcTypeID" required>
+        <div id="npcResults" style="position:absolute;top:100%;left:0;background:var(--win);border:1px solid var(--line);border-radius:4px;max-height:200px;overflow-y:auto;width:400px;display:none;z-index:10"></div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Group Filter</label>
+      <select id="npcGroupFilter" style="width:140px">
+        <option value="">All Groups</option>
+        {{range .NPCGroups}}
+        <option value="{{.GroupID}}">{{.GroupName}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Faction</label>
+      <select name="factionID" class="faction-select" data-corp-target="addCorp" required>
+        <option value="">— pick a faction —</option>
+        {{range .Factions}}
+        <option value="{{.FactionID}}">{{.FactionName}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Owning corp</label>
+      <select name="corporationID" id="addCorp" data-selected="0">
+        <option value="0">(auto from faction)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Ship Class</label>
+      <select name="shipClass">
+        <option value="frigate">Frigate</option>
+        <option value="destroyer">Destroyer</option>
+        <option value="cruiser">Cruiser</option>
+        <option value="battlecruiser">Battlecruiser</option>
+        <option value="battleship">Battleship</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Role</label>
+      <select name="role">
+        <option value="normal">Normal</option>
+        <option value="hauler">Hauler</option>
+        <option value="commander">Commander</option>
+        <option value="officer">Officer</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Weight</label>
+      <input type="number" name="weight" value="3" min="1" class="spawn-num">
+    </div>
+    <div class="form-group">
+      <label>Max sec</label>
+      <input type="number" name="maxSec" value="1.0" step="0.1" min="-1" max="1" class="spawn-num">
+    </div>
+    <div class="form-group">
+      <label>Also add to regions (ctrl-click)</label>
+      <select name="extraRegionIDs" multiple size="4" style="min-width:170px">
+        {{range .RegionOpts}}
+        {{if ne .RegionID $.RegionID}}<option value="{{.RegionID}}">{{.Name}}</option>{{end}}
+        {{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</div>
+
+<!-- Listings -->
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <h3>Listings ({{len .Rows}})</h3>
+    <div style="display:flex;gap:8px;align-items:center">
+      {{if .Rows}}
+      <span id="dirtyCount" class="owner-hint"></span>
+      <button type="submit" form="listingsForm" name="saveAll" value="1" class="save-all" id="saveAllTop">Save all changes</button>
+      {{end}}
+      <form method="POST" action="/region-spawns/{{.RegionID}}" style="margin:0">
+        <input type="hidden" name="action" value="clear">
+        <button type="submit" onclick="return confirm('Remove ALL listings from {{.RegionName}}? Its belts go empty.')" style="background:#4a1a1a;border-color:#6b2a2a">Clear all</button>
+      </form>
+    </div>
+  </div>
+
+  {{if .Rows}}
+  <!-- One form for the whole table: every row's controls post together, so
+       "Save all changes" writes the lot in a single transaction. Per-row Save
+       and Del are named submit buttons that narrow the same post to one row. -->
+  <form method="POST" action="/region-spawns/{{.RegionID}}" id="listingsForm">
+  <input type="hidden" name="action" value="save_all">
+  <div style="overflow-x:auto;margin-top:8px">
+  <table class="spawn-table">
+    <tr><th>NPC</th><th>Pool</th><th>Class</th><th>Role</th><th>Weight</th><th>Max sec</th><th>Faction</th><th>Owning corp</th><th></th></tr>
+    {{range .Rows}}
+    <tr data-spawnid="{{.SpawnID}}">
+      <td style="color:#e0e4ec">
+        <input type="hidden" name="spawnIDs" value="{{.SpawnID}}" class="row-flag">
+        <input type="hidden" name="row{{.SpawnID}}_typeID" value="{{.TypeID}}">
+        {{if .TypeName}}{{.TypeName}}{{else}}typeID {{.TypeID}}{{end}}
+      </td>
+      <td style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;color:{{if eq .Role "officer"}}#f87171{{else if eq .Role "commander"}}#f0a868{{else}}#6ee7b7{{end}}">
+        {{if eq .Role "officer"}}officer{{else if eq .Role "commander"}}commander{{else}}base{{end}}
+      </td>
+      <td>
+        <select name="row{{.SpawnID}}_shipClass">
+          <option value="frigate" {{if eq .ShipClass "frigate"}}selected{{end}}>Frigate</option>
+          <option value="destroyer" {{if eq .ShipClass "destroyer"}}selected{{end}}>Destroyer</option>
+          <option value="cruiser" {{if eq .ShipClass "cruiser"}}selected{{end}}>Cruiser</option>
+          <option value="battlecruiser" {{if eq .ShipClass "battlecruiser"}}selected{{end}}>BC</option>
+          <option value="battleship" {{if eq .ShipClass "battleship"}}selected{{end}}>BS</option>
+        </select>
+      </td>
+      <td>
+        <select name="row{{.SpawnID}}_role">
+          <option value="normal" {{if eq .Role "normal"}}selected{{end}}>Normal</option>
+          <option value="hauler" {{if eq .Role "hauler"}}selected{{end}}>Hauler</option>
+          <option value="commander" {{if eq .Role "commander"}}selected{{end}}>Cmdr</option>
+          <option value="officer" {{if eq .Role "officer"}}selected{{end}}>Officer</option>
+        </select>
+      </td>
+      <td><input type="number" name="row{{.SpawnID}}_weight" value="{{.Weight}}" min="1" class="spawn-num"></td>
+      <td><input type="number" name="row{{.SpawnID}}_maxSec" value="{{.MaxSec}}" step="0.1" min="-1" max="1" class="spawn-num"></td>
+      <td>
+        <select name="row{{.SpawnID}}_factionID" class="faction-select" data-corp-target="corp{{.SpawnID}}">
+          <option value="0">— none —</option>
+          {{range $.Factions}}
+          <option value="{{.FactionID}}">{{.FactionName}}</option>
+          {{end}}
+        </select>
+        <script>
+          (function(){
+            var sel = document.currentScript.previousElementSibling;
+            var cur = "{{.FactionID}}";
+            for (var i = 0; i < sel.options.length; i++) {
+              if (sel.options[i].value === cur) { sel.selectedIndex = i; break; }
+            }
+          })();
+        </script>
+      </td>
+      <td>
+        <select name="row{{.SpawnID}}_corporationID" id="corp{{.SpawnID}}" data-selected="{{.CorporationID}}">
+          <option value="0">(auto from faction)</option>
+        </select>
+      </td>
+      <td style="white-space:nowrap">
+        <button type="submit" name="saveOne" value="{{.SpawnID}}">Save</button>
+        <button type="submit" name="deleteOne" value="{{.SpawnID}}" formnovalidate onclick="return confirm('Remove this listing?')" style="background:#4a1a1a;border-color:#6b2a2a">Del</button>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  </div>
+  <div style="margin-top:8px">
+    <button type="submit" name="saveAll" value="1" class="save-all" id="saveAllBottom">Save all changes</button>
+  </div>
+  </form>
+  <p class="owner-hint" style="margin-top:6px">Edit as many rows as you like, then <b>Save all changes</b> — every edited row is written in one transaction. Row <b>Save</b> writes just that row. Corp choices narrow to the picked faction. "(auto from faction)" lets the server use that faction's primary NPC corp at spawn time. Weight is relative <em>within a pool</em>: a rare ordinary rat wants a low weight against the other base listings, while genuine rarity for a commander or officer comes from its tier chance and, for officers, the region ledger.</p>
+
+  <!-- Pool sizes per band. Commanders no longer draw from the base pool, so
+       "commander is 30% of this region's weight" no longer means anything —
+       this is what replaces that intuition. -->
+  <div style="margin-top:16px">
+    <h4 style="margin:0 0 6px;font-size:13px;color:#9ca3af">Draw pools by security band</h4>
+    <table style="max-width:720px">
+      <tr><th>Band</th><th>Base pool</th><th>Commander pool</th><th>Officer pool</th></tr>
+      {{range .Bands}}
+      <tr>
+        <td style="color:#e0e4ec">{{.Label}}</td>
+        <td style="color:{{if .Base}}#6ee7b7{{else}}#f87171{{end}}">{{.Base}} listing(s), weight {{.BaseWeight}}</td>
+        <td style="color:{{if .Cmdr}}#f0a868{{else}}#6b7280{{end}}">{{if .Cmdr}}{{.Cmdr}} listing(s), weight {{.CmdrWeight}}{{else}}—{{end}}</td>
+        <td style="color:{{if .Officer}}#f87171{{else}}#6b7280{{end}}">{{if .Officer}}{{.Officer}} listing(s), weight {{.OffWeight}}{{else}}—{{end}}</td>
+      </tr>
+      {{end}}
+    </table>
+    <p class="owner-hint" style="margin-top:6px">An empty base pool means belts in that band spawn nothing at all, whatever else is listed. An empty commander or officer pool just means that escalation never lands there — which for officers above 0.0 is exactly right.</p>
+  </div>
+  {{else}}
+  <p style="color:#f87171;font-size:13px;margin-top:8px">No listings — belts in this region are empty.</p>
+  {{end}}
+</div>
+
+<!-- Bulk owner -->
+<div class="card">
+  <h3>Set owner on all listings</h3>
+  <form class="inline-form" method="POST" action="/region-spawns/{{.RegionID}}">
+    <input type="hidden" name="action" value="set_owner_all">
+    <div class="form-group">
+      <label>Faction</label>
+      <select name="factionID" class="faction-select" data-corp-target="bulkCorp" required>
+        <option value="">— pick a faction —</option>
+        {{range .Factions}}
+        <option value="{{.FactionID}}">{{.FactionName}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Owning corp</label>
+      <select name="corporationID" id="bulkCorp" data-selected="0">
+        <option value="0">(auto from faction)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit" onclick="return confirm('Overwrite faction/corp on every listing in {{.RegionName}}?')">Apply to all</button>
+    </div>
+  </form>
+</div>
+
+<!-- Copy to other regions -->
+<div class="card">
+  <h3>Copy this list to other regions</h3>
+  <form class="inline-form" method="POST" action="/region-spawns/{{.RegionID}}">
+    <input type="hidden" name="action" value="copy_to">
+    <div class="form-group">
+      <label>Target regions (ctrl-click for several)</label>
+      <select name="targetRegionIDs" multiple size="8" style="min-width:220px" required>
+        {{range .RegionOpts}}
+        {{if ne .RegionID $.RegionID}}<option value="{{.RegionID}}">{{.Name}}</option>{{end}}
+        {{end}}
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Replace target's existing listings</label>
+      <input type="checkbox" name="replace" value="1">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit" onclick="return confirm('Copy all {{len .Rows}} listings to the selected regions?')">Copy</button>
+    </div>
+  </form>
+  <p class="owner-hint" style="margin-top:6px">Unchecked = listings are appended to whatever the target already has.</p>
+</div>
+
+<p><a href="/region-spawns">&larr; Back to Region Spawns</a></p>
+
+<script>
+// Corp catalogue, shipped once: [{id, name, faction}, ...]. Every corp dropdown
+// is filled from this by its row's faction, so the page stays small even with
+// hundreds of listings.
+var CORPS = JSON.parse({{.CorpJSON}});
+
+(function(){
+  var byFaction = {};
+  CORPS.forEach(function(c){
+    (byFaction[c.faction] = byFaction[c.faction] || []).push(c);
+  });
+
+  function fillCorps(factionSel) {
+    var target = document.getElementById(factionSel.getAttribute('data-corp-target'));
+    if (!target) return;
+    // Remember what was chosen: the server-rendered value on first paint,
+    // then whatever the user picked afterwards.
+    var want = target.getAttribute('data-selected') || '0';
+    if (target.value && target.value !== '0') want = target.value;
+
+    var list = byFaction[parseInt(factionSel.value, 10)] || [];
+    target.innerHTML = '';
+    var auto = document.createElement('option');
+    auto.value = '0';
+    auto.textContent = '(auto from faction)';
+    target.appendChild(auto);
+    var found = false;
+    list.forEach(function(c){
+      var o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.name;
+      if (String(c.id) === String(want)) { o.selected = true; found = true; }
+      target.appendChild(o);
+    });
+    // A corp saved under a different faction would vanish from the list —
+    // keep it visible and flagged rather than silently resetting to auto.
+    if (!found && want !== '0') {
+      var known = CORPS.filter(function(c){ return String(c.id) === String(want); })[0];
+      var o = document.createElement('option');
+      o.value = want;
+      o.textContent = (known ? known.name : 'corp ' + want) + ' (other faction)';
+      o.selected = true;
+      target.appendChild(o);
+    }
+    target.setAttribute('data-selected', target.value);
+  }
+
+  var selects = document.querySelectorAll('.faction-select');
+  for (var i = 0; i < selects.length; i++) {
+    fillCorps(selects[i]);
+    selects[i].addEventListener('change', function(){
+      // Faction changed by hand: drop the old corp and offer the new set.
+      var t = document.getElementById(this.getAttribute('data-corp-target'));
+      if (t) t.setAttribute('data-selected', '0');
+      if (t) t.value = '0';
+      fillCorps(this);
+    });
+  }
+})();
+
+// Unsaved-edit tracking for the listings table. Runs after the corp dropdowns
+// are filled, so the server-rendered corp choice is the baseline rather than a
+// spurious change. Only rows that actually differ ride along on "Save all".
+(function(){
+  var form = document.getElementById('listingsForm');
+  if (!form) return;
+  var counter = document.getElementById('dirtyCount');
+  var buttons = [];
+  ['saveAllTop', 'saveAllBottom'].forEach(function(id){
+    var b = document.getElementById(id);
+    if (b) buttons.push(b);
+  });
+  var rows = form.querySelectorAll('tr[data-spawnid]');
+  var dirty = 0, submitting = false;
+
+  function fieldsOf(scope) {
+    return scope.querySelectorAll('select, input[type=number]');
+  }
+
+  var all = fieldsOf(form);
+  for (var i = 0; i < all.length; i++) {
+    all[i].setAttribute('data-base', all[i].value);
+  }
+
+  function rowDirty(tr) {
+    var f = fieldsOf(tr);
+    for (var i = 0; i < f.length; i++) {
+      if (f[i].value !== f[i].getAttribute('data-base')) return true;
+    }
+    return false;
+  }
+
+  function refresh() {
+    dirty = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var d = rowDirty(rows[i]);
+      rows[i].classList.toggle('dirty', d);
+      // A clean row's ID is withheld from the post, so "Save all" only writes
+      // what changed. With JS off nothing is disabled and all rows are saved.
+      var flag = rows[i].querySelector('.row-flag');
+      if (flag) flag.disabled = !d;
+      if (d) dirty++;
+    }
+    if (counter) {
+      counter.textContent = dirty ? dirty + ' unsaved change' + (dirty === 1 ? '' : 's') : '';
+      counter.style.color = dirty ? '#fbbf24' : '';
+    }
+    for (var j = 0; j < buttons.length; j++) buttons[j].disabled = dirty === 0;
+  }
+
+  form.addEventListener('change', refresh);
+  form.addEventListener('input', refresh);
+  form.addEventListener('submit', function(){ submitting = true; });
+  window.addEventListener('beforeunload', function(e){
+    if (dirty > 0 && !submitting) { e.preventDefault(); e.returnValue = ''; }
+  });
+  refresh();
+})();
+
+(function(){
+  var search = document.getElementById('npcSearch');
+  var typeID = document.getElementById('npcTypeID');
+  var results = document.getElementById('npcResults');
+  var groupFilter = document.getElementById('npcGroupFilter');
+  var timer = null;
+
+  function doSearch() {
+    var q = search.value.trim();
+    var group = groupFilter.value;
+    if (q.length < 2 && !group) { results.style.display = 'none'; return; }
+    var url = '/region-spawns/npctypes/api?q=' + encodeURIComponent(q || '%');
+    if (group) url += '&group=' + group;
+    fetch(url).then(function(r){ return r.json(); }).then(function(data){
+      if (!data || data.length === 0) {
+        results.innerHTML = '<div style="padding:8px 12px;color:#6b7280;font-size:12px">No results</div>';
+        results.style.display = 'block';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < data.length; i++) {
+        var d = data[i];
+        html += '<div style="padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid var(--line-soft)" ' +
+          'onmouseover="this.style.background=\'var(--win-hover)\'" onmouseout="this.style.background=\'transparent\'" ' +
+          'data-typeid="' + d.typeID + '" data-typename="' + d.typeName.replace(/"/g,'&quot;') + '">' +
+          '<strong>' + d.typeName + '</strong> <span style="color:#6b7280">(ID: ' + d.typeID + ', ' + d.group + ')</span></div>';
+      }
+      results.innerHTML = html;
+      results.style.display = 'block';
+    });
+  }
+
+  search.addEventListener('input', function(){
+    clearTimeout(timer);
+    timer = setTimeout(doSearch, 300);
+  });
+
+  groupFilter.addEventListener('change', function(){
+    doSearch();
+  });
+
+  results.addEventListener('click', function(e){
+    var el = e.target.closest('[data-typeid]');
+    if (!el) return;
+    typeID.value = el.getAttribute('data-typeid');
+    search.value = el.getAttribute('data-typename') + ' (' + el.getAttribute('data-typeid') + ')';
+    results.style.display = 'none';
+  });
+
+  document.addEventListener('click', function(e){
+    if (!results.contains(e.target) && e.target !== search) {
+      results.style.display = 'none';
+    }
+  });
+})();
+</script>
+{{end}}
+
+{{template "layout" .}}

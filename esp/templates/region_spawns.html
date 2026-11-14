@@ -1,0 +1,186 @@
+{{define "content"}}
+<h2>Region Spawns</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Belt spawning, loot-table style: each region has a flat list of NPC types that can appear at its belts. A listing's <b>max sec</b> is the highest security it shows up in — it spawns there and everywhere below. How many spawn per belt comes from <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="card">
+  <h3>Regions with spawns ({{len .Configured}})</h3>
+  {{if .Configured}}
+  <table>
+    <tr><th>Region</th><th>Systems</th><th>Listings</th><th>Factions</th><th></th></tr>
+    {{range .Configured}}
+    <tr>
+      <td style="color:#e0e4ec"><a href="/region-spawns/{{.RegionID}}">{{.RegionName}}</a></td>
+      <td>{{.SystemCount}}</td>
+      <td>{{.ListingCount}}</td>
+      <td style="font-size:12px">{{if .FactionNames}}{{.FactionNames}}{{else}}—{{end}}</td>
+      <td><a href="/region-spawns/{{.RegionID}}">Edit</a></td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#f87171;font-size:13px">No region has spawn listings — belts are empty everywhere. Pick a region below to start.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <details>
+    <summary style="cursor:pointer;color:#9ca3af;font-size:13px">Regions without spawns ({{len .Empty}}) — belts there are empty until you add listings (or copy another region's list over)</summary>
+    <table style="margin-top:12px">
+      <tr><th>Region</th><th>Systems</th><th></th></tr>
+      {{range .Empty}}
+      <tr>
+        <td>{{.RegionName}}</td>
+        <td>{{.SystemCount}}</td>
+        <td><a href="/region-spawns/{{.RegionID}}">Add spawns</a></td>
+      </tr>
+      {{end}}
+    </table>
+  </details>
+</div>
+
+<!-- Global belt settings -->
+<div class="card">
+  <h3>Global Belt Settings</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Timing and placement for every belt in every system, replacing the built-in security-scaled defaults. How many ships a wave holds lives on <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
+
+  {{if .Global}}
+  <form class="inline-form" method="POST" action="/region-spawns">
+    <input type="hidden" name="action" value="save_global">
+    <div class="form-group">
+      <label>Reseed cooldown (s)</label>
+      <input type="number" name="fullClearDelaySec" value="{{.Global.FullClearDelaySec}}" style="width:80px" min="0">
+    </div>
+    <div class="form-group">
+      <label>Scatter (m, 0 = by security)</label>
+      <input type="number" name="scatterRadius" value="{{.Global.ScatterRadius}}" style="width:90px" step="any">
+    </div>
+    <div class="form-group">
+      <label>Warp in</label>
+      <input type="checkbox" name="warpIn" value="1" {{if .Global.WarpIn}}checked{{end}}>
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+  <form method="POST" action="/region-spawns" style="display:inline">
+    <input type="hidden" name="action" value="delete_global">
+    <button type="submit" onclick="return confirm('Remove global belt settings and return to security-scaled defaults?')" style="background:#4a1a1a;border-color:#6b2a2a">Remove — use security scaling</button>
+  </form>
+  <p style="font-size:11px;color:#6b7280;margin-top:8px">Reseed cooldown is measured seed-to-seed: a belt waits this long between waves, so clearing one leaves it quiet for the remainder. Killed ships are never replaced one at a time — a belt keeps whatever survives until its next wave.</p>
+  {{else}}
+
+  <p style="font-size:13px;color:#9ca3af;margin-bottom:12px">Currently using built-in security scaling:</p>
+  <table style="max-width:480px;margin-bottom:12px">
+    <tr><th>Security</th><th>Reseed cooldown</th><th>Scatter</th></tr>
+    <tr><td>0.9+</td><td>{{.WaveTimerSec}}s</td><td>15 km</td></tr>
+    <tr><td>0.7–0.8</td><td>{{.WaveTimerSec}}s</td><td>18 km</td></tr>
+    <tr><td>0.5–0.6</td><td>{{.WaveTimerSec}}s</td><td>20 km</td></tr>
+    <tr><td>0.3–0.4</td><td>{{.WaveTimerSec}}s</td><td>25 km</td></tr>
+    <tr><td>0.0–0.2</td><td>{{.WaveTimerSec}}s</td><td>30 km</td></tr>
+    <tr><td>Null</td><td>{{.WaveTimerSec}}s</td><td>35 km</td></tr>
+  </table>
+  <form method="POST" action="/region-spawns" style="display:inline">
+    <input type="hidden" name="action" value="save_global">
+    <input type="hidden" name="fullClearDelaySec" value="300">
+    <input type="hidden" name="scatterRadius" value="20000">
+    <input type="hidden" name="warpIn" value="0">
+    <button type="submit">Override globally instead…</button>
+  </form>
+  {{end}}
+</div>
+
+<!-- Rarity: commanders and officers -->
+<div class="card">
+  <h3>Commander &amp; Officer Rarity</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+    Global dials over the per-tier chances on <a href="/spawner-rules#tiers">Squad Tiers</a>. Those author the texture; these scale it all at once and hold the hard limits.
+    The two <b>%</b> multipliers are relative to what each tier says — 100 means "as authored", 200 doubles every tier's chance.
+  </p>
+  <p style="font-size:12px;color:#9ca3af;margin-bottom:12px">
+    The chances only decide how often the game <em>asks</em> for an officer. The <b style="color:#e0e4ec">ledger</b> below decides whether it gets one: at most <b style="color:#e0e4ec">max alive</b> in a region at a time, and nothing at all in that region for the <b style="color:#e0e4ec">cool-down</b> after each kill. Wind the chance to its ceiling and the ledger still holds the line.
+  </p>
+
+  <form class="inline-form" method="POST" action="/region-spawns">
+    <input type="hidden" name="action" value="save_rarity">
+    <div class="form-group">
+      <label>Officers on</label>
+      <input type="checkbox" name="officersEnabled" value="1" {{if .Rarity.OfficersEnabled}}checked{{end}}>
+    </div>
+    <div class="form-group">
+      <label>Max alive / region</label>
+      <input type="number" name="officerMaxAlivePerRegion" value="{{.Rarity.OfficerMaxAlivePerRegion}}" min="0" max="10" style="width:80px">
+    </div>
+    <div class="form-group">
+      <label>Kill cool-down (s)</label>
+      <input type="number" name="officerKillCooldownSec" value="{{.Rarity.OfficerKillCooldownSec}}" min="0" max="604800" style="width:100px">
+    </div>
+    <div class="form-group">
+      <label>Officer chance %</label>
+      <input type="number" name="officerChancePct" value="{{.Rarity.OfficerChancePct}}" min="0" max="1000" style="width:86px">
+    </div>
+    <div class="form-group">
+      <label>Commanders on</label>
+      <input type="checkbox" name="commandersEnabled" value="1" {{if .Rarity.CommandersEnabled}}checked{{end}}>
+    </div>
+    <div class="form-group">
+      <label>Commander chance %</label>
+      <input type="number" name="commanderChancePct" value="{{.Rarity.CommanderChancePct}}" min="0" max="1000" style="width:86px">
+    </div>
+    <div class="form-group">
+      <label>Cmdrs / wave</label>
+      <input type="number" name="commandersPerWave" value="{{.Rarity.CommandersPerWave}}" min="0" max="3" style="width:80px">
+    </div>
+    <div class="form-group">
+      <label>Wave hard cap</label>
+      <input type="number" name="waveHardCap" value="{{.Rarity.WaveHardCap}}" min="1" max="40" style="width:80px">
+    </div>
+    <div class="form-group">
+      <label>Hull bias ×</label>
+      <input type="number" name="tierHullBiasMult" value="{{.Rarity.TierHullBiasMult}}" min="1" max="10" style="width:70px">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+  <p style="font-size:11px;color:#f0a868;margin-top:8px">⚠ These are read once at boot, like the squad tiers. A save here does not affect a running server until it is restarted.</p>
+</div>
+
+<!-- Officer ledger -->
+<div class="card">
+  <h3>Officer Ledger</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
+    Which regions are holding an officer, and which are cooling down. This is the answer to "why have I not seen an officer in a week".
+    Current limits: <b style="color:#e0e4ec">{{.Rarity.OfficerMaxAlivePerRegion}}</b> alive per region, <b style="color:#e0e4ec">{{printf "%.1f" .CooldownHours}}h</b> quiet after each kill.
+  </p>
+  {{if .OfficerLedger}}
+  <table>
+    <tr><th>Region</th><th>Live</th><th>Last spawned</th><th>Last killed</th><th>Last officer</th><th>System</th></tr>
+    {{range .OfficerLedger}}
+    <tr>
+      <td style="color:#e0e4ec">{{if .RegionName}}{{.RegionName}}{{else}}region {{.RegionID}}{{end}}</td>
+      <td style="text-align:right;color:{{if gt .LiveCount 0}}#f87171{{else}}#6b7280{{end}}">{{.LiveCount}}</td>
+      <td style="font-size:12px">{{if gt .LastSpawnAt 0}}{{unixTime .LastSpawnAt}}{{else}}—{{end}}</td>
+      <td style="font-size:12px">{{if gt .LastKillAt 0}}{{unixTime .LastKillAt}}{{else}}—{{end}}</td>
+      <td style="font-size:12px">{{if .LastTypeName}}{{.LastTypeName}}{{else if gt .LastTypeID 0}}type {{.LastTypeID}}{{else}}—{{end}}</td>
+      <td style="font-size:12px">{{if .LastSystem}}{{.LastSystem}}{{else}}—{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  <p style="font-size:11px;color:#6b7280;margin-top:8px">
+    Live count is the persisted mirror — the running server keeps its own in-memory count, and that is the one a spawn is actually gated on. They agree unless a write failed.
+  </p>
+  <form method="POST" action="/region-spawns" style="display:inline;margin-top:8px">
+    <input type="hidden" name="action" value="clear_officer_ledger">
+    <button type="submit" onclick="return confirm('Clear the whole officer ledger? Every region loses its live count and its kill cool-down. The running server keeps its in-memory counts until restarted.')" style="background:#4a1a1a;border-color:#6b2a2a">Clear ledger</button>
+  </form>
+  {{else}}
+  <p style="font-size:13px;color:#9ca3af">No region has held an officer yet. The ledger fills in as they spawn.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{template "layout" .}}

@@ -1,0 +1,117 @@
+{{define "content"}}
+<h2>Outposts / Conquerable</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Outposts</div><div class="value">{{len .Outposts}}</div></div>
+  <div class="stat"><div class="label">Conquerable Stations</div><div class="value">{{len .Conquerables}}</div></div>
+  <div class="stat"><div class="label">Platforms Anchored</div><div class="value">{{len .Platforms}}</div></div>
+  <div class="stat"><div class="label">Ready to Build</div><div class="value">{{.ReadyCount}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Construction Platforms</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    A platform anchors for an hour, then any CEO or Director of the owning corporation
+    completes it in space with the right-click <strong>Build</strong> entry. These controls exist
+    for the cases the client cannot reach: a platform whose corporation has dissolved, or a planet
+    the operator wants back. <strong>Force Build still checks sovereignty and the anchoring
+    delay</strong> — only the role, skill and password gates are skipped.
+  </p>
+  {{if .Platforms}}
+  <table>
+    <thead><tr>
+      <th>Item</th><th>Type</th><th>Planet</th><th>System</th>
+      <th>Owner Corp</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody>
+      {{range .Platforms}}
+      <tr>
+        <td>{{.EntityID}}</td>
+        <td>{{.TypeName}}</td>
+        <td>{{.PlanetName}}</td>
+        <td>{{.SolarSystemID}}</td>
+        <td>{{.OwnerCorpID}}</td>
+        <td>{{if .Ready}}<span style="color:#15803d">ready</span>{{else}}anchoring — {{.Remaining}} left{{end}}</td>
+        <td style="white-space:nowrap">
+          <form method="POST" action="/outposts" class="inline-form" style="display:inline;margin:0">
+            <input type="hidden" name="action" value="forcebuild">
+            <input type="hidden" name="platformID" value="{{.EntityID}}">
+            <button type="submit" {{if not $.CanForceBuild}}disabled{{end}}
+              onclick="return confirm('Build the outpost from platform {{.EntityID}}? This creates a permanent station.')">Force Build</button>
+          </form>
+          <form method="POST" action="/outposts" class="inline-form" style="display:inline;margin:0">
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="platformID" value="{{.EntityID}}">
+            <button type="submit" class="danger"
+              onclick="return confirm('Remove platform {{.EntityID}} and everything in its hold? This cannot be undone.')">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p style="font-size:12px;color:#6b7280">No platforms are anchored anywhere in the galaxy.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Stations in the Outpost Band</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    Every station at ID 61000001 and above: the ones players have built, plus the three that shipped
+    in CCP's own export. Docked pilots counts players only — NPC agents carry a stationID too.
+  </p>
+  {{if .Outposts}}{{template "outpostTable" .Outposts}}{{else}}
+  <p style="font-size:12px;color:#6b7280">No stations exist in the outpost band.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Conquerable Stations</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    The NPC-built stations of nullsec whose type is flagged conquerable, below the outpost band.
+    They change hands the same way outposts do; Transfer sets the owner directly.
+  </p>
+  {{if .Conquerables}}{{template "outpostTable" .Conquerables}}{{else}}
+  <p style="font-size:12px;color:#6b7280">No conquerable stations exist.</p>
+  {{end}}
+</div>
+{{end}}
+
+{{define "outpostTable"}}
+<table>
+  <thead><tr>
+    <th>ID</th><th>Name</th><th>Type</th><th>Operation</th>
+    <th>Owner Corp</th><th>System</th><th>Sec</th><th>Region</th>
+    <th>Offices</th><th>Pilots</th><th></th>
+  </tr></thead>
+  <tbody>
+    {{range .}}
+    <tr>
+      <td><a href="/station/{{.StationID}}">{{.StationID}}</a></td>
+      <td>{{.StationName}}</td>
+      <td>{{.TypeName}}</td>
+      <td>{{.OperationName}}</td>
+      <td><a href="/corporation/{{.CorporationID}}">{{if .CorpName}}{{.CorpName}}{{else}}{{.CorporationID}}{{end}}</a></td>
+      <td>{{.SystemName}}</td>
+      <td data-v="{{num .Security}}">{{printf "%.1f" .Security}}</td>
+      <td>{{.RegionName}}</td>
+      <td data-v="{{.Offices}}">{{.Offices}} / {{.OfficeSlots}}</td>
+      <td data-v="{{.DockedPilots}}">{{.DockedPilots}}</td>
+      <td>
+        <form method="POST" action="/outposts" class="inline-form" style="margin:0">
+          <input type="hidden" name="action" value="transfer">
+          <input type="hidden" name="stationID" value="{{.StationID}}">
+          <input type="number" name="corporationID" placeholder="corp ID" style="width:110px">
+          <button type="submit"
+            onclick="return confirm('Transfer {{.StationName}} to that corporation?')">Transfer</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

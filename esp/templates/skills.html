@@ -1,0 +1,477 @@
+{{define "content"}}
+<style>
+.sw-wrap { display: flex; gap: 20px; align-items: flex-start; }
+.sw-left { flex: 1; min-width: 0; }
+.sw-right { width: 400px; flex-shrink: 0; position: sticky; top: 12px; }
+
+.sw-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.sw-head h2 { margin: 0; }
+.sw-head .sw-sp { color: #ffcc66; font-size: 13px; }
+.sw-head input { flex: 1; min-width: 180px; max-width: 320px; }
+
+/* Category tiles */
+.sw-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-bottom: 16px; }
+.sw-cat { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px;
+  background: var(--win-deep); border: 1px solid var(--line); border-radius: 4px; cursor: pointer;
+  color: #9ca3af; font-size: 13px; user-select: none; }
+.sw-cat:hover { background: var(--win-hover); color: #e0e4ec; }
+.sw-cat.active { border-color: var(--accent); color: #e0e4ec; background: var(--win-hover); }
+.sw-cat .cnt { color: var(--accent); font-size: 12px; }
+.sw-cat.active .cnt, .sw-cat .cnt.full { color: #ffcc66; }
+
+/* Skill list */
+.sw-group { margin-bottom: 14px; }
+.sw-group h3 { color: #e0e4ec; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;
+  border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 6px; }
+.sw-skills { display: grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: 2px 24px; }
+.sw-skill { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 3px; font-size: 13px; }
+.sw-skill:hover { background: var(--win); }
+.sw-skill .name { flex: 1; color: #c5c8d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sw-skill.unknown .name { color: #4b5563; font-style: italic; }
+.sw-skill .time { color: #6b7280; font-size: 12px; white-space: nowrap; }
+.sw-skill .maxed { color: #ffcc66; font-size: 11px; letter-spacing: 1px; }
+.sw-skill .blocked { color: #8a5a5a; font-size: 11px; font-style: italic; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.sw-skill .rank { color: #374151; font-size: 11px; }
+.sw-pips { display: flex; gap: 2px; flex-shrink: 0; }
+.sw-pips span { width: 9px; height: 9px; background: var(--win-hover); border: 1px solid var(--line); }
+.sw-pips span.on { background: var(--accent-hi); border-color: var(--accent-hi); }
+.sw-add { background: var(--win-sel); border: 1px solid var(--btn-hi); color: var(--accent-hi); width: 22px; height: 22px;
+  padding: 0; line-height: 1; border-radius: 3px; font-size: 15px; flex-shrink: 0; }
+.sw-add:hover { background: var(--btn-hi); color: #fff; }
+
+/* Skill shop (uninjected skills) */
+.sw-skill .price { color: #9acd6a; font-size: 12px; white-space: nowrap; }
+.sw-skill .price.poor { color: #8a5a5a; text-decoration: line-through; }
+.sw-skill .nomarket { color: #4b5563; font-size: 11px; font-style: italic; }
+.sw-buy { background: #16260f; border: 1px solid #4a7a2a; color: #9acd6a; height: 22px;
+  padding: 0 8px; line-height: 1; border-radius: 3px; font-size: 11px; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.5px; }
+.sw-buy:hover { background: #4a7a2a; color: #fff; }
+.sw-buy[disabled] { border-color: var(--line); color: #4b5563; background: var(--win-deep); cursor: not-allowed; }
+.sw-wallet { color: #9acd6a; font-size: 13px; }
+
+/* Queue panel */
+.sw-queue { background: var(--win-deep); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+.sw-queue h3 { color: #e0e4ec; font-size: 15px; margin-bottom: 10px; }
+.sw-queue h3 .qcount { color: var(--accent); font-size: 12px; }
+.sw-now { border: 1px solid #3a4a2a; background: #131a10; border-radius: 4px; padding: 8px 10px; margin-bottom: 10px; font-size: 13px; }
+.sw-now .lbl { color: #9acd6a; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+.sw-now .rem { color: #ffcc66; float: right; }
+.sw-now .end { color: #6b7280; font-size: 11px; }
+.sw-qlist { list-style: none; margin: 0 0 10px; padding: 0; }
+.sw-qlist li { display: flex; align-items: center; gap: 8px; padding: 7px 8px; margin-bottom: 3px;
+  background: var(--win); border: 1px solid var(--line); border-radius: 4px; font-size: 13px; cursor: grab; }
+.sw-qlist li.dragging { opacity: 0.4; }
+.sw-qlist li .grip { color: #374151; cursor: grab; font-size: 14px; letter-spacing: -2px; }
+.sw-qlist li .qname { flex: 1; color: #c5c8d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sw-qlist li .lvl { color: var(--accent-hi); }
+.sw-qlist li .eta { color: #6b7280; font-size: 11px; white-space: nowrap; }
+.sw-qlist li form { display: inline; }
+.sw-qlist li .rm { background: none; border: none; color: #6b7280; padding: 0 2px; font-size: 15px; cursor: pointer; }
+.sw-qlist li .rm:hover { color: #fca5a5; }
+.sw-qfoot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 10px; font-size: 12px; color: #9ca3af; }
+.sw-qfoot .total { color: #ffcc66; }
+.sw-qfoot button { padding: 4px 10px; font-size: 12px; }
+.sw-empty { color: #4b5563; font-size: 13px; font-style: italic; margin-bottom: 10px; }
+
+/* Min-max planner */
+.sw-minmax { background: var(--win-deep); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 16px; margin-top: 12px; }
+.sw-minmax h3 { color: #e0e4ec; font-size: 14px; margin-bottom: 6px; }
+.sw-minmax .hint { color: #6b7280; font-size: 11px; line-height: 1.45; margin-bottom: 10px; }
+.sw-minmax label { display: block; color: #9ca3af; font-size: 12px; margin-bottom: 7px; }
+.sw-minmax label.chk { display: flex; align-items: center; gap: 6px; }
+.sw-minmax select, .sw-minmax input[type=number] { margin-left: 6px; }
+.sw-minmax input[type=number] { width: 64px; }
+.sw-minmax button { margin-top: 4px; padding: 5px 12px; font-size: 12px; }
+.sw-skip { background: #2a1a00; border: 1px solid #7a5a2a; color: #e8b84a; height: 22px;
+  padding: 0 10px; line-height: 1; border-radius: 3px; font-size: 11px; cursor: pointer;
+  text-transform: uppercase; letter-spacing: 0.5px; }
+.sw-skip:hover { background: #7a5a2a; color: #fff; }
+.sw-hidden { display: none !important; }
+</style>
+
+<div class="sw-head">
+  <h2>Skills &mdash; <a href="/character/{{.Char.CharacterID}}">{{.Char.CharacterName}}</a></h2>
+  <span class="sw-sp">{{.TotalSP}} total skill points &middot; {{.KnownCount}} skills known</span>
+  <span class="sw-wallet" title="Skillbooks are bought at the market average plus a markup; the ISK goes to Genolution Biotech">{{formatISK .Char.Balance}}</span>
+  <input type="text" id="sw-search" placeholder="Search skills...">
+</div>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+<div class="sw-wrap">
+<div class="sw-left">
+
+  <div class="sw-cats" id="sw-cats">
+    <div class="sw-cat active" data-group="all">All skills <span class="cnt">{{.KnownCount}}</span></div>
+    {{range .Groups}}
+    <div class="sw-cat" data-group="g{{.GroupID}}">{{.Name}}
+      <span class="cnt{{if eq .Known .Total}} full{{end}}">{{.Known}}/{{.Total}}</span>
+    </div>
+    {{end}}
+  </div>
+
+  {{range .Groups}}
+  <div class="sw-group" data-group="g{{.GroupID}}">
+    <h3>{{.Name}}</h3>
+    <div class="sw-skills">
+      {{$self := $.Self}}
+      {{range .Skills}}
+      <div class="sw-skill{{if not .Known}} unknown{{end}}" data-name="{{.Name}}">
+        <div class="sw-pips">{{range .Pips}}<span{{if .}} class="on"{{end}}></span>{{end}}</div>
+        <span class="name" title="{{.Description}}&#10;&#10;Rank {{.Rank}}">{{.Name}}</span>
+        {{if not .Known}}
+          {{if .BuyBlocked}}
+            <span class="blocked" title="Cannot be injected until trained: {{.BuyBlocked}}">needs {{.BuyBlocked}}</span>
+          {{else if .NoMarket}}
+            <span class="nomarket" title="No sell orders, no recent trades and no base price">not on the market</span>
+          {{else if .CanBuy}}
+            <span class="price{{if .TooPoor}} poor{{end}}" title="{{.PriceHint}}">{{.Price}} ISK</span>
+            {{if .TooPoor}}
+              <button class="sw-buy" disabled title="Wallet cannot cover {{.Price}} ISK">Buy</button>
+            {{else}}
+              <form method="post" action="{{$self}}"
+                    data-confirm="Buy and inject {{.Name}} for {{.Price}} ISK?">
+                <input type="hidden" name="action" value="buy">
+                <input type="hidden" name="typeID" value="{{.TypeID}}">
+                <button class="sw-buy" title="Buy the skillbook and inject it at level 0">Buy</button>
+              </form>
+            {{end}}
+          {{else}}
+            <span class="rank">not injected</span>
+          {{end}}
+        {{else if .Blocked}}
+          <span class="blocked" title="Missing prerequisites: {{.Blocked}}">needs {{.Blocked}}</span>
+        {{else if .NextLevel}}
+          <span class="time" title="Est. training time to level {{.NextLevel}}">{{.NextRoman}} &mdash; {{.TimeToNext}}</span>
+          <form method="post" action="{{$self}}">
+            <input type="hidden" name="action" value="add">
+            <input type="hidden" name="typeID" value="{{.TypeID}}">
+            <button class="sw-add" title="Queue {{.Name}} {{.NextRoman}}">+</button>
+          </form>
+        {{else}}
+          <span class="maxed">MASTERED</span>
+        {{end}}
+      </div>
+      {{end}}
+    </div>
+  </div>
+  {{end}}
+
+</div>
+<div class="sw-right">
+  <div class="sw-queue">
+    <h3>Training Queue <span class="qcount">{{len .Queue}} queued</span></h3>
+
+    {{if .Training}}
+    <div class="sw-now">
+      <span class="lbl">Now training</span><span class="rem">{{.Training.Remaining}}</span><br>
+      {{.Training.TypeName}} <span class="lvl">{{.TrainRoman}}</span><br>
+      <span class="end">done {{.Training.EndsAt}}</span>
+      {{if .Queue}}
+      <form method="post" action="{{.Self}}" class="sw-action-form" style="display:inline; float:right; margin-top:4px">
+        <input type="hidden" name="action" value="skip">
+        <button class="sw-skip" title="Abort current training (SP banked) and start the next queued skill">Skip &#x25B6;</button>
+      </form>
+      {{end}}
+    </div>
+    {{else}}
+    <div class="sw-empty">Nothing training.</div>
+    {{end}}
+
+    {{if .Queue}}
+    <ul class="sw-qlist" id="sw-qlist">
+      {{$self := .Self}}
+      {{range .Queue}}
+      <li draggable="true" data-pos="{{.Position}}">
+        <span class="grip">&#x2261;</span>
+        <span class="qname">{{.Name}} <span class="lvl">{{.Roman}}</span></span>
+        <span class="eta" title="est. done {{.EstEnd}}">{{.Remaining}}</span>
+        <form method="post" action="{{$self}}">
+          <input type="hidden" name="action" value="remove">
+          <input type="hidden" name="pos" value="{{.Position}}">
+          <button class="rm" title="Remove from queue">&times;</button>
+        </form>
+      </li>
+      {{end}}
+    </ul>
+    {{else}}
+    <div class="sw-empty">Queue is empty &mdash; add skills with the + buttons.</div>
+    {{end}}
+
+    <div class="sw-qfoot">
+      <span>{{if .QueueTotal}}Total: <span class="total">{{.QueueTotal}}</span>{{end}}</span>
+      <span>
+        <form method="post" action="{{.Self}}" style="display:inline">
+          <input type="hidden" name="action" value="advance">
+          <button title="Complete any due training now">Advance</button>
+        </form>
+        {{if .Queue}}
+        <form method="post" action="{{.Self}}" style="display:inline"
+              title="Re-sort the queue so no skill sits ahead of its own lower levels or its prerequisites">
+          <input type="hidden" name="action" value="normalize">
+          <button>Repair order</button>
+        </form>
+        <form method="post" action="{{.Self}}" style="display:inline"
+              data-confirm="Clear the entire training queue?">
+          <input type="hidden" name="action" value="clear">
+          <button>Clear</button>
+        </form>
+        {{end}}
+      </span>
+    </div>
+  </div>
+
+  <div class="sw-minmax">
+    <h3>Min-max queue</h3>
+    <p class="hint">Fills the queue with every remaining level of every skill you have injected,
+      quickest step first &mdash; so the level 1s land before the 2s, the 2s before the 3s,
+      and the most skills finish per hour. Prerequisites are respected.</p>
+    <form method="post" action="{{.Self}}">
+      <input type="hidden" name="action" value="minmax">
+      <label>Up to level
+        <select name="maxLevel">
+          <option value="1">I</option>
+          <option value="2">II</option>
+          <option value="3">III</option>
+          <option value="4">IV</option>
+          <option value="5" selected>V</option>
+        </select>
+      </label>
+      <label>Max steps <input type="number" name="maxSteps" value="40" min="0" max="500" size="4"></label>
+      <label>Skip steps over
+        <select name="stepHours">
+          <option value="0" selected>no cap</option>
+          <option value="1">1h</option>
+          <option value="4">4h</option>
+          <option value="12">12h</option>
+          <option value="24">1d</option>
+          <option value="72">3d</option>
+          <option value="168">7d</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" name="replace" value="1" checked> Replace current queue</label>
+      <button title="Build a fastest-first training plan">Build min-max queue</button>
+    </form>
+  </div>
+
+  <div class="sw-minmax">
+    <h3>GM grant</h3>
+    <p class="hint">Writes the skill into the character at a fixed level &mdash; no skillbook, no ISK,
+      no training time. This is the character page's old "Give Skill" box; it lives here now, next to
+      the catalogue it acts on. The client builds its skill list at login, so the pilot must relog.</p>
+    <form method="post" action="{{.Self}}">
+      <input type="hidden" name="action" value="grant">
+      <label>Skill
+        <select name="typeID" style="max-width:260px">
+          {{range .Groups}}
+          <optgroup label="{{.Name}}">
+            {{range .Skills}}<option value="{{.TypeID}}">{{.Name}}{{if .Known}} &middot; {{.Level}}{{end}}</option>{{end}}
+          </optgroup>
+          {{end}}
+        </select>
+      </label>
+      <label>At level
+        <select name="level">
+          <option value="1">I</option>
+          <option value="2">II</option>
+          <option value="3">III</option>
+          <option value="4">IV</option>
+          <option value="5" selected>V</option>
+        </select>
+      </label>
+      <button title="Inject the skill at that level">Grant</button>
+    </form>
+    <form method="post" action="{{.Self}}" style="margin-top:8px"
+          onsubmit="return confirm('Grant every skill in the game at level V to {{.Char.CharacterName}}?')">
+      <input type="hidden" name="action" value="grantall">
+      <button title="Inject every published skill at level V">Grant all skills at V</button>
+    </form>
+  </div>
+</div>
+</div>
+
+<form method="post" action="{{.Self}}" id="sw-reorder" class="sw-hidden">
+  <input type="hidden" name="action" value="reorder">
+  <input type="hidden" name="order" id="sw-order">
+</form>
+
+<script>
+(function(){
+  // --- Category tile filtering -------------------------------------------
+  var cats = document.querySelectorAll('#sw-cats .sw-cat');
+  var groups = document.querySelectorAll('.sw-group');
+  var search = document.getElementById('sw-search');
+  var activeGroup = 'all';
+
+  function applyFilter(){
+    var q = search.value.trim().toLowerCase();
+    groups.forEach(function(g){
+      var gid = g.getAttribute('data-group');
+      var groupVisible = q !== '' || activeGroup === 'all' || activeGroup === gid;
+      var any = false;
+      g.querySelectorAll('.sw-skill').forEach(function(row){
+        var hit = q === '' || row.getAttribute('data-name').toLowerCase().indexOf(q) !== -1;
+        row.classList.toggle('sw-hidden', !hit);
+        if (hit) any = true;
+      });
+      g.classList.toggle('sw-hidden', !groupVisible || !any);
+    });
+  }
+  cats.forEach(function(c){
+    c.addEventListener('click', function(){
+      cats.forEach(function(o){ o.classList.remove('active'); });
+      c.classList.add('active');
+      activeGroup = c.getAttribute('data-group');
+      if (search.value) search.value = '';
+      applyFilter();
+    });
+  });
+  search.addEventListener('input', applyFilter);
+  applyFilter();
+
+  // --- AJAX form submission (no full page reload) ------------------------
+  // Intercept all POST forms except reorder (handled by drag-drop),
+  // GM grant and min-max (those are fine with a reload).
+  var skipActions = {grant:1, grantall:1, minmax:1};
+
+  function swapContent(html) {
+    var parser = new DOMParser();
+    var doc = parser.parseFromString(html, 'text/html');
+    // Replace the three top-level blocks: header, message, main content, reorder form.
+    var pairs = [['.sw-head','.sw-head'],['.sw-wrap','.sw-wrap'],['#sw-reorder','#sw-reorder']];
+    pairs.forEach(function(p){
+      var nw = doc.querySelector(p[0]), old = document.querySelector(p[1]);
+      if (nw && old) old.outerHTML = nw.outerHTML;
+    });
+    // Message banner: remove old, insert new if present.
+    var oldMsg = document.querySelector('.alert');
+    if (oldMsg) oldMsg.remove();
+    var newMsg = doc.querySelector('.alert');
+    if (newMsg) {
+      var ref = document.querySelector('.sw-head');
+      if (ref) ref.insertAdjacentElement('afterend', newMsg);
+    }
+  }
+
+  function reloadPage(msg) {
+    var url = location.pathname;
+    if (msg) url += '?msg=' + encodeURIComponent(msg);
+    fetch(url, {credentials:'same-origin'}).then(function(r){ return r.text(); }).then(function(html){
+      // Save filter state.
+      var savedGroup = activeGroup;
+      var savedSearch = search ? search.value : '';
+      var savedScroll = window.scrollY;
+      swapContent(html);
+      // Re-bind everything after DOM swap.
+      cats = document.querySelectorAll('#sw-cats .sw-cat');
+      groups = document.querySelectorAll('.sw-group');
+      search = document.getElementById('sw-search');
+      cats.forEach(function(c){
+        c.addEventListener('click', function(){
+          cats.forEach(function(o){ o.classList.remove('active'); });
+          c.classList.add('active');
+          activeGroup = c.getAttribute('data-group');
+          if (search.value) search.value = '';
+          applyFilter();
+        });
+      });
+      if (search) search.addEventListener('input', applyFilter);
+      // Restore filter state.
+      activeGroup = savedGroup;
+      if (search) search.value = savedSearch;
+      cats.forEach(function(c){
+        var g = c.getAttribute('data-group');
+        c.classList.toggle('active', g === activeGroup);
+      });
+      applyFilter();
+      bindForms();
+      bindDragDrop();
+      window.scrollTo(0, savedScroll);
+    });
+  }
+
+  function handleFormSubmit(e) {
+    var form = e.target;
+    var action = form.querySelector('[name=action]');
+    if (!action || skipActions[action.value]) return; // let it reload
+    e.preventDefault();
+    var msg = form.getAttribute('data-confirm');
+    if (msg && !confirm(msg)) return;
+    var body = new URLSearchParams(new FormData(form));
+    fetch(form.action, {
+      method: 'POST', body: body, credentials: 'same-origin',
+      headers: {'X-Requested-With':'XMLHttpRequest', 'Content-Type':'application/x-www-form-urlencoded'}
+    }).then(function(r){ return r.json(); }).then(function(data){
+      reloadPage(data.msg);
+    }).catch(function(){ form.submit(); });
+  }
+
+  function bindForms() {
+    document.querySelectorAll('form[method=post]').forEach(function(form){
+      var action = form.querySelector('[name=action]');
+      if (!action || skipActions[action.value]) return;
+      if (form.id === 'sw-reorder') return;
+      form.addEventListener('submit', handleFormSubmit);
+    });
+  }
+  bindForms();
+
+  // --- Drag & drop queue reordering --------------------------------------
+  function bindDragDrop() {
+    var list = document.getElementById('sw-qlist');
+    if (!list) return;
+    var dragging = null, startOrder = '';
+
+    function currentOrder(){
+      return Array.prototype.map.call(list.querySelectorAll('li'), function(li){
+        return li.getAttribute('data-pos');
+      }).join(',');
+    }
+
+    list.querySelectorAll('li').forEach(function(li){
+      li.addEventListener('dragstart', function(e){
+        dragging = li;
+        startOrder = currentOrder();
+        li.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', li.getAttribute('data-pos'));
+      });
+      li.addEventListener('dragend', function(){
+        li.classList.remove('dragging');
+        dragging = null;
+        var order = currentOrder();
+        if (order !== startOrder) {
+          var body = new URLSearchParams({action:'reorder', order:order});
+          fetch(location.pathname, {
+            method:'POST', body:body, credentials:'same-origin',
+            headers:{'X-Requested-With':'XMLHttpRequest','Content-Type':'application/x-www-form-urlencoded'}
+          }).then(function(r){ return r.json(); }).then(function(data){
+            reloadPage(data.msg);
+          }).catch(function(){
+            document.getElementById('sw-order').value = order;
+            document.getElementById('sw-reorder').submit();
+          });
+        }
+      });
+    });
+
+    list.addEventListener('dragover', function(e){
+      e.preventDefault();
+      if (!dragging) return;
+      var after = null;
+      list.querySelectorAll('li:not(.dragging)').forEach(function(li){
+        var box = li.getBoundingClientRect();
+        if (e.clientY < box.top + box.height / 2 && !after) after = li;
+      });
+      if (after) list.insertBefore(dragging, after);
+      else list.appendChild(dragging);
+    });
+    list.addEventListener('drop', function(e){ e.preventDefault(); });
+  }
+  bindDragDrop();
+})();
+</script>
+{{end}}

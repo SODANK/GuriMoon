@@ -1,0 +1,61 @@
+{{define "content"}}
+<h2>Bug #{{.Bug.BugID}}</h2>
+<p style="margin-bottom:16px"><a href="/bugs">&larr; back to bug tracker</a></p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="stats">
+  <div class="stat"><div class="label">Category</div><div class="value" style="font-size:18px">{{.Bug.Category}}</div></div>
+  <div class="stat"><div class="label">Status</div><div class="value" style="font-size:18px">{{.Bug.Status}}</div></div>
+  <div class="stat"><div class="label">Hits</div><div class="value">{{.Bug.HitCount}}</div></div>
+</div>
+
+<div class="card">
+  <h3>Details</h3>
+  <table>
+    <tr><td style="color:#6b7280;width:140px">Signature</td><td><code>{{.Bug.Signature}}</code></td></tr>
+    {{if .Bug.Service}}<tr><td style="color:#6b7280">Service</td><td>{{.Bug.Service}}{{if .Bug.Method}}.{{.Bug.Method}}{{end}}</td></tr>{{end}}
+    <tr><td style="color:#6b7280">First seen</td><td>{{.FirstSeen}}</td></tr>
+    <tr><td style="color:#6b7280">Last seen</td><td>{{.LastSeen}}</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Latest Sample</h3>
+  <pre>{{.Bug.SampleMessage}}</pre>
+</div>
+
+<div class="card">
+  <h3>Status</h3>
+  {{$bug := .Bug}}
+  {{range .Statuses}}
+  {{if ne . $bug.Status}}
+  <form method="POST" action="/bug/{{$bug.BugID}}" style="display:inline">
+    <input type="hidden" name="action" value="status">
+    <input type="hidden" name="status" value="{{.}}">
+    <button type="submit">Mark {{.}}</button>
+  </form>
+  {{end}}
+  {{end}}
+  <form method="POST" action="/bug/{{.Bug.BugID}}" style="display:inline" onsubmit="return confirm('Delete bug #{{.Bug.BugID}}? It will reappear if the signal recurs.');">
+    <input type="hidden" name="action" value="delete">
+    <button type="submit" style="background:var(--btn);border-color:var(--btn-hi)">Delete</button>
+  </form>
+  <p style="margin-top:8px;font-size:12px;color:#6b7280">
+    A <em>fixed</em> bug reopens automatically if its signature fires again (regression).
+    An <em>ignored</em> bug stays ignored but keeps counting hits.
+  </p>
+</div>
+
+<div class="card">
+  <h3>Notes</h3>
+  <form method="POST" action="/bug/{{.Bug.BugID}}">
+    <input type="hidden" name="action" value="notes">
+    <textarea name="notes" rows="4" placeholder="Investigation notes, suspected cause, related commits...">{{.Bug.Notes}}</textarea>
+    <div style="margin-top:8px"><button type="submit">Save Notes</button></div>
+  </form>
+</div>
+{{end}}
+
+{{template "layout" .}}

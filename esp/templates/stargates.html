@@ -1,0 +1,160 @@
+{{define "content"}}
+<h2>Stargates</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <h3>Join Two Systems</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
+    Builds a gate in each system, placed beside a planet or moon on the side facing the other system.
+    A pilot already in either system sees the gate at once and can warp to it and jump.
+    The client's star map and autopilot use the route list that ships with the client, so they never
+    show or route through a built gate. Sentry guns and customs on a new gate arrive when its system next loads.
+  </p>
+  <form method="GET" action="/stargates" id="pickForm" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div style="position:relative;width:260px">
+      <label style="font-size:12px;color:#6b7280">System A</label>
+      <input type="text" class="sysPick" data-target="pickA" placeholder="Search..." autocomplete="off" style="width:100%"
+        {{with .Plan}}value="{{.A.Info.Name}}"{{end}}>
+      <input type="hidden" name="a" id="pickA" {{with .Plan}}value="{{.A.Info.SolarSystemID}}"{{end}}>
+      <div class="ac-results"></div>
+    </div>
+    <div style="position:relative;width:260px">
+      <label style="font-size:12px;color:#6b7280">System B</label>
+      <input type="text" class="sysPick" data-target="pickB" placeholder="Search..." autocomplete="off" style="width:100%"
+        {{with .Plan}}value="{{.B.Info.Name}}"{{end}}>
+      <input type="hidden" name="b" id="pickB" {{with .Plan}}value="{{.B.Info.SolarSystemID}}"{{end}}>
+      <div class="ac-results"></div>
+    </div>
+    <button type="submit">Load</button>
+  </form>
+</div>
+
+{{with .Plan}}
+<div class="card">
+  <h3>{{.A.Info.Name}} ↔ {{.B.Info.Name}}
+    <span style="color:#6b7280;font-size:12px;font-weight:normal">{{printf "%.2f" .DistanceLY}} ly apart</span></h3>
+  {{if .AlreadyJoined}}<div class="alert alert-error">These systems are already joined by a stargate. A pair of systems can have only one.</div>{{end}}
+  <form method="GET" action="/stargates">
+    <input type="hidden" name="a" value="{{.A.Info.SolarSystemID}}">
+    <input type="hidden" name="b" value="{{.B.Info.SolarSystemID}}">
+    <table>
+      <tr><th></th><th>{{.A.Info.Name}} <span class="sub">sec {{printf "%.1f" .A.Info.Security}}</span></th>
+        <th>{{.B.Info.Name}} <span class="sub">sec {{printf "%.1f" .B.Info.Security}}</span></th></tr>
+      <tr><td>Anchor</td>
+        <td>{{template "stargateAnchor" .A}}</td>
+        <td>{{template "stargateAnchor" .B}}</td></tr>
+      <tr><td>Gate type</td>
+        <td>{{template "stargateType" .A}}</td>
+        <td>{{template "stargateType" .B}}</td></tr>
+      <tr><td>Off the anchor's surface (AU)</td>
+        <td><input type="text" name="aOffset" value="{{printf "%g" .A.OffsetAU}}" style="width:100px"></td>
+        <td><input type="text" name="bOffset" value="{{printf "%g" .B.OffsetAU}}" style="width:100px"></td></tr>
+      <tr><td>Position</td>
+        <td>{{template "stargatePos" .A}}</td>
+        <td>{{template "stargatePos" .B}}</td></tr>
+    </table>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button type="submit">Preview</button>
+      {{if and .Ready $.CanBuild}}
+      <button type="submit" formmethod="POST" name="action" value="create">Create Gate Pair</button>
+      {{else if not $.CanBuild}}
+      <span class="sub">Creating needs the game server.</span>
+      {{end}}
+    </div>
+  </form>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Built Gate Pairs</h3>
+  {{if .Pairs}}
+  <table>
+    <tr><th>System A</th><th>Anchor</th><th>System B</th><th>Anchor</th><th>Type</th><th>Gates</th><th>Built</th><th></th></tr>
+    {{range .Pairs}}
+    <tr>
+      <td><a href="/solarsystem/{{.SystemA}}">{{.SystemAName}}</a></td>
+      <td>{{.AnchorAName}}</td>
+      <td><a href="/solarsystem/{{.SystemB}}">{{.SystemBName}}</a></td>
+      <td>{{.AnchorBName}}</td>
+      <td>{{.TypeName}}</td>
+      <td>{{.GateA}} / {{.GateB}}</td>
+      <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+      <td>{{if $.CanRemove}}
+        <form method="POST" action="/stargates" onsubmit="return confirm('Delete both gates of this pair?')">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="gateID" value="{{.GateA}}">
+          <button type="submit" class="btn-danger">Delete</button>
+        </form>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p class="sub">No gates built yet.</p>
+  {{end}}
+</div>
+
+<style>
+.sub { color:#6b7280; font-size:11px; font-weight:normal; }
+.ac-results { position:absolute; top:100%; left:0; right:0; background:var(--win); border:1px solid var(--btn-hi); border-radius:4px; max-height:320px; overflow-y:auto; z-index:50; display:none; }
+.ac-results .ac-row { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line-soft); }
+.ac-results .ac-row:hover { background:var(--btn); }
+.ac-results .ac-sub { color:#6b7280; font-size:11px; }
+</style>
+<script>
+// System autocomplete: picking a row fills the hidden system ID next to the box.
+document.querySelectorAll('.sysPick').forEach(function (inp) {
+  const box = inp.parentNode.querySelector('.ac-results');
+  const hidden = document.getElementById(inp.dataset.target);
+  let timer = null;
+  inp.addEventListener('input', function () {
+    hidden.value = '';
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(async function () {
+      const res = await fetch('/solarsystems/api?q=' + encodeURIComponent(q));
+      const rows = (await res.json()).slice(0, 20);
+      box.innerHTML = '';
+      rows.forEach(function (h) {
+        const d = document.createElement('div');
+        d.className = 'ac-row';
+        const name = document.createElement('div');
+        name.textContent = h.systemName;
+        const sub = document.createElement('div');
+        sub.className = 'ac-sub';
+        sub.textContent = h.regionName + ' · sec ' + h.security.toFixed(1);
+        d.appendChild(name); d.appendChild(sub);
+        d.onclick = function () { inp.value = h.systemName; hidden.value = h.solarSystemID; box.style.display = 'none'; };
+        box.appendChild(d);
+      });
+      box.style.display = rows.length ? 'block' : 'none';
+    }, 200);
+  });
+  document.addEventListener('click', function (e) { if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none'; });
+});
+</script>
+{{end}}
+
+{{define "stargateAnchor"}}
+<select name="{{.Prefix}}Anchor">
+  <option value="0">— pick a planet or moon —</option>
+  {{range .Anchors}}<option value="{{.ItemID}}" {{if .Selected}}selected{{end}}>{{.Name}} ({{.Group}})</option>{{end}}
+</select>
+{{end}}
+
+{{define "stargateType"}}
+<select name="{{.Prefix}}Type">
+  {{range .Types}}<option value="{{.TypeID}}" {{if .Selected}}selected{{end}}>{{.TypeName}}</option>{{end}}
+</select>
+{{end}}
+
+{{define "stargatePos"}}
+{{if .Placed}}
+  <code style="font-size:11px">{{printf "%.0f, %.0f, %.0f" .Pos.X .Pos.Y .Pos.Z}}</code>
+  {{if .Problem}}<div style="color:#f87171;font-size:12px">{{.Problem}}</div>
+  {{else}}<div style="color:#6ee7b7;font-size:12px">clear</div>{{end}}
+{{else if .Problem}}<div style="color:#f87171;font-size:12px">{{.Problem}}</div>
+{{else}}<span class="sub">pick an anchor, then Preview</span>{{end}}
+{{end}}

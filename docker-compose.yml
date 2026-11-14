@@ -1,0 +1,58 @@
+services:
+  mariadb:
+    # 11-jammy stopped at 11.2; the 11 line ships on noble now.
+    image: mariadb:11
+    container_name: gurimoon_rmr-db
+    restart: unless-stopped
+    # Dump/table names are lowercase but queries use mixed case; match the
+    # case-insensitive behavior of MariaDB on Windows.
+    command: --lower-case-table-names=1
+    environment:
+      MARIADB_USER:          gurimoon
+      MARIADB_PASSWORD:      gurimoon
+      MARIADB_DATABASE:      gurimoon_rmr
+      MARIADB_ROOT_PASSWORD: gurimoon_root
+    ports:
+      # Host access for a mysql client. Loopback only, and 3307 so a MariaDB or
+      # MySQL already installed on the host does not collide.
+      - "127.0.0.1:3307:3306"
+    volumes:
+      - gurimoon_rmr-db-data:/var/lib/mysql
+      # Per-table dumps, executed alphabetically on first run (empty volume only).
+      # Subdirectories (sql/optional) are not loaded. A failing file aborts the
+      # import and later starts skip it, so a broken first run needs
+      # `docker compose down -v` before trying again.
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      # The first-run import answers no TCP connection while it runs and takes
+      # several minutes (tens of minutes on a slow disk or a WSL2 bind mount).
+      # Failures inside start_period do not count, and the first success ends it.
+      start_period: 45m
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  gurimoon:
+    build: .
+    container_name: gurimoon-server
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:26000:26000"
+      - "127.0.0.1:26080:26080"
+      # Galnet, news feed and billboards: the client fetches them from
+      # myeve.eve-online.com with no port, so this must be 80 on the host.
+      - "127.0.0.1:80:80"
+    volumes:
+      # Edit config.docker.json and `docker compose restart gurimoon`; no rebuild.
+      - ./config.docker.json:/app/config.json:ro
+      # Per-install state: ESP session key, portraits, news images, RPC
+      # coverage ledger, server.log and server.crash.log.
+      - gurimoon_rmr-server-data:/app/data
+
+volumes:
+  gurimoon_rmr-db-data:
+  gurimoon_rmr-server-data:

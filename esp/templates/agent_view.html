@@ -1,0 +1,382 @@
+{{define "content"}}
+<h2 style="display:flex;align-items:center;gap:12px">{{if .HasPortraits}}<img src="/portrait/{{.Agent.AgentID}}?size=128" width="64" height="64" style="border-radius:6px;background:var(--bg);border:1px solid var(--line)" onerror="this.style.display='none'">{{end}}{{if .Agent.AgentName}}{{.Agent.AgentName}}{{else}}Agent{{end}} <span style="color:#6b7280;font-size:16px">#{{.Agent.AgentID}}</span></h2>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<a href="/agents" style="font-size:13px">&larr; Back to Agent Browser</a>
+
+<div class="card" style="margin-top:12px">
+  <h3>Agent Summary</h3>
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Level</div>
+      <div class="value">{{.Agent.Level}}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Quality</div>
+      <div class="value">{{.Agent.Quality}}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Station</div>
+      <div class="value" style="font-size:14px">{{if .Agent.StationName}}{{.Agent.StationName}}{{else}}{{.Agent.StationID}}{{end}}</div>
+    </div>
+    <div class="stat">
+      <div class="label">System</div>
+      <div class="value" style="font-size:14px">{{if .Agent.SystemName}}{{.Agent.SystemName}}{{else}}&mdash;{{end}}</div>
+    </div>
+  </div>
+</div>
+
+{{if .ResearchFields}}
+<div class="card">
+  <h3>R&amp;D Research Fields</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">This is a research agent (type 4). Players can run one research project with it in any of these fields.</p>
+  <table style="font-size:12px">
+    <tr><th style="padding:4px 6px">Skill ID</th><th style="padding:4px 6px">Field</th></tr>
+    {{range .ResearchFields}}
+    <tr>
+      <td style="padding:3px 6px">{{.SkillID}}</td>
+      <td style="padding:3px 6px"><a href="/rnd?field={{.SkillID}}">{{.FieldName}}</a></td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Edit Agent</h3>
+  <form method="POST" action="/agent/{{.Agent.AgentID}}">
+    <input type="hidden" name="action" value="update_agent">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+
+      <div class="form-group">
+        <label>Agent Type</label>
+        <select name="agentTypeID" style="width:100%">
+          {{range $.AgentTypes}}
+          <option value="{{.AgentTypeID}}" {{if eq .AgentTypeID $.Agent.AgentTypeID}}selected{{end}}>{{agentTypeName .AgentTypeID}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Division</label>
+        <select name="divisionID" style="width:100%">
+          {{range $.Divisions}}
+          <option value="{{.DivisionID}}" {{if eq .DivisionID $.Agent.DivisionID}}selected{{end}}>{{.DivisionName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Corporation</label>
+        <select name="corporationID" style="width:100%">
+          {{range $.Corps}}
+          <option value="{{.CorporationID}}" {{if eq .CorporationID $.Agent.CorporationID}}selected{{end}}>{{.CorpName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group" style="position:relative">
+        <label>Station</label>
+        <input type="hidden" name="stationID" id="stationID" value="{{.Agent.StationID}}">
+        <input type="text" id="stationSearch" autocomplete="off" placeholder="Type to search stations..."
+               value="{{.Agent.StationName}}" style="width:100%">
+        <div id="stationResults" style="position:absolute;top:100%;left:0;right:0;z-index:10;background:var(--win);border:1px solid var(--line);border-top:none;border-radius:0 0 4px 4px;max-height:240px;overflow-y:auto;display:none"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Level</label>
+        <input type="number" name="level" value="{{.Agent.Level}}" style="width:100%">
+      </div>
+
+      <div class="form-group">
+        <label>Quality</label>
+        <input type="number" name="quality" value="{{.Agent.Quality}}" style="width:100%">
+      </div>
+
+    </div>
+    <button type="submit" style="margin-top:8px">Save Agent</button>
+  </form>
+</div>
+
+{{if .Appearance}}
+<div class="card">
+  <h3>Portrait{{if .Appearance.IsOverride}} <span style="color:#6ee7b7;font-size:12px">(custom override)</span>{{else}} <span style="color:#6b7280;font-size:12px">(auto-generated)</span>{{end}}</h3>
+  <form method="POST" action="/agent/{{.Agent.AgentID}}">
+    <input type="hidden" name="action" value="update_portrait">
+
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px">
+
+      <div class="form-group">
+        <label>Bloodline</label>
+        <select name="bloodlineID" id="portraitBloodline" style="width:100%">
+          {{range $.Bloodlines}}
+          <option value="{{.BloodlineID}}" {{if eq .BloodlineID $.Agent.BloodlineID}}selected{{end}}>{{.BloodlineName}}</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Gender</label>
+        <select name="gender" id="portraitGender" style="width:100%">
+          <option value="0" {{if eq $.Agent.Gender 0}}selected{{end}}>Male</option>
+          <option value="1" {{if eq $.Agent.Gender 1}}selected{{end}}>Female</option>
+        </select>
+      </div>
+
+      <div class="form-group" style="display:flex;align-items:flex-end">
+        <span id="portraitLoading" style="color:#6b7280;font-size:12px;display:none">Loading options...</span>
+      </div>
+
+      <div class="form-group">
+        <label>Costume</label>
+        <select name="costumeID" id="sel_costume" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "costume"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.CostumeID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Hair</label>
+        <select name="hairID" id="sel_hair" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "hair"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.HairID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Skin</label>
+        <select name="skinID" id="sel_skin" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "skin"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.SkinID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Eyes</label>
+        <select name="eyesID" id="sel_eyes" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "eyes"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.EyesID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Eyebrows</label>
+        <select name="eyebrowsID" id="sel_eyebrows" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "eyebrows"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.EyebrowsID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Accessory</label>
+        <select name="accessoryID" id="sel_accessory" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "accessory"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.AccessoryID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Beard</label>
+        <select name="beardID" id="sel_beard" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "beard"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.BeardID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Deco</label>
+        <select name="decoID" id="sel_deco" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "deco"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.DecoID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Lipstick</label>
+        <select name="lipstickID" id="sel_lipstick" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "lipstick"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.LipstickID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Makeup</label>
+        <select name="makeupID" id="sel_makeup" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "makeup"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.MakeupID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Background</label>
+        <select name="backgroundID" id="sel_background" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "background"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.BackgroundID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Light</label>
+        <select name="lightID" id="sel_light" style="width:100%">
+          <option value="0">None</option>
+          {{range index .AppearanceOpts "light"}}
+          <option value="{{.ID}}" {{if eq .ID $.Appearance.LightID}}selected{{end}}>{{.Name}} ({{.ID}})</option>
+          {{end}}
+        </select>
+      </div>
+
+    </div>
+
+    <h3 style="margin-top:16px;font-size:13px;color:#9ca3af">Rotations</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-top:8px">
+      <div class="form-group">
+        <label>Head Rotation 1</label>
+        <input type="number" step="any" name="headRotation1" value="{{.Appearance.HeadRotation1}}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Head Rotation 2</label>
+        <input type="number" step="any" name="headRotation2" value="{{.Appearance.HeadRotation2}}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Head Rotation 3</label>
+        <input type="number" step="any" name="headRotation3" value="{{.Appearance.HeadRotation3}}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Eye Rotation 1</label>
+        <input type="number" step="any" name="eyeRotation1" value="{{.Appearance.EyeRotation1}}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Eye Rotation 2</label>
+        <input type="number" step="any" name="eyeRotation2" value="{{.Appearance.EyeRotation2}}" style="width:100%">
+      </div>
+      <div class="form-group">
+        <label>Eye Rotation 3</label>
+        <input type="number" step="any" name="eyeRotation3" value="{{.Appearance.EyeRotation3}}" style="width:100%">
+      </div>
+    </div>
+
+    <button type="submit" style="margin-top:8px">Save Portrait</button>
+  </form>
+</div>
+{{end}}
+
+<script>
+(function() {
+  // ── Station autocomplete ──────────────────────────────────────────────
+  var input = document.getElementById('stationSearch');
+  var hidden = document.getElementById('stationID');
+  var dropdown = document.getElementById('stationResults');
+  var debounce = null;
+
+  input.addEventListener('input', function() {
+    clearTimeout(debounce);
+    var q = input.value.trim();
+    if (q.length < 2) { dropdown.style.display = 'none'; return; }
+    debounce = setTimeout(function() {
+      fetch('/agents/stations/api?q=' + encodeURIComponent(q))
+        .then(function(r) { return r.json(); })
+        .then(function(stations) {
+          if (!stations.length) { dropdown.style.display = 'none'; return; }
+          var html = '';
+          for (var i = 0; i < stations.length; i++) {
+            var st = stations[i];
+            html += '<div class="st-item" data-id="' + st.stationID + '" data-name="' + st.stationName.replace(/"/g, '&quot;') + '"'
+              + ' style="padding:6px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--line-soft)">'
+              + '<div style="color:#e0e4ec">' + st.stationName + '</div>'
+              + '<div style="color:#6b7280;font-size:11px">' + st.systemName + '</div></div>';
+          }
+          dropdown.innerHTML = html;
+          dropdown.style.display = 'block';
+
+          var items = dropdown.querySelectorAll('.st-item');
+          for (var j = 0; j < items.length; j++) {
+            items[j].addEventListener('click', function() {
+              hidden.value = this.getAttribute('data-id');
+              input.value = this.getAttribute('data-name');
+              dropdown.style.display = 'none';
+            });
+          }
+        });
+    }, 250);
+  });
+
+  document.addEventListener('click', function(e) {
+    if (e.target !== input && !dropdown.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+
+  // ── Portrait: reload dropdowns when bloodline/gender changes ─────────
+  var blSel = document.getElementById('portraitBloodline');
+  var genderSel = document.getElementById('portraitGender');
+  var loading = document.getElementById('portraitLoading');
+
+  // Map of slot key → select element ID
+  var slotSelects = {
+    costume: 'sel_costume', hair: 'sel_hair', skin: 'sel_skin',
+    eyes: 'sel_eyes', eyebrows: 'sel_eyebrows', accessory: 'sel_accessory',
+    beard: 'sel_beard', deco: 'sel_deco', lipstick: 'sel_lipstick',
+    makeup: 'sel_makeup', background: 'sel_background', light: 'sel_light'
+  };
+
+  function reloadAppearanceOpts() {
+    var bl = blSel.value;
+    var g = genderSel.value;
+    loading.style.display = '';
+    fetch('/agents/appearance/api?bloodline=' + bl + '&gender=' + g)
+      .then(function(r) { return r.json(); })
+      .then(function(opts) {
+        loading.style.display = 'none';
+        for (var slot in slotSelects) {
+          var sel = document.getElementById(slotSelects[slot]);
+          if (!sel) continue;
+          var cur = sel.value; // preserve current selection if still valid
+          sel.innerHTML = '<option value="0">None</option>';
+          var items = opts[slot] || [];
+          var found = false;
+          for (var i = 0; i < items.length; i++) {
+            var opt = document.createElement('option');
+            opt.value = items[i].id;
+            opt.textContent = items[i].name + ' (' + items[i].id + ')';
+            if (String(items[i].id) === cur) { opt.selected = true; found = true; }
+            sel.appendChild(opt);
+          }
+          // If previous value not in new list, reset to None
+          if (!found) sel.value = '0';
+        }
+      });
+  }
+
+  if (blSel && genderSel) {
+    blSel.addEventListener('change', reloadAppearanceOpts);
+    genderSel.addEventListener('change', reloadAppearanceOpts);
+  }
+})();
+</script>
+
+{{end}}
+
+{{template "layout" .}}

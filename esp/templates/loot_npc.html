@@ -1,0 +1,192 @@
+{{define "content"}}
+<h2><a href="/loot">NPC Loot</a> › <a href="/loot/group/{{.Info.GroupID}}">{{.Info.GroupName}}</a> › {{.Info.TypeName}}</h2>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px">Type-specific drops for this NPC only (typeID {{.Info.TypeID}}). Any-kill entries here stack onto the group loot below as one flat table: an entry at an even share of this list weighs the same as an entry at an even share of the group list, so 20 entries here beside 140 group entries take 20 of every 160 picks. A commander, officer or bounty pool defined here replaces the group's pool of that role. The ≈ per kill column shows the merged odds.</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+{{if and .Entries (not .BudgetOK)}}
+<div class="alert alert-error" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+  <span>This list was authored as independent percentages and adds up to <strong>{{.BudgetPct}}</strong>. Rebalancing rescales it to a 100% budget — the odds <em>between</em> items don't change, they just become readable.</span>
+  <form method="POST" action="/loot/npc/{{.Info.TypeID}}" style="margin:0">
+    <input type="hidden" name="action" value="normalize">
+    <button type="submit">Rebalance to 100%</button>
+  </form>
+</div>
+{{end}}
+
+<div class="card" id="entries">
+  <h3>Specific Drops for {{.Info.TypeName}} ({{len .Entries}})</h3>
+
+  <form method="POST" action="/loot/npc/{{.Info.TypeID}}" class="inline-form" style="background:var(--win-deep);padding:12px;border-radius:4px;border:1px solid var(--line)">
+    <input type="hidden" name="action" value="add">
+    <input type="hidden" name="itemTypeID" id="itemTypeID">
+    <div style="position:relative">
+      <input type="text" id="itemSearch" placeholder="Search item to drop... (name or typeID)" autocomplete="off" style="width:320px">
+      <div id="itemResults" class="ac-results"></div>
+    </div>
+    <label style="font-size:12px;color:#6b7280">Min <input type="number" name="minQty" value="1" min="1" style="width:64px"></label>
+    <label style="font-size:12px;color:#6b7280">Max <input type="number" name="maxQty" value="1" min="1" style="width:64px"></label>
+    <button type="submit">Add Drop</button>
+    <span style="font-size:12px;color:#6b7280">No chance field: a new item takes an <strong>equal slice</strong> of this list's budget and the rest shrink to pay for it. A blueprint always drops as one <strong>copy</strong>, never an original; Min/Max are its runs.</span>
+  </form>
+  <span id="existingItems" hidden data-ids="{{range .Entries}}{{.ItemTypeID}},{{end}}"></span>
+
+  {{if .Entries}}
+  <table style="margin-top:12px">
+    <tr><th>Item</th><th>Item Group</th><th style="min-width:240px">Share of drops</th><th title="Rough odds this item is in a given kill's haul from this NPC's merged table (this list plus the group loot below), before the loot rate and the max-drops cap">≈ per kill</th><th>Min</th><th>Max</th><th></th><th></th></tr>
+    {{range .Entries}}
+    <tr data-pool="{{if .RequireRole}}{{.RequireRole}}{{else}}general{{end}}">
+      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint's max runs">[BPC &middot; Min/Max = runs]</span>{{end}}{{if eq .RequireRole "bounty"}} <span style="font-size:11px;color:#fbbf24" title="Pays in place of a kill bounty: a separate 100% budget with one guaranteed pick on every kill">Bounty (guaranteed)</span><input form="ef{{.EntryID}}" type="hidden" name="keepRole" value="bounty">{{end}}</td>
+      <td>{{.ItemGroupName}}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          {{/* The hidden field is what posts: the slider snaps to step="0.1",
+               so it is display only and is never read back as a share. */}}
+          <input form="shareForm" type="hidden" class="share-value" name="share_{{.EntryID}}" value="{{printf "%.4f" .SharePct}}">
+          <input type="range" class="share-slider"
+                 value="{{printf "%.1f" .SharePct}}" min="0" max="100" step="0.1" style="flex:1;min-width:120px">
+          <span class="share-readout" style="font-size:12px;color:#6ee7b7;min-width:52px;text-align:right">{{printf "%.1f" .SharePct}}%</span>
+        </div>
+      </td>
+      <td class="perkill" style="font-size:12px;color:#9ca3af">{{printf "%.1f" .PerKillPct}}%</td>
+      <td><input form="ef{{.EntryID}}" type="number" name="minQty" value="{{.MinQty}}" min="1" style="width:64px"></td>
+      <td><input form="ef{{.EntryID}}" type="number" name="maxQty" value="{{.MaxQty}}" min="1" style="width:64px"></td>
+      <td>
+        <form id="ef{{.EntryID}}" method="POST" action="/loot/npc/{{$.Info.TypeID}}" style="display:inline">
+          <input type="hidden" name="action" value="update">
+          <input type="hidden" name="entryID" value="{{.EntryID}}">
+          <button type="submit" title="Saves quantity; shares are saved by the slider bar below">Save</button>
+        </form>
+      </td>
+      <td>
+        <form method="POST" action="/loot/npc/{{$.Info.TypeID}}" style="display:inline" onsubmit="return confirm('Delete drop entry for {{.ItemName}}? Its share is handed back to the rest of the list.');">
+          <input type="hidden" name="action" value="delete">
+          <input type="hidden" name="entryID" value="{{.EntryID}}">
+          <button type="submit" style="background:#3f1d1d;border-color:#7f2d2d">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  <form method="POST" action="/loot/npc/{{.Info.TypeID}}" id="shareForm"
+        style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <input type="hidden" name="action" value="shares">
+    <button type="submit">Save Drop Shares</button>
+    <span id="budgetStatus" style="font-size:12px;color:#6b7280"></span>
+  </form>
+  {{template "lootShareSliderJS" .}}
+  {{else}}
+  <p style="margin-top:12px;color:#6b7280">No type-specific drops yet — this NPC only rolls its group loot.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Max Drops per Kill (override)</h3>
+  <form method="POST" action="/loot/npc/{{.Info.TypeID}}" class="inline-form">
+    <input type="hidden" name="action" value="cap">
+    <input type="number" name="maxDrops" value="{{.MaxDrops}}" min="0" style="width:80px">
+    <button type="submit">Save Cap</button>
+    <span style="font-size:12px;color:#6b7280">
+      0 = no override — {{if .GroupCap}}the group cap ({{.GroupCap}}) applies{{else}}uncapped (group has no cap either){{end}}.
+      A nonzero value overrides the group cap for this NPC only.
+    </span>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Inherited Group Loot — {{.Info.GroupName}} ({{len .GroupEntries}})</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">These also roll for this NPC. Edit them on the <a href="/loot/group/{{.Info.GroupID}}">group page</a>. An item listed above replaces the group entry for that item — it never rolls twice — and a role pool defined above replaces the group's pool of that role.</p>
+  {{if .GroupEntries}}
+  <table>
+    <tr><th>Item</th><th>Condition</th><th>Item Group</th><th>Share of group budget</th><th title="Rough odds for this NPC, from its merged table">≈ per kill here</th><th>Min</th><th>Max</th></tr>
+    {{range .GroupEntries}}
+    <tr{{if and $.Dropped (index $.Dropped .EntryID)}} style="opacity:.45"{{end}}>
+      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="Drops as ONE blueprint copy; Min/Max are its runs">[BPC &middot; runs]</span>{{end}}{{if and $.Overridden (index $.Overridden .ItemTypeID)}} <span style="color:#f87171;font-size:11px">superseded above</span>{{else if and $.Dropped (index $.Dropped .EntryID)}} <span style="color:#f87171;font-size:11px">replaced by this NPC's own {{.RequireRole}} pool</span>{{end}}</td>
+      <td>{{if .RequireRole}}<span style="background:#3a2f10;color:#fbbf24;padding:2px 8px;border-radius:3px;font-size:11px;text-transform:capitalize">{{.RequireRole}} only</span>{{else}}<span style="color:#4b5563;font-size:11px">any kill</span>{{end}}</td>
+      <td>{{.ItemGroupName}}</td>
+      <td>{{printf "%.1f" .SharePct}}%</td>
+      <td style="font-size:12px;color:#9ca3af">{{printf "%.1f" .PerKillPct}}%</td>
+      <td>{{.MinQty}}</td>
+      <td>{{.MaxQty}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">The group has no loot entries.</p>
+  {{end}}
+</div>
+
+{{template "lootItemSearchJS" .}}
+{{end}}
+
+{{define "lootItemSearchJS"}}
+<style>
+.ac-results { position:absolute; top:100%; left:0; width:420px; background:var(--win); border:1px solid var(--btn-hi); border-radius:4px; max-height:320px; overflow-y:auto; z-index:50; display:none; }
+.ac-results .ac-row { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line-soft); }
+.ac-results .ac-row:hover, .ac-results .ac-row.sel { background:var(--btn); }
+.ac-results .ac-sub { color:#6b7280; font-size:11px; }
+.ac-results .ac-unpub { color:#fbbf24; font-size:10px; border:1px solid #78551a; border-radius:3px; padding:0 4px; margin-left:6px; }
+.ac-results .ac-row.ac-dup { opacity:.45; cursor:not-allowed; }
+.ac-results .ac-row.ac-dup:hover, .ac-results .ac-row.ac-dup.sel { background:transparent; }
+.ac-results .ac-dup-tag { color:#f87171; font-size:10px; margin-left:6px; }
+</style>
+<script>
+(function(){
+  const inp = document.getElementById('itemSearch');
+  if (!inp) return;
+  const box = document.getElementById('itemResults');
+  const hid = document.getElementById('itemTypeID');
+  let timer = null, rows = [], sel = -1;
+  function choose(it) {
+    if (already.has(it.typeID)) return;
+    hid.value = it.typeID;
+    inp.value = it.typeName;
+    inp.style.borderColor = '#22c55e';
+    box.style.display = 'none';
+  }
+  // Items already on this list can't be added twice (the DB enforces it via
+  // uq_loot_scope_item) — grey them out in the picker so it's obvious first.
+  const already = new Set((document.getElementById('existingItems')?.dataset.ids || '')
+    .split(',').filter(Boolean).map(Number));
+  function renderRows() {
+    box.innerHTML = '';
+    rows.forEach((it, i) => {
+      const dup = already.has(it.typeID);
+      const d = document.createElement('div');
+      d.className = 'ac-row' + (i === sel ? ' sel' : '') + (dup ? ' ac-dup' : '');
+      const price = it.basePrice ? ' · ' + Math.round(it.basePrice).toLocaleString() + ' ISK' : '';
+      const unpub = it.published ? '' : ' <span class="ac-unpub">unpublished</span>';
+      const dupTag = dup ? ' <span class="ac-dup-tag">already on this list</span>' : '';
+      d.innerHTML = '<div>' + it.typeName + unpub + dupTag + '</div><div class="ac-sub">' + it.group + ' · ' + it.category + price + '</div>';
+      d.onclick = () => { if (!dup) choose(it); };
+      box.appendChild(d);
+    });
+    box.style.display = rows.length ? 'block' : 'none';
+  }
+  inp.addEventListener('input', () => {
+    hid.value = '';
+    inp.style.borderColor = '';
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      const res = await fetch('/loot/items/api?q=' + encodeURIComponent(q));
+      rows = await res.json();
+      sel = -1;
+      renderRows();
+    }, 200);
+  });
+  inp.addEventListener('keydown', e => {
+    if (box.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, rows.length - 1); renderRows(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); renderRows(); }
+    else if (e.key === 'Enter') {
+      if (rows.length) { e.preventDefault(); choose(rows[sel >= 0 ? sel : 0]); }
+    }
+    else if (e.key === 'Escape') box.style.display = 'none';
+  });
+  document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none'; });
+})();
+</script>
+{{end}}

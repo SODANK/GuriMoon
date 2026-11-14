@@ -1,0 +1,206 @@
+{{define "content"}}
+<style>
+  .rule-num { width: 78px; text-align: center; font-size: 15px; font-weight: 600; }
+  .rule-sec { width: 72px; padding: 2px 6px; font-size: 11px; }
+</style>
+
+<h2>NPC Spawner Rules</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How many ships a belt wave holds, by security. <b>What</b> spawns is entirely the region's business — see <a href="/region-spawns">Region Spawns</a>. These rules only set the size of the wave.</p>
+
+<div class="card" style="max-width:900px;background:var(--bg)">
+  <p style="font-size:12px;color:#9ca3af;margin:0">
+    Each belt rolls a <a href="#tiers" style="color:#e0e4ec">squad tier</a>, adds that tier's size deltas to the <b style="color:#e0e4ec">min</b>–<b style="color:#e0e4ec">max</b> window below, then fills every slot by weighted-random pick from that region's <b style="color:#e0e4ec">normal and hauler</b> listings eligible at the system's security. A min of 0 means some belts come up empty. Commanders and officers are <b style="color:#e0e4ec">not</b> in that draw — each has its own chance and its own pool, set per tier.
+  </p>
+</div>
+
+<div class="card" id="wave-timer" style="max-width:900px;margin-top:10px;border-left:4px solid #fbbf24">
+  <form method="POST" action="/spawner-rules" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <input type="hidden" name="action" value="wave_timer">
+    <div>
+      <div style="font-size:10px;text-transform:uppercase;color:#6b7280;letter-spacing:1px;margin-bottom:2px">Wave timer (minutes)</div>
+      <input type="number" name="waveTimerMin" value="{{printf "%g" .WaveTimerMin}}" class="rule-num" min="1" max="1440" step="0.5">
+    </div>
+    <button type="submit">Save</button>
+    <div style="flex:1;min-width:260px;font-size:12px;color:#9ca3af">
+      How long a belt stays empty after its last rat dies (or after it rolled an empty wave) before it rolls a new one. Applies <b style="color:#e0e4ec">live</b> — belts already waiting are judged against the new value from when they were cleared. Default {{printf "%g" .WaveTimerDefaultMin}} min. Same setting as <i>Reseed cooldown</i> on <a href="/region-spawns">Region Spawns</a>.
+    </div>
+  </form>
+</div>
+
+{{if .Result}}<div class="alert alert-success" style="margin-top:10px">{{.Result}}</div>{{end}}
+
+{{range .Gaps}}
+<div class="alert alert-error">⚠ No rule covers security {{.}} — belts in those systems spawn nothing.</div>
+{{end}}
+
+{{if .Rules}}
+<div style="display:flex;flex-direction:column;gap:10px;max-width:900px;margin-top:10px">
+  {{range .Rules}}
+  <div class="card" style="margin-bottom:0;border-left:4px solid {{if ge .SecMin 0.5}}#6ee7b7{{else if ge .SecMin 0.0}}#fbbf24{{else}}#f87171{{end}}">
+    <form method="POST" action="/spawner-rules">
+      <input type="hidden" name="action" value="update">
+      <input type="hidden" name="ruleID" value="{{.RuleID}}">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div style="min-width:160px">
+          <input type="text" name="ruleName" value="{{.RuleName}}" style="width:160px;font-weight:600">
+          <div style="font-size:11px;color:#6b7280;margin-top:4px">
+            sec <input type="number" name="secMin" value="{{.SecMin}}" class="rule-sec" step="0.1">
+            to <input type="number" name="secMax" value="{{.SecMax}}" class="rule-sec" step="0.1">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:14px;flex-wrap:wrap;flex:1">
+          <div style="text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;color:#6b7280;letter-spacing:1px;margin-bottom:2px">Min ships</div>
+            <input type="number" name="minShips" value="{{.MinShips}}" min="0" class="rule-num">
+          </div>
+          <div style="text-align:center">
+            <div style="font-size:10px;text-transform:uppercase;color:var(--accent-hi);letter-spacing:1px;margin-bottom:2px">Max ships</div>
+            <input type="number" name="maxShips" value="{{.MaxShips}}" min="0" class="rule-num">
+          </div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:10px;text-transform:uppercase;color:#6b7280;letter-spacing:1px;margin-bottom:2px">Notes</div>
+            <input type="text" name="description" value="{{.Description}}" style="width:100%">
+          </div>
+        </div>
+
+        <div style="text-align:right;min-width:104px">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:4px">wave of <b style="color:#e0e4ec">{{.MinShips}}–{{.MaxShips}}</b></div>
+          <button type="submit">Save</button>
+    </form>
+    <form method="POST" action="/spawner-rules" style="display:inline">
+      <input type="hidden" name="action" value="delete">
+      <input type="hidden" name="ruleID" value="{{.RuleID}}">
+      <button type="submit" onclick="return confirm('Delete rule {{.RuleName}}? Belts in that security band will spawn nothing until another rule covers them.')" style="background:#4a1a1a;border-color:#6b2a2a">Del</button>
+    </form>
+        </div>
+      </div>
+  </div>
+  {{end}}
+</div>
+<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:900px">Sorted safest → deadliest. Both bounds are inclusive; where two rules overlap at a boundary the higher band wins. Keep the ranges touching so every security level is covered.</p>
+{{else}}
+<div class="card"><p style="color:#f87171">No spawner rules — no belt anywhere will spawn anything.</p></div>
+{{end}}
+
+<div class="card" style="max-width:900px;margin-top:16px">
+  <h3>Add a rule</h3>
+  <form class="inline-form" method="POST" action="/spawner-rules">
+    <input type="hidden" name="action" value="create">
+    <div class="form-group">
+      <label>Name</label>
+      <input type="text" name="ruleName" required style="width:160px" placeholder="e.g. Deep Null">
+    </div>
+    <div class="form-group">
+      <label>Sec Min</label>
+      <input type="number" name="secMin" value="-1.0" style="width:78px" step="0.1">
+    </div>
+    <div class="form-group">
+      <label>Sec Max</label>
+      <input type="number" name="secMax" value="1.0" style="width:78px" step="0.1">
+    </div>
+    <div class="form-group">
+      <label>Min ships</label>
+      <input type="number" name="minShips" value="0" style="width:78px" min="0">
+    </div>
+    <div class="form-group">
+      <label>Max ships</label>
+      <input type="number" name="maxShips" value="3" style="width:78px" min="0">
+    </div>
+    <div class="form-group">
+      <label>Notes</label>
+      <input type="text" name="description" style="width:200px">
+    </div>
+    <div class="form-group">
+      <label>&nbsp;</label>
+      <button type="submit">Add</button>
+    </div>
+  </form>
+</div>
+
+<h2 id="tiers" style="margin-top:32px">Squad Tiers</h2>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How <b>hard</b> a belt is. Every wave draws one of these, weighted, from the tiers covering the system's security — so two belts in the same system can be very different places.</p>
+
+<div class="card" style="max-width:1180px;background:#0a1017">
+  <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">
+    <b style="color:#e0e4ec">Weight</b> is relative within a band; the % beside it is that row's real share. <b style="color:#e0e4ec">Size Δ</b> is added to the spawner rule's window above. <b style="color:#e0e4ec">Cmdr %</b> and <b style="color:#e0e4ec">Officer %</b> are the chance <em>per wave</em> — a commander replaces a slot the wave already had, an officer is an extra ball on top.
+  </p>
+  <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">
+    <b style="color:#e0e4ec">Sec floor</b> is the difficulty lever. A region's listings carry a max security that already sorts them by hull — frigates 1.0, destroyers 0.8, cruisers 0.6, battleships 0.4 — so filtering the base pool at a <em>floor</em> instead of the system's own security leaves only the smaller hulls. Floor 0.9 in null-sec is a belt of high-sec-grade frigates. Leave it at 0 for "whatever this system's security allows". It only ever narrows, and it applies to the base pool alone: the commander and officer pools always filter at the system's real security, so a floor can never drag a null-sec officer into low-sec.
+  </p>
+  <p style="font-size:12px;color:#f0a868;margin:0">
+    ⚠ Tiers and the rarity settings are read <b>once at boot</b>. An edit here does not affect a running server until it is restarted.
+  </p>
+</div>
+
+{{range .TierGaps}}
+<div class="alert alert-error">⚠ No squad tier covers security {{.}} — belts there fall back to a neutral tier. They still spawn, but with no difficulty variance, no commanders and no officers.</div>
+{{end}}
+
+{{if .Tiers}}
+<div style="overflow-x:auto;max-width:1180px;margin-top:10px">
+<table>
+  <thead><tr>
+    <th>Tier</th><th>Band</th><th>Weight</th><th>Share</th>
+    <th>Size Δ min</th><th>Size Δ max</th><th>Sec floor</th>
+    <th>Cmdr %</th><th>Officer %</th><th>Hull bias</th><th>Notes</th><th></th>
+  </tr></thead>
+  <tbody>
+  {{range .Tiers}}
+  <tr style="border-left:4px solid {{if ge .SecMin 0.5}}#6ee7b7{{else if ge .SecMin 0.0}}#fbbf24{{else}}#f87171{{end}}">
+    <form method="POST" action="/spawner-rules">
+    <input type="hidden" name="action" value="tier_update">
+    <input type="hidden" name="tierID" value="{{.TierID}}">
+    <td><input type="text" name="tierName" value="{{.TierName}}" style="width:82px;font-weight:600"></td>
+    <td style="white-space:nowrap">
+      <input type="number" name="secMin" value="{{.SecMin}}" class="rule-sec" step="0.1">
+      <input type="number" name="secMax" value="{{.SecMax}}" class="rule-sec" step="0.1">
+    </td>
+    <td><input type="number" name="weight" value="{{.Weight}}" min="0" style="width:64px"></td>
+    <td style="text-align:right;color:{{if gt .BandPct 0.0}}#e0e4ec{{else}}#6b7280{{end}};font-variant-numeric:tabular-nums">{{if gt .BandPct 0.0}}{{printf "%.0f%%" .BandPct}}{{else}}off{{end}}</td>
+    <td><input type="number" name="sizeDeltaMin" value="{{.SizeDeltaMin}}" style="width:60px"></td>
+    <td><input type="number" name="sizeDeltaMax" value="{{.SizeDeltaMax}}" style="width:60px"></td>
+    <td><input type="number" name="secFloor" value="{{.SecFloor}}" step="0.1" min="-1" max="1" style="width:64px"></td>
+    <td><input type="number" name="cmdrChancePct" value="{{.CmdrChancePct}}" step="0.01" min="0" max="100" style="width:72px"></td>
+    <td><input type="number" name="officerChancePct" value="{{.OfficerChancePct}}" step="0.01" min="0" max="100" style="width:72px"></td>
+    <td><input type="text" name="hullBias" value="{{.HullBias}}" style="width:150px" placeholder="cruiser,battleship"></td>
+    <td><input type="text" name="description" value="{{.Description}}" style="width:190px"></td>
+    <td style="white-space:nowrap"><button type="submit">Save</button>
+    </form>
+    <form method="POST" action="/spawner-rules" style="display:inline">
+      <input type="hidden" name="action" value="tier_delete">
+      <input type="hidden" name="tierID" value="{{.TierID}}">
+      <button type="submit" onclick="return confirm('Delete the {{.TierName}} tier for {{.SecMin}} to {{.SecMax}}? Its share redistributes to the other tiers in that band.')" style="background:#4a1a1a;border-color:#6b2a2a">Del</button>
+    </form>
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:1180px">Rows sharing exactly the same band are one draw; the share column is over that band. A weight of 0 switches a tier off without deleting it. High-sec ships with no hard or deadly row on purpose — 0.9+ belts are meant to feel exactly as they always have.</p>
+{{else}}
+<div class="card"><p style="color:#f87171">No squad tiers — every belt falls back to a neutral tier: ordinary waves, no commanders, no officers.</p></div>
+{{end}}
+
+<div class="card" style="max-width:1180px;margin-top:16px">
+  <h3>Add a tier</h3>
+  <form class="inline-form" method="POST" action="/spawner-rules">
+    <input type="hidden" name="action" value="tier_create">
+    <div class="form-group"><label>Name</label><input type="text" name="tierName" required style="width:100px" placeholder="e.g. deadly"></div>
+    <div class="form-group"><label>Sec Min</label><input type="number" name="secMin" value="-1.0" style="width:78px" step="0.1"></div>
+    <div class="form-group"><label>Sec Max</label><input type="number" name="secMax" value="0.1" style="width:78px" step="0.1"></div>
+    <div class="form-group"><label>Weight</label><input type="number" name="weight" value="10" min="0" style="width:70px"></div>
+    <div class="form-group"><label>Size Δ min</label><input type="number" name="sizeDeltaMin" value="0" style="width:70px"></div>
+    <div class="form-group"><label>Size Δ max</label><input type="number" name="sizeDeltaMax" value="0" style="width:70px"></div>
+    <div class="form-group"><label>Sec floor</label><input type="number" name="secFloor" value="0" step="0.1" min="-1" max="1" style="width:70px"></div>
+    <div class="form-group"><label>Cmdr %</label><input type="number" name="cmdrChancePct" value="0" step="0.01" min="0" max="100" style="width:76px"></div>
+    <div class="form-group"><label>Officer %</label><input type="number" name="officerChancePct" value="0" step="0.01" min="0" max="100" style="width:76px"></div>
+    <div class="form-group"><label>Hull bias</label><input type="text" name="hullBias" style="width:160px" placeholder="cruiser,battlecruiser"></div>
+    <div class="form-group"><label>Notes</label><input type="text" name="description" style="width:190px"></div>
+    <div class="form-group"><label>&nbsp;</label><button type="submit">Add</button></div>
+  </form>
+</div>
+{{end}}
+
+{{template "layout" .}}

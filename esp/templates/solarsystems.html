@@ -1,0 +1,88 @@
+{{define "content"}}
+<h2>Solar Systems</h2>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
+
+<div class="card">
+  <h3>Find a Solar System</h3>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Open a system to see its radial map, celestial layout and to seed new planets, moons, belts, beacons or warpable dungeon entrances.</p>
+  <div style="position:relative;max-width:480px;margin-bottom:12px">
+    <input type="text" id="sysSearch" placeholder="Search solar systems... (e.g. Todaki, EC-P8R)" autocomplete="off" style="width:100%">
+    <div id="sysResults" class="ac-results"></div>
+  </div>
+  <form class="search-form" method="GET" action="/solarsystems">
+    <input type="text" name="q" placeholder="Or list matches... (e.g. Jita)" value="{{.Query}}" style="width:320px">
+    <button type="submit">Search</button>
+  </form>
+</div>
+
+{{if .Results}}
+<div class="card">
+  <h3>Matches</h3>
+  <table>
+    <tr><th>System</th><th>Security</th><th>Constellation</th><th>Region</th><th>Belts</th><th></th></tr>
+    {{range .Results}}
+    <tr>
+      <td><a href="/solarsystem/{{.SolarSystemID}}">{{.SystemName}}</a></td>
+      <td>{{printf "%.1f" .Security}}</td>
+      <td>{{.ConstellationName}}</td>
+      <td>{{.RegionName}}</td>
+      <td>{{.BeltCount}}</td>
+      <td><a href="/solarsystem/{{.SolarSystemID}}">Open →</a></td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{else if .Query}}
+<div class="card"><p>No systems match "{{.Query}}".</p></div>
+{{end}}
+
+<style>
+.ac-results { position:absolute; top:100%; left:0; right:0; background:var(--win); border:1px solid var(--btn-hi); border-radius:4px; max-height:320px; overflow-y:auto; z-index:50; display:none; }
+.ac-results .ac-row { padding:8px 12px; cursor:pointer; font-size:13px; border-bottom:1px solid var(--line-soft); }
+.ac-results .ac-row:hover, .ac-results .ac-row.sel { background:var(--btn); }
+.ac-results .ac-sub { color:#6b7280; font-size:11px; }
+</style>
+<script>
+// System autocomplete → detail page.
+(function(){
+  const inp = document.getElementById('sysSearch');
+  const box = document.getElementById('sysResults');
+  let timer = null, rows = [], sel = -1;
+  function go(h) { window.location = '/solarsystem/' + h.solarSystemID; }
+  function render() {
+    box.innerHTML = '';
+    rows.forEach((h, i) => {
+      const d = document.createElement('div');
+      d.className = 'ac-row' + (i === sel ? ' sel' : '');
+      const sov = h.allianceName ? ' · ' + h.allianceName : (h.factionName ? ' · ' + h.factionName : '');
+      d.innerHTML = '<div>' + h.systemName + '</div><div class="ac-sub">' +
+        h.regionName + ' · sec ' + h.security.toFixed(1) + sov + '</div>';
+      d.onclick = () => go(h);
+      box.appendChild(d);
+    });
+    box.style.display = rows.length ? 'block' : 'none';
+  }
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length < 2) { box.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      const res = await fetch('/solarsystems/api?q=' + encodeURIComponent(q));
+      rows = (await res.json()).slice(0, 20);
+      sel = -1;
+      render();
+    }, 200);
+  });
+  inp.addEventListener('keydown', e => {
+    if (box.style.display === 'none') return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); sel = Math.min(sel + 1, rows.length - 1); render(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = Math.max(sel - 1, 0); render(); }
+    else if (e.key === 'Enter') { if (rows.length) { e.preventDefault(); go(rows[sel >= 0 ? sel : 0]); } }
+    else if (e.key === 'Escape') box.style.display = 'none';
+  });
+  document.addEventListener('click', e => { if (!box.contains(e.target) && e.target !== inp) box.style.display = 'none'; });
+})();
+</script>
+{{end}}

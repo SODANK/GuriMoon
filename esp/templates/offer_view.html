@@ -1,0 +1,305 @@
+{{define "content"}}
+<style>
+/* Offer editor -------------------------------------------------------------
+   Same two-column split as the mission template editor: what the player reads
+   and what they trade on the left, who can reach it and what it costs on the
+   right. */
+.ov-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:12px }
+.ov-head h2 { margin:0 }
+.ov-head .sub { color:#6b7280; font-size:13px }
+.ov-badge { font-size:11px; letter-spacing:.5px; text-transform:uppercase; padding:3px 9px;
+            border-radius:10px; border:1px solid var(--line); color:#6b7280; background:var(--win-deep) }
+.ov-badge.on { color:#6ee7b7; border-color:#1a4731; background:#0f2a1f }
+.ov-badge.off { color:#d55b5b; border-color:#4a2020; background:#2a0f0f }
+
+.ov-grid { display:grid; grid-template-columns:minmax(420px,1.15fr) minmax(360px,1fr);
+           gap:16px; align-items:start }
+@media (max-width:1180px) { .ov-grid { grid-template-columns:1fr } }
+
+.ov-section { margin-bottom:16px }
+.ov-section h3 { font-size:13px; color:#9ca3af; text-transform:uppercase; letter-spacing:.5px;
+                 margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px }
+.ov-section h3 .h3note { float:right; text-transform:none; letter-spacing:0; color:#6b7280;
+                         font-size:11px; font-weight:400 }
+
+.ov-fields { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:10px 14px }
+.ov-fields .form-group { margin-bottom:0 }
+.ov-fields label { display:block; font-size:11px; color:#6b7280; margin-bottom:3px;
+                   text-transform:uppercase; letter-spacing:.5px }
+.ov-fields input, .ov-fields select, .ov-fields textarea { width:100%; padding:6px 8px; font-size:12px }
+.ov-fields small { display:block; color:#6b7280; font-size:11px; margin-top:3px; line-height:1.5 }
+.ov-wide { grid-column:1/-1 }
+.ov-wide textarea { min-height:110px; line-height:1.55 }
+
+.ov-hint { color:#6b7280; font-size:12px; line-height:1.65; margin-bottom:10px }
+.ov-hint b { color:#c9d1d9 }
+
+/* Allow-list grids. Ticking nothing means the axis does not narrow anything,
+   which is the state an author has to be able to read at a glance. */
+.ov-allow { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:6px 10px }
+.ov-allow label { display:flex; align-items:center; gap:5px; font-size:12px; color:#c9d1d9 }
+.ov-allow .n { color:#6b7280; font-size:11px }
+.ov-allbar { display:flex; gap:8px; margin:8px 0 6px }
+.ov-allbar button { padding:3px 10px; font-size:11px }
+.ov-openstate { font-size:11px; color:#6ee7b7; margin-top:8px }
+.ov-openstate.narrowed { color:#9ca3af }
+
+/* Trade tables */
+.ov-items table { width:100% }
+.ov-items td, .ov-items th { padding:5px 8px }
+.ov-items .qty { text-align:right; width:70px }
+.ov-items .extra { color:#9ca3af; font-size:11px }
+.ov-add { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; align-items:center }
+.ov-add input[type=number] { width:100px; padding:6px 8px; font-size:12px }
+.ov-add input[type=text] { flex:1; min-width:160px; padding:6px 8px; font-size:12px }
+.ov-empty { color:#6b7280; font-size:12px; padding:6px 0 }
+
+.ov-save { position:sticky; bottom:0; background:var(--bg); border-top:1px solid var(--line);
+           padding:12px 0; margin-top:4px; display:flex; gap:10px; align-items:center; z-index:5 }
+.ov-save .note { color:#6b7280; font-size:11px }
+.ov-danger { margin-top:18px; padding-top:14px; border-top:1px solid var(--line-soft) }
+</style>
+
+<div class="ov-head">
+  <h2>{{.Offer.OfferName}}</h2>
+  {{if .Offer.Enabled}}<span class="ov-badge on">enabled</span>{{else}}<span class="ov-badge off">disabled</span>{{end}}
+  <span class="ov-badge">{{len .Rewards}} given</span>
+  <span class="ov-badge">{{len .Costs}} taken</span>
+  <span class="sub">#{{.Offer.OfferID}} &middot; <a href="/offers">back to agent offers</a></span>
+</div>
+
+{{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
+
+<div class="ov-grid">
+
+  <!-- ── Left: the trade itself ───────────────────────────────────────── -->
+  <div>
+
+  <form method="POST" action="/offer/{{.Offer.OfferID}}" id="offerForm">
+  <input type="hidden" name="action" value="update_offer">
+
+  <div class="card ov-section">
+    <h3>General</h3>
+    <div class="ov-fields">
+      <div class="form-group ov-wide">
+        <label>Offer Name</label>
+        <input type="text" name="offerName" value="{{.Offer.OfferName}}" required>
+      </div>
+      <div class="form-group">
+        <label>Enabled</label>
+        <select name="enabled">
+          <option value="1" {{if .Offer.Enabled}}selected{{end}}>Yes</option>
+          <option value="0" {{if not .Offer.Enabled}}selected{{end}}>No</option>
+        </select>
+      </div>
+      <div class="form-group ov-wide">
+        <label>Description</label>
+        <textarea name="description">{{.Offer.Description}}</textarea>
+        <small>Shown in the journal Offers tab and in the agent conversation.</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="card ov-section">
+    <h3>Price<span class="h3note">what the player pays</span></h3>
+    <div class="ov-fields">
+      <div class="form-group">
+        <label>Loyalty Points</label>
+        <input type="number" name="lpCost" value="{{.Offer.LPCost}}" min="0">
+        <small>LP held with the presenting agent.</small>
+      </div>
+      <div class="form-group">
+        <label>ISK</label>
+        <input type="number" name="iskCost" value="{{.Offer.ISKCost}}" min="0">
+      </div>
+      <div class="form-group">
+        <label>Min Standing</label>
+        <input type="number" step="0.1" name="minStanding" value="{{.Offer.MinStanding}}">
+        <small>0 = no standing gate.</small>
+      </div>
+      <div class="form-group">
+        <label>Expires (days)</label>
+        <input type="number" name="expiresDays" value="{{.Offer.ExpiresDays}}" min="0">
+        <small>0 = no expiry shown.</small>
+      </div>
+    </div>
+  </div>
+  </form>
+
+  <div class="card ov-section ov-items">
+    <h3>Given<span class="h3note">items the agent hands over</span></h3>
+    {{if .Rewards}}
+    <table>
+      <tr><th>Type ID</th><th>Name</th><th class="qty">Qty</th><th>Extra info</th><th></th></tr>
+      {{range .Rewards}}
+      <tr>
+        <td>{{.TypeID}}</td>
+        <td>{{.TypeName}}</td>
+        <td class="qty">{{.Quantity}}</td>
+        <td class="extra">{{.ExtraInfo}}</td>
+        <td>
+          <form method="POST" action="/offer/{{$.Offer.OfferID}}" style="display:inline">
+            <input type="hidden" name="action" value="delete_item">
+            <input type="hidden" name="entryID" value="{{.EntryID}}">
+            <button type="submit" style="font-size:11px">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}<p class="ov-empty">Nothing given yet &mdash; an offer with no reward items trades ISK and LP for nothing.</p>{{end}}
+    <form class="ov-add" method="POST" action="/offer/{{.Offer.OfferID}}">
+      <input type="hidden" name="action" value="add_item">
+      <input type="hidden" name="role" value="reward">
+      <input type="number" name="typeID" placeholder="Type ID" required>
+      <input type="number" name="quantity" placeholder="Qty" value="1">
+      <input type="text" name="extraInfo" placeholder="Extra info (e.g. single run copy, ME 20)">
+      <button type="submit">Add</button>
+    </form>
+  </div>
+
+  <div class="card ov-section ov-items">
+    <h3>Taken<span class="h3note">items the player hands over</span></h3>
+    {{if .Costs}}
+    <table>
+      <tr><th>Type ID</th><th>Name</th><th class="qty">Qty</th><th>Extra info</th><th></th></tr>
+      {{range .Costs}}
+      <tr>
+        <td>{{.TypeID}}</td>
+        <td>{{.TypeName}}</td>
+        <td class="qty">{{.Quantity}}</td>
+        <td class="extra">{{.ExtraInfo}}</td>
+        <td>
+          <form method="POST" action="/offer/{{$.Offer.OfferID}}" style="display:inline">
+            <input type="hidden" name="action" value="delete_item">
+            <input type="hidden" name="entryID" value="{{.EntryID}}">
+            <button type="submit" style="font-size:11px">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}<p class="ov-empty">No cost items. The LP and ISK price above still applies.</p>{{end}}
+    <form class="ov-add" method="POST" action="/offer/{{.Offer.OfferID}}">
+      <input type="hidden" name="action" value="add_item">
+      <input type="hidden" name="role" value="cost">
+      <input type="number" name="typeID" placeholder="Type ID" required>
+      <input type="number" name="quantity" placeholder="Qty" value="1">
+      <input type="text" name="extraInfo" placeholder="Extra info (optional)">
+      <button type="submit">Add</button>
+    </form>
+  </div>
+
+  </div>
+
+  <!-- ── Right: who can reach it ──────────────────────────────────────── -->
+  <div>
+
+  <div class="card ov-section">
+    <h3>Availability<span class="h3note">nothing ticked = no restriction</span></h3>
+    <p class="ov-hint">
+      Three axes, <b>ANDed together</b>: an agent presents this offer when it passes
+      all three. A blank axis narrows nothing, so a fresh offer is live at
+      <b>every agent in the game</b> until you tick something.
+    </p>
+    <div class="ov-fields">
+      <div class="form-group ov-wide">
+        <label>Corporation</label>
+        <select name="corporationID" form="offerForm">
+          <option value="0">Any corporation</option>
+          {{range .Corps}}
+          <option value="{{.CorporationID}}" {{if eq $.Offer.CorporationID .CorporationID}}selected{{end}}>
+            {{.CorpName}} ({{.Agents}} agents)
+          </option>
+          {{end}}
+        </select>
+        <small>The finest scope &mdash; a single NPC corporation's agents.</small>
+      </div>
+    </div>
+
+    <h3 style="margin-top:14px">Factions</h3>
+    <div class="ov-allbar">
+      <button type="button" onclick="setAll('fac', true)">All</button>
+      <button type="button" onclick="setAll('fac', false)">None</button>
+    </div>
+    <div class="ov-allow">
+      {{range .Factions}}
+      <label>
+        <input type="checkbox" class="fac" name="allowedFactions" value="{{.FactionID}}" form="offerForm"
+          {{if inList $.Offer.Factions .FactionID}}checked{{end}}
+          onchange="markOpen()">
+        {{.FactionName}}
+      </label>
+      {{end}}
+    </div>
+
+    <h3 style="margin-top:14px">Divisions</h3>
+    <div class="ov-allbar">
+      <button type="button" onclick="setAll('div', true)">All</button>
+      <button type="button" onclick="setAll('div', false)">None</button>
+    </div>
+    <div class="ov-allow">
+      {{range .Divisions}}
+      <label>
+        <input type="checkbox" class="div" name="allowedDivisions" value="{{.DivisionID}}" form="offerForm"
+          {{if inList $.Offer.Divisions .DivisionID}}checked{{end}}
+          onchange="markOpen()">
+        {{.DivisionName}} <span class="n">({{.Agents}})</span>
+      </label>
+      {{end}}
+    </div>
+
+    <div id="openState" class="ov-openstate"></div>
+  </div>
+
+  </div>
+</div>
+
+<div class="ov-save">
+  <button type="submit" form="offerForm">Save Offer</button>
+  <span class="note">Saves General, Price and Availability. Item rows save as you add or delete them.</span>
+</div>
+
+<div class="ov-danger">
+  <form method="POST" action="/offer/{{.Offer.OfferID}}" onsubmit="return confirm('Delete this offer and all its items?')">
+    <input type="hidden" name="action" value="delete_offer">
+    <button type="submit" style="background:var(--btn);border-color:var(--btn-hi);padding:6px 14px;font-size:12px">Delete Offer</button>
+  </form>
+</div>
+
+<script>
+function setAll(cls, on) {
+  var boxes = document.querySelectorAll('input.' + cls);
+  // "All" ticked is the same reach as none ticked, and the empty list is the
+  // cheaper query — so tick-everything saves as no restriction.
+  for (var i = 0; i < boxes.length; i++) { boxes[i].checked = on; }
+  markOpen();
+}
+function countChecked(cls) {
+  return document.querySelectorAll('input.' + cls + ':checked').length;
+}
+function markOpen() {
+  var el = document.getElementById('openState');
+  if (!el) return;
+  var f = countChecked('fac'), d = countChecked('div');
+  var corpSel = document.querySelector('select[name=corporationID]');
+  var corp = corpSel && corpSel.value !== '0';
+  var parts = [];
+  if (corp) { parts.push('one corporation'); }
+  if (f) { parts.push(f + (f === 1 ? ' faction' : ' factions')); }
+  if (d) { parts.push(d + (d === 1 ? ' division' : ' divisions')); }
+  if (!parts.length) {
+    el.className = 'ov-openstate';
+    el.textContent = 'Presented by every agent in the game.';
+  } else {
+    el.className = 'ov-openstate narrowed';
+    el.textContent = 'Narrowed to ' + parts.join(' + ') + '.';
+  }
+}
+var corpSel = document.querySelector('select[name=corporationID]');
+if (corpSel) { corpSel.addEventListener('change', markOpen); }
+markOpen();
+</script>
+{{end}}
+
+{{template "layout" .}}

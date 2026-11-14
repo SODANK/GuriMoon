@@ -1,0 +1,258 @@
+GuriMoon — GM Slash Command Reference
+=====================================
+
+In-game commands typed into any chat channel with a "/" prefix. The reply is
+echoed back to the caller only, in the same channel.
+
+Access is gated by the account role bit set at login ("authentication.role" in
+config.json). With the shipped autoaccount defaults every account is a GM.
+
+Commands marked [stub] parse and reply but perform no action.
+
+
+SEARCH & ITEMS
+--------------
+
+/search <text or regex>
+    Search invTypes by name. Regex accepted. Use this to find the typeID that
+    /createitem, /create, /fit and /giveskill take.
+
+/createitem <typeID> [quantity]
+    Spawn an item into your station hangar. Quantity defaults to 1.
+
+/create <typeID> [quantity]
+    Spawn an item into your ship's cargo hold. This is the command the item
+    info window's "GML: Create in cargo" button issues.
+
+/fit <typeID> <slotFlag>
+    Fit a module to your current ship. Slot flags: hi 11-18, med 19-26,
+    lo 27-34.
+
+
+CHARACTER
+---------
+
+/giveisk <characterID> <amount>
+    Add ISK to a character's wallet. Pass 0 for the characterID to target
+    yourself.
+
+/giveskill <typeID> <level>
+    Grant one skill at level 1-5.
+
+/giveallskill
+    Grant yourself every skill at level 5. Aliases: /giveallskills,
+    /allskills. Relog to see the change.
+
+/setcorp <corporationID>
+    Change your corporation.
+
+/redoportrait <character name or ID>
+    Flag a character for portrait recustomization. At the account's next
+    character-select the character is hidden and the player re-enters the
+    creation flow; only the new appearance is applied to the existing
+    character.
+/redoportrait clear <character name or ID>
+    Unflag.
+
+
+MOVEMENT
+--------
+
+/moveto <stationID>
+    Teleport to a station. Updates the database and sends a session change.
+
+/translocate <entityID>
+    Teleport to a solar system, station, or any mapDenormalize celestial.
+/tr me <entityID>
+    Same as /translocate.
+
+/goto <x> <y> <z>
+    Snap your ship to a position in the current solar system.
+
+/deadspace
+    Teleport to a random isolated spot in the current system.
+
+/selfdestruct
+    Destroy your ship or pod, running the full death loop. Requires an
+    in-flight session.
+
+
+GM MODE
+-------
+
+/gm on
+/gm off
+    While on, nothing in the world — player, drone or NPC — may lock, approach
+    or shoot you, and NPCs neither notice you nor take threat from you.
+
+    This is a TARGETING RULE, NOT INVULNERABILITY. A scripted dungeon effect
+    or /selfdestruct still applies. Turning it on also sweeps you out of every
+    threat table on the node, because the target pickers only refuse the next
+    lock.
+
+    The flag lives in memory, not in a column: a server restart clears it.
+
+/gm cloak on [solid]
+/gm cloak off
+    A standing cloak for filming. Unlike the gate-arrival cloak it is never
+    broken by movement, warp, a gate or a module, so prop mods run under it;
+    it survives docking, gates and a pod transition. You are hidden from every
+    other pilot and untargetable (it turns /gm on as well), and you can still
+    lock targets yourself.
+
+    Unless you say "solid", your own ball is put on the wire as 1 m wide, so
+    your client has no ship to overlap-resolve against (collision lives in the
+    client's destiny.dll, not here). That radius is a client-side guess: it may
+    also shrink your ship model or move the camera. If it does, use "solid".
+
+    Off leaves /gm on alone; use /gm off to be targetable again. In memory
+    only, like /gm on.
+
+
+DIAGNOSTICS
+-----------
+
+/scene, /stamps and /ghosts are measurements, not powers; /refresh acts on them. Read them against what the client is
+drawing.
+
+/scene [filter]
+    Print the SERVER's distance to every ball on your grid, one line per ball.
+    Read it beside the client's own overview distance column: the difference on
+    any row is client-vs-server drift, measured live instead of inferred. A
+    ball reading 8 km on the overview and 22 km here is a ball whose wreck and
+    explosion will land 14 km from where the pilot watched the ship die.
+
+/stamps
+    Report your destiny stamp stream: mints per second against the
+    one-per-second budget, how far the stream has run ahead of the wall clock,
+    and which server call sites spent the stamps. The companion to /scene —
+    /scene shows that a ball is in the wrong place, this shows why.
+
+/ghosts
+    Explain, ball by ball, why your overview looks the way it does: which rule
+    is keeping each ball, or that the server has forgotten it entirely (in
+    which case no prune will ever offer to remove it and the row is permanent).
+
+/refresh [hard]
+    Dump stale overview entries. Plain: remove every ball the server knows is
+    stale and reload the overview from your own ballpark, which also clears a
+    ship listed twice (delivered twice, removed once). Hard: rebuild the whole
+    ballpark first (SetState), which is the only cure for a ball the server
+    has forgotten. The plain reload also runs by itself ~4 s after every
+    undock, gate jump and ballpark resync.
+
+
+SOVEREIGNTY & STARBASES
+-----------------------
+
+/claim [systemID]
+    Claim 0.0 sovereignty for your alliance. Defaults to the current system.
+
+/unclaim [systemID]
+    Release sovereignty held by your alliance.
+
+/sov [systemID|list]
+    Show sovereignty for the current system, a named system, or — with "list" —
+    all of your alliance's holdings.
+
+/posplant <typeID> <moonID>
+    Anchor a control tower at a moon. Requires alliance sovereignty.
+
+/posonline <entityID>
+    Bring an anchored starbase online.
+
+/posremove <entityID>
+    Remove a starbase (admin teardown).
+
+/poslist [systemID]
+    List starbases in the current or a named system.
+
+/fuel <days> <entityID>
+    Load N days of fuel into a starbase's fuel bay.
+
+/possave <towerID> <name> [fuelDays]
+    Capture a player-built POS as a template: the tower type, every anchored
+    structure's type and offset from the tower, what each handles, and the
+    Production wiring. Replaces a template of the same name.
+
+/posspawn <name> <moonID> [online] [fuelDays]
+    Stamp a template at a moon, owned by your corporation. Placement rules are
+    /posplant's (security ceiling, one tower per moon, sovereignty). "online"
+    brings the tower and the template's online structures up at once;
+    fuelDays overrides the template's fuel.
+
+/postemplates
+    List POS templates.
+
+/moonscan [moonID]
+    Survey a moon into the Moon Analysis tab. Defaults to the nearest moon.
+    Pushes OnMoonScanComplete — the same event a survey probe will deliver once
+    the probe-launch path exists.
+
+
+MISSIONS
+--------
+
+/mission list
+    List mission templates (first 30).
+/mission give <templateID>
+    Offer a template to yourself from an agent at your current station.
+/mission info
+    Show your current mission.
+/mission complete
+    Force-complete your current mission.
+/mission clear
+    Clear your current mission.
+
+
+MARKET
+------
+
+/seedmarkets
+    Seed every published item at your current station. Wipes existing Seeder
+    orders at that station.
+
+/seednpcmarkets
+    Regenerate all NPC corporation market orders globally, from
+    crpnpccorporationtrades.
+
+
+SPACE SIMULATION
+----------------
+
+/gateflash
+    Fire the gate animation on nearby stargates.
+
+/concord
+    Trigger a CONCORD response against yourself (test harness).
+
+/police [navy]
+    Send the system's police (or navy) squad against yourself now, whatever
+    your record (test harness). It stands down after the linger if your record
+    does not qualify.
+
+/secstatus <value>
+    Set your own security status (-10 to 10) through the ordinary write path.
+
+/customs
+    Trigger a customs response against yourself (test harness).
+
+
+NOT IMPLEMENTED
+---------------
+
+These parse and reply but do nothing:
+
+/spawn <typeID>            [stub]  NPC spawning goes through the ESP panel
+/summon                    [stub]
+/roid <typeID> <radius>    [stub]
+/growbelt                  [stub]  belt fields are administered at ESP
+                                   /industry/belts
+/pop <type> <key> <value>  [stub]
+
+
+/help
+/?
+    Print the in-game command list. Note that the in-game list is shorter than
+    this file: it omits /scene, /stamps, /concord, /police, /secstatus, /customs
+    and /selfdestruct.

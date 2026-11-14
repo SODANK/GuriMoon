@@ -1,0 +1,138 @@
+{{define "content"}}
+<h2>Alliances</h2>
+<p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
+  The client's <code>allianceRegistry</code> answers three read calls and <code>None</code> to
+  everything else &mdash; there are no applications, executor votes, relationships or bills on
+  the wire yet. Alliances are therefore formed and run from here.
+</p>
+
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+
+{{if .Issues}}
+<div class="card" style="border-left:3px solid var(--accent)">
+  <h3>Name registration</h3>
+  <p style="font-size:12px;color:#9ca3af;max-width:900px">
+    The client resolves an alliance ticker through <code>GetMultiAllianceShortNamesEx</code>,
+    which reads the <code>entity</code> table &mdash; a row <code>db.CreateAlliance</code> never
+    wrote. These alliances are missing rows the client looks in:
+  </p>
+  <ul style="font-size:12px;color:#fca5a5">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>
+  <form method="POST" action="/alliances">
+    <input type="hidden" name="action" value="repairnames">
+    <button type="submit">Rewrite name rows for every alliance</button>
+  </form>
+</div>
+{{end}}
+
+<div class="card">
+  <h3>Alliances ({{len .Alliances}})</h3>
+  {{if .Alliances}}
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Ticker</th><th>Executor</th><th>Corps</th><th>Pilots</th>
+        <th>Stored</th><th>Sov</th><th>Client logo</th><th>Stored logo</th></tr>
+    {{range .Alliances}}
+    <tr>
+      <td>{{.AllianceID}}</td>
+      <td><a href="/alliance/{{.AllianceID}}">{{.AllianceName}}</a>
+          {{if .Dictatorial}}<span style="font-size:10px;color:#6b7280"> dictatorial</span>{{end}}
+          {{if .LowID}}<span style="font-size:10px;color:#fca5a5" title="Below the client's player-entity range — cfg.IsAlliance rejects it"> ID too low</span>{{end}}</td>
+      <td>{{.ShortName}}</td>
+      <td>{{if .ExecutorCorpID}}<a href="/corporation/{{.ExecutorCorpID}}">{{.ExecutorName}}</a>{{else}}<span style="color:#fca5a5">none</span>{{end}}</td>
+      <td style="text-align:right">{{.MemberCorps}}</td>
+      <td style="text-align:right">{{.Pilots}}</td>
+      <td style="text-align:right;color:#6b7280">{{.StoredMembers}}</td>
+      <td style="text-align:right">{{.SovSystems}}</td>
+      <td>{{if .LogoMapped}}{{if $.TileArt}}<img src="/alliancetile/{{.LogoTile}}.png" width="22" height="22" alt="{{.LogoTile}}" style="vertical-align:middle;margin-right:4px">{{end}}tile {{.LogoTile}}{{else}}<span style="color:#6b7280">fallback 01_01</span>{{end}}</td>
+      <td>{{if index $.StoredLogos .AllianceID}}<img src="/alliancelogo/{{.AllianceID}}" style="height:22px;vertical-align:middle">{{else}}<span style="color:#4b5563">&mdash;</span>{{end}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280">No alliances yet.</p>
+  {{end}}
+</div>
+
+<div class="card">
+  <h3>Create alliance</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    <b>The ID is the logo.</b> The client draws an alliance logo from a hardcoded table of 70
+    allianceIDs (<code>uix.GetAllianceLogo</code>); any other ID falls back to tile 01_01, and
+    nothing the server sends changes that. Picking a slot below creates the alliance <em>at</em>
+    that ID, which is the only way to give it a logo the game itself draws. It can be changed
+    later on the alliance's own page &mdash; that renumbers the alliance and everything pointing
+    at it, so picking here is the cheaper choice. A logo image uploaded on the alliance page is
+    used by this panel, the in-game browser and killmail pages &mdash; not by the game client's
+    own UI.
+  </p>
+  <form method="POST" action="/alliances">
+    <input type="hidden" name="action" value="create">
+    <table>
+      <tr><td style="width:160px;color:#6b7280">Name</td>
+          <td><input type="text" name="allianceName" required style="width:340px"></td></tr>
+      <tr><td style="color:#6b7280">Ticker</td>
+          <td><input type="text" name="shortName" maxlength="5" required style="width:90px">
+              <span style="font-size:11px;color:#6b7280">1&ndash;5 characters</span></td></tr>
+      <tr><td style="color:#6b7280">Description</td>
+          <td><textarea name="description" rows="2" style="width:100%"></textarea></td></tr>
+      <tr><td style="color:#6b7280">URL</td>
+          <td><input type="text" name="url" style="width:340px"></td></tr>
+      <tr><td style="color:#6b7280">Founding corp</td>
+          <td>
+            <select name="founderCorpID" style="width:340px">
+              <option value="0">— none, add corporations later —</option>
+              {{range .FreeCorps}}
+              <option value="{{.CorporationID}}">{{.CorporationName}} &lt;{{.TickerName}}&gt; ({{.Pilots}} pilots)</option>
+              {{end}}
+            </select>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px">Becomes the executor. Only player corps with no alliance are listed.</div>
+          </td></tr>
+      <tr><td style="color:#6b7280;vertical-align:top">Logo slot</td>
+          <td>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;max-width:900px">
+              <label title="No slot — the client draws the 01_01 fallback"
+                     style="padding:3px;border:1px solid #52525b;background:#181818;cursor:pointer;text-align:center">
+                <input type="radio" name="allianceID" value="0" checked style="display:block;margin:0 auto">
+                <span style="display:block;width:48px;font-size:9px;color:#9ca3af;margin-top:2px">none</span>
+              </label>
+              {{range .Slots}}
+              <label title="Tile {{.Tile}} — ID {{.ID}}{{if .Taken}} — held by {{.HolderName}}{{end}}"
+                     style="padding:3px;border:1px solid {{if .Taken}}#3f3f46{{else}}#52525b{{end}};
+                            background:{{if .Taken}}#241a1a{{else}}#181818{{end}};
+                            {{if .Taken}}opacity:.35;{{end}}cursor:{{if .Taken}}default{{else}}pointer{{end}};text-align:center">
+                <input type="radio" name="allianceID" value="{{.ID}}" {{if .Taken}}disabled{{end}} style="display:block;margin:0 auto">
+                {{if $.TileArt}}
+                <img src="/alliancetile/{{.Tile}}.png" width="48" height="48" alt="{{.Tile}}" style="display:block">
+                {{else}}
+                <span style="display:block;width:48px;height:48px;line-height:48px;font-size:11px;color:#9ca3af">{{.Tile}}</span>
+                {{end}}
+                <span style="display:block;font-size:9px;color:#6b7280">{{.Tile}}</span>
+              </label>
+              {{end}}
+            </div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px">
+              Greyed tiles are held by an existing alliance. The art is cropped out of the
+              client's own <code>alliance01..20.dds</code> atlases.
+            </div>
+          </td></tr>
+      <tr><td style="color:#6b7280">Dictatorial</td>
+          <td><input type="checkbox" name="dictatorial" value="1"></td></tr>
+    </table>
+    <button type="submit" style="margin-top:10px">Create</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>Bulk logo upload</h3>
+  <p style="font-size:12px;color:#6b7280;max-width:900px">
+    Hand over a folder of <code>&lt;allianceID&gt;.png</code> images at once. PNG and JPEG only;
+    the magic bytes decide, so a mislabelled file is skipped rather than stored.
+  </p>
+  <form method="POST" action="/alliancelogo/ingest" enctype="multipart/form-data">
+    <input type="hidden" name="redirect" value="/alliances">
+    <input type="file" name="files" multiple accept="image/png,image/jpeg">
+    <button type="submit">Upload</button>
+  </form>
+</div>
+{{end}}
+
+{{template "layout" .}}

@@ -1,0 +1,5 @@
+# Shell scripts must stay LF: a CRLF rebuild.sh fails inside the Docker build stage
+# (/bin/sh^M) on a Windows checkout with core.autocrlf=true.
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf

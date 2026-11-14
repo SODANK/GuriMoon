@@ -1,0 +1,27 @@
+{{define "content"}}
+<h2>Accounts</h2>
+<form class="search-form" method="GET" action="/accounts">
+  <input type="text" name="q" placeholder="Search accounts..." value="{{.Query}}">
+  <button type="submit">Search</button>
+</form>
+{{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
+{{if .Accounts}}
+<div class="card">
+  <table>
+    <tr><th>ID</th><th>Name</th><th>Role</th><th>Characters</th></tr>
+    {{range .Accounts}}
+    <tr>
+      <td>{{.AccountID}}</td>
+      <td><a href="/account/{{.AccountID}}">{{.AccountName}}</a></td>
+      <td>{{.Role}}</td>
+      <td>{{.CharCount}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+{{else}}
+{{if .Query}}<div class="card"><p>No accounts found.</p></div>{{end}}
+{{end}}
+{{end}}
+
+{{template "layout" .}}

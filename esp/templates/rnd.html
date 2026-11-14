@@ -1,0 +1,325 @@
+{{define "content"}}
+<h2>R&amp;D Research &amp; Patent Lottery</h2>
+
+{{if .Msg}}<div class="card" style="border-left:3px solid #faa560"><p style="font-size:12px;margin:0">{{.Msg}}</p></div>{{end}}
+
+{{if .Field}}
+<p><a href="/rnd" style="font-size:13px;color:#faa560">&larr; All Research Fields</a></p>
+
+<div class="card">
+  <h3>{{.Field.FieldName}} <span style="color:#6b7280;font-weight:normal">(skill {{.Field.SkillID}})</span></h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 0">
+    {{.Field.AgentCount}} agents across {{.Field.CorpCount}} corporations &middot;
+    {{.Field.BlueprintCount}} blueprints in patent pool &middot;
+    {{.Field.ProjectCount}} active player projects
+  </p>
+</div>
+
+{{if eq .Field.BlueprintCount 0}}
+<div class="card" style="border-left:3px solid #dc2626">
+  <p style="font-size:12px;margin:0"><b>This field has no patents.</b> Nobody researching it can ever win one:
+  the draw gives its entrants no tickets, because there is nothing to award. Their research points still accrue
+  and are still wiped at the end of each round. Add blueprints below to make the field pay out.</p>
+</div>
+{{end}}
+
+<div class="card" style="padding:8px 12px">
+  <h3>Patent Pool &mdash; Tech II Blueprints</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    The prize is drawn uniformly from this list when a collaborator in this field wins a round. Removing a
+    blueprint does not touch patents already won &mdash; the prize was drawn at the time.
+  </p>
+  {{if .Blueprints}}
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">Blueprint TypeID</th>
+      <th style="padding:4px 6px">Blueprint</th>
+      <th style="padding:4px 6px">Product</th>
+      <th style="padding:4px 6px"></th>
+    </tr>
+    {{range .Blueprints}}
+    <tr>
+      <td style="padding:3px 6px">{{.BlueprintTypeID}}</td>
+      <td style="padding:3px 6px">{{.BlueprintName}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.ProductName}}</td>
+      <td style="padding:3px 6px">
+        <form method="POST" action="/rnd" style="display:inline">
+          <input type="hidden" name="action" value="poolremove">
+          <input type="hidden" name="fieldID" value="{{$.Field.SkillID}}">
+          <input type="hidden" name="blueprintTypeID" value="{{.BlueprintTypeID}}">
+          <button type="submit" style="font-size:11px">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">No blueprints mapped to this field. The pools were derived from the
+  modern SDE's invention chains, which cannot see RMR-era Tech II items removed from the later game &mdash;
+  add those by hand here.</p>
+  {{end}}
+
+  <form method="POST" action="/rnd" style="margin-top:8px">
+    <input type="hidden" name="action" value="pooladd">
+    <input type="hidden" name="fieldID" value="{{.Field.SkillID}}">
+    <label style="font-size:12px">Add blueprint typeID
+      <input type="number" name="blueprintTypeID" style="width:100px" required>
+    </label>
+    <button type="submit">Add to pool</button>
+  </form>
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Agents Offering This Field</h3>
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">ID</th>
+      <th style="padding:4px 6px">Name</th>
+      <th style="padding:4px 6px">Lv</th>
+      <th style="padding:4px 6px">Qual</th>
+      <th style="padding:4px 6px">Corp</th>
+      <th style="padding:4px 6px">Station</th>
+    </tr>
+    {{range .FieldAgents}}
+    <tr>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{.AgentID}}</a></td>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}&mdash;{{end}}</a></td>
+      <td style="padding:3px 6px;text-align:center">{{.Level}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.Quality}}</td>
+      <td style="padding:3px 6px">{{.CorpName}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.StationName}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+{{else}}
+
+<div class="card" style="padding:8px 12px">
+  <h3>Patent Lottery</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    Each R&amp;D agent runs its own allocation round. Every active project with that agent is an entry and its
+    current RP is the ticket count; one winner takes a Tech II BPO from <b>their own field's</b> pool, collected
+    in person at the agent's station. The whole agent's RP is then wiped and the next round opens &mdash; a round
+    is a race, not a savings account.
+  </p>
+  <form method="POST" action="/rnd">
+    <input type="hidden" name="action" value="settings">
+    <p style="font-size:12px">
+      <label><input type="checkbox" name="enabled" value="1" {{if .Enabled}}checked{{end}}> Lottery enabled</label>
+      &nbsp;&middot;&nbsp;
+      <label><input type="checkbox" name="noDupes" value="1" {{if .NoDupes}}checked{{end}}> Avoid awarding a blueprint the winner already owns</label>
+    </p>
+    <p style="font-size:12px">
+      <label>Round length <input type="number" name="roundDays" value="{{.RoundDays}}" min="1" max="90" style="width:60px"> days</label>
+      &nbsp;
+      <label>Collect within <input type="number" name="claimDays" value="{{.ClaimDays}}" min="1" max="365" style="width:60px"> days</label>
+      &nbsp;
+      <label>Synthetic pilot weight <input type="number" name="botWeight" value="{{.BotWeight}}" min="0" max="100" style="width:60px"> %</label>
+      &nbsp;
+      <label>Ticket floor <input type="number" name="minTickets" value="{{.MinTickets}}" min="0" style="width:80px"> RP</label>
+      <button type="submit">Save</button>
+    </p>
+    <p style="font-size:11px;color:#6b7280;margin:4px 0 0">
+      Synthetic pilots (rolebots) enter the same draw with their RP scaled by the weight above &mdash; a roster of
+      a few thousand would otherwise take nearly every patent in the game. At 0% they hold no tickets but are
+      still entrants, and their RP is still wiped: the round ended for the agent, not for the people in it.
+      Changing the round length affects the next round each agent opens, not the ones already running.
+    </p>
+  </form>
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Open Rounds</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    A round row exists only for agents somebody has actually enrolled with, and is closed again by a draw that
+    finds nobody. Entrants and tickets are the live figures the next draw would use.
+  </p>
+  {{if .Rounds}}
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">Agent</th>
+      <th style="padding:4px 6px">Station</th>
+      <th style="padding:4px 6px">Round</th>
+      <th style="padding:4px 6px">Closes</th>
+      <th style="padding:4px 6px">Entrants</th>
+      <th style="padding:4px 6px">Bots</th>
+      <th style="padding:4px 6px">Dead field</th>
+      <th style="padding:4px 6px">Tickets</th>
+      <th style="padding:4px 6px"></th>
+    </tr>
+    {{range .Rounds}}
+    <tr>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}{{.AgentID}}{{end}}</a></td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.StationName}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.RoundNo}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.DrawAt.Format "2006-01-02 15:04"}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.Entrants}}</td>
+      <td style="padding:3px 6px;text-align:center;color:#9ca3af">{{.BotEntrants}}</td>
+      <td style="padding:3px 6px;text-align:center">{{if .DeadFields}}<span style="color:#dc2626">{{.DeadFields}}</span>{{else}}&mdash;{{end}}</td>
+      <td style="padding:3px 6px;text-align:right">{{printf "%.1f" .TotalTickets}}</td>
+      <td style="padding:3px 6px">
+        {{if $.HooksLive}}
+        <form method="POST" action="/rnd" style="display:inline">
+          <input type="hidden" name="action" value="forcedraw">
+          <input type="hidden" name="agentID" value="{{.AgentID}}">
+          <button type="submit" style="font-size:11px">Draw now</button>
+        </form>
+        {{end}}
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">No agent has a collaborator, so no round is running.</p>
+  {{end}}
+  {{if not .HooksLive}}
+  <p style="font-size:11px;color:#dc2626;margin:6px 0 0">The game server has not wired the lottery hook &mdash;
+  forced draws are unavailable. The scheduled sweep is unaffected.</p>
+  {{end}}
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Uncollected Patents</h3>
+  {{if .Pending}}
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">Winner</th>
+      <th style="padding:4px 6px">Agent</th>
+      <th style="padding:4px 6px">Station</th>
+      <th style="padding:4px 6px">Blueprint</th>
+      <th style="padding:4px 6px">Field</th>
+      <th style="padding:4px 6px">Lapses</th>
+      <th style="padding:4px 6px"></th>
+    </tr>
+    {{range .Pending}}
+    <tr>
+      <td style="padding:3px 6px">
+        <a href="/character/{{.CharID}}">{{if .CharName}}{{.CharName}}{{else}}{{.CharID}}{{end}}</a>
+        {{if .Synthetic}}<span style="color:#6b7280">[bot]</span>{{end}}
+      </td>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}{{.AgentID}}{{end}}</a></td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.StationName}}</td>
+      <td style="padding:3px 6px">{{.BlueprintName}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.FieldName}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.ExpiresAt.Format "2006-01-02 15:04"}}</td>
+      <td style="padding:3px 6px">
+        <form method="POST" action="/rnd" style="display:inline">
+          <input type="hidden" name="action" value="extendoffer">
+          <input type="hidden" name="offerID" value="{{.OfferID}}">
+          <button type="submit" style="font-size:11px">Extend</button>
+        </form>
+        <form method="POST" action="/rnd" style="display:inline">
+          <input type="hidden" name="action" value="voidoffer">
+          <input type="hidden" name="offerID" value="{{.OfferID}}">
+          <button type="submit" style="font-size:11px">Void</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">Every patent awarded so far has been collected or has lapsed.</p>
+  {{end}}
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Recent Draws</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    The <b>bot</b> column is how the synthetic weight gets tuned from evidence rather than from guesswork.
+  </p>
+  {{if .Draws}}
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">When</th>
+      <th style="padding:4px 6px">Agent</th>
+      <th style="padding:4px 6px">Round</th>
+      <th style="padding:4px 6px">Entrants</th>
+      <th style="padding:4px 6px">Tickets</th>
+      <th style="padding:4px 6px">Winner</th>
+      <th style="padding:4px 6px">Bot</th>
+      <th style="padding:4px 6px">Field</th>
+      <th style="padding:4px 6px">Blueprint</th>
+    </tr>
+    {{range .Draws}}
+    <tr>
+      <td style="padding:3px 6px;color:#9ca3af">{{.DrawnAt.Format "2006-01-02 15:04"}}</td>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}{{.AgentID}}{{end}}</a></td>
+      <td style="padding:3px 6px;text-align:center">{{.RoundNo}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.Entrants}}</td>
+      <td style="padding:3px 6px;text-align:right">{{printf "%.1f" .TotalTickets}}</td>
+      <td style="padding:3px 6px">
+        {{if .WinnerCharID}}<a href="/character/{{.WinnerCharID}}">{{if .WinnerName}}{{.WinnerName}}{{else}}{{.WinnerCharID}}{{end}}</a>
+        {{else}}<span style="color:#6b7280">no allocation</span>{{end}}
+      </td>
+      <td style="padding:3px 6px;text-align:center">{{if .Synthetic}}yes{{else}}&mdash;{{end}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.FieldName}}</td>
+      <td style="padding:3px 6px">{{.BlueprintName}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">No round has been drawn yet.</p>
+  {{end}}
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Research Fields</h3>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
+    Fields offered by the 248 R&amp;D agents (division 18). RP/day formula:
+    researchPoints rate &times; (1 + quality/100) &times; (agent level + player field skill)&sup2;.
+    The patent pool is the set of Tech II blueprints a field's research points compete for &mdash; a field with
+    an empty pool can never pay out.
+  </p>
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">Skill ID</th>
+      <th style="padding:4px 6px">Field</th>
+      <th style="padding:4px 6px">Agents</th>
+      <th style="padding:4px 6px">Corps</th>
+      <th style="padding:4px 6px">Patent Pool</th>
+      <th style="padding:4px 6px">Active Projects</th>
+    </tr>
+    {{range .Fields}}
+    <tr>
+      <td style="padding:3px 6px">{{.SkillID}}</td>
+      <td style="padding:3px 6px"><a href="/rnd?field={{.SkillID}}">{{.FieldName}}</a></td>
+      <td style="padding:3px 6px;text-align:center">{{.AgentCount}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.CorpCount}}</td>
+      <td style="padding:3px 6px;text-align:center">{{if .BlueprintCount}}{{.BlueprintCount}}{{else}}<span style="color:#dc2626">0</span>{{end}}</td>
+      <td style="padding:3px 6px;text-align:center">{{.ProjectCount}}</td>
+    </tr>
+    {{end}}
+  </table>
+</div>
+
+<div class="card" style="padding:8px 12px">
+  <h3>Active Player Research Projects</h3>
+  {{if .Projects}}
+  <table style="font-size:12px">
+    <tr>
+      <th style="padding:4px 6px">Character</th>
+      <th style="padding:4px 6px">Agent</th>
+      <th style="padding:4px 6px">Field</th>
+      <th style="padding:4px 6px">RP/day</th>
+      <th style="padding:4px 6px">Current RP</th>
+      <th style="padding:4px 6px">Started</th>
+    </tr>
+    {{range .Projects}}
+    <tr>
+      <td style="padding:3px 6px"><a href="/character/{{.CharID}}">{{.CharName}}</a></td>
+      <td style="padding:3px 6px"><a href="/agent/{{.AgentID}}">{{if .AgentName}}{{.AgentName}}{{else}}{{.AgentID}}{{end}}</a></td>
+      <td style="padding:3px 6px">{{.FieldName}}</td>
+      <td style="padding:3px 6px;text-align:right">{{printf "%.2f" .PointsPerDay}}</td>
+      <td style="padding:3px 6px;text-align:right">{{printf "%.2f" .Points}}</td>
+      <td style="padding:3px 6px;color:#9ca3af">{{.StartedAt.Format "2006-01-02 15:04"}}</td>
+    </tr>
+    {{end}}
+  </table>
+  {{else}}
+  <p style="color:#6b7280;font-size:12px">No characters are running research projects.</p>
+  {{end}}
+</div>
+
+{{end}}
+{{end}}
