@@ -32,6 +32,12 @@ const (
 // exported player outposts (61000001-3) and everything built above them.
 const SovOutpostIDFloor = OutpostStationIDFloor - 3
 
+// sovStationWhere is the test for a station that counts SovOutpostWeight toward sov: an outpost
+// (stationID >= SovOutpostIDFloor, the one ? placeholder) or a conquerable station, held by
+// whoever took it. CONCORD, the conquerables' first holder, is in no alliance and holds nothing.
+const sovStationWhere = `(st.stationID >= ? OR st.stationTypeID IN
+	(SELECT stationTypeID FROM staStationTypes WHERE conquerable = 1))`
+
 // sovManual reports a hand-made row. The recompute writes the top contributing corporation and
 // no character, so anything else came from the ESP sov painter (no corp, no character) or a GM's
 // /sov claim (a character). The recompute replaces such a row only when a count names a holder.
@@ -149,7 +155,7 @@ func SovTallies(ctx context.Context, db *sql.DB, systemID int64) ([]SovTally, er
 		SELECT COALESCE(co.allianceID, 0), st.corporationID, COUNT(*)
 		  FROM staStations st
 		  JOIN corporation co ON co.corporationID = st.corporationID
-		 WHERE st.solarSystemID = ? AND st.stationID >= ?
+		 WHERE st.solarSystemID = ? AND `+sovStationWhere+`
 		 GROUP BY co.allianceID, st.corporationID`, systemID, SovOutpostIDFloor)
 	if err != nil {
 		return nil, fmt.Errorf("SovTallies outposts: %w", err)
@@ -298,7 +304,7 @@ func RecomputeSovForCorp(ctx context.Context, db *sql.DB, corpID int64) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT solarSystemID FROM starbase WHERE ownerCorpID = ?
 		UNION
-		SELECT DISTINCT solarSystemID FROM staStations WHERE corporationID = ? AND stationID >= ?`,
+		SELECT DISTINCT solarSystemID FROM staStations st WHERE corporationID = ? AND `+sovStationWhere,
 		corpID, corpID, SovOutpostIDFloor)
 	if err != nil {
 		log.Printf("[sov] corp %d systems: %v", corpID, err)
@@ -330,7 +336,7 @@ func ReconcileAllSov(ctx context.Context, db *sql.DB) (changed int, err error) {
 	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT solarSystemID FROM starbase
-		UNION SELECT solarSystemID FROM staStations WHERE stationID >= ?
+		UNION SELECT solarSystemID FROM staStations st WHERE `+sovStationWhere+`
 		UNION SELECT solarSystemID FROM solarSystemSov`, SovOutpostIDFloor)
 	if err != nil {
 		return 0, fmt.Errorf("ReconcileAllSov: %w", err)

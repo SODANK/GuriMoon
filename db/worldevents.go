@@ -117,6 +117,29 @@ type OutpostCompletedEvent struct {
 	StationName string
 }
 
+// StationConqueredEvent: a conquerable station changed hands, its shield taken to 0
+// (conquerStation in cmd/gurimoon). AttackerChar is 0 for a capture with no pilot to name.
+type StationConqueredEvent struct {
+	At           time.Time
+	StationID    int64
+	SystemID     int64
+	OldCorp      int64
+	NewCorp      int64
+	AttackerChar int64
+}
+
+// StationUnderAttackEvent: a conquerable station ball took a hit, at most once a minute per station
+// (noteStationHit in cmd/gurimoon). ShieldFrac is the shield left, 0 to 1.
+type StationUnderAttackEvent struct {
+	At           time.Time
+	StationID    int64
+	SystemID     int64
+	OwnerCorp    int64
+	AttackerCorp int64
+	AttackerChar int64
+	ShieldFrac   float64
+}
+
 // OpenSiteClearedEvent: every rat of a dungeon spawner's open site is dead.
 // Who killed them rides the NPCKilled events carrying OpenSiteID.
 type OpenSiteClearedEvent struct {
@@ -152,17 +175,19 @@ type StargatePairChangedEvent struct {
 
 func (StargatePairChangedEvent) worldEvent() {}
 
-func (NPCKilledEvent) worldEvent()         {}
-func (OreMinedEvent) worldEvent()          {}
-func (MarketSellFillEvent) worldEvent()    {}
-func (KillmailRecordedEvent) worldEvent()  {}
-func (OpenSiteClearedEvent) worldEvent()   {}
-func (IndustryDeliveredEvent) worldEvent() {}
-func (CorpCEOChangedEvent) worldEvent()    {}
-func (WarEvent) worldEvent()               {}
-func (CorpDividendPaidEvent) worldEvent()  {}
-func (OfficeEvictedEvent) worldEvent()     {}
-func (OutpostCompletedEvent) worldEvent()  {}
+func (NPCKilledEvent) worldEvent()          {}
+func (OreMinedEvent) worldEvent()           {}
+func (MarketSellFillEvent) worldEvent()     {}
+func (KillmailRecordedEvent) worldEvent()   {}
+func (OpenSiteClearedEvent) worldEvent()    {}
+func (IndustryDeliveredEvent) worldEvent()  {}
+func (CorpCEOChangedEvent) worldEvent()     {}
+func (WarEvent) worldEvent()                {}
+func (CorpDividendPaidEvent) worldEvent()   {}
+func (OfficeEvictedEvent) worldEvent()      {}
+func (OutpostCompletedEvent) worldEvent()   {}
+func (StationConqueredEvent) worldEvent()   {}
+func (StationUnderAttackEvent) worldEvent() {}
 
 // worldEventQueueSize bounds the backlog, sized to ride out a fleet fight's death burst. A
 // reader this far behind is broken; dropping beats stalling the game.

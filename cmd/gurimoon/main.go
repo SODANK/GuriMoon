@@ -1337,6 +1337,15 @@ func main() {
 		log.Printf("MigrateCloneGradePrices: priced %d clone grades", n)
 	}
 
+	// Conquerable stations start under CONCORD, the neutral first holder (sql/stastations.sql
+	// carries the same owners). One-shot, guarded by server_migrations; a station a real
+	// corporation holds is kept.
+	if n, err := evedb.MigrateConquerablesToCONCORD(context.Background(), sqldb); err != nil {
+		log.Printf("MigrateConquerablesToCONCORD: %v (non-fatal)", err)
+	} else if n > 0 {
+		log.Printf("MigrateConquerablesToCONCORD: handed %d conquerable stations to CONCORD", n)
+	}
+
 	// Seed the ice refine table: the RMR dump ships ore reprocessing rows but none for ice.
 	// One-shot, guarded by server_migrations.
 	if n, err := evedb.MigrateIceReprocessing(context.Background(), sqldb); err != nil {
@@ -18087,30 +18096,7 @@ func registerConquerableStation(ss *destiny.SolarSystem, cel evedb.CelestialEnti
 		ehp.StructureHP = 1_000_000
 	}
 
-	entity := &destiny.Entity{
-		ID:       entityID,
-		BubbleID: -1, // stations are not in bubbles
-		IsPlayer: false,
-		CharName: cel.Name,
-		Slim: destiny.SlimItem{
-			BallID:     cel.ItemID,
-			ItemID:     cel.ItemID,
-			TypeID:     cel.TypeID,
-			GroupID:    cel.GroupID,
-			CategoryID: cel.CategoryID,
-			OwnerID:    cel.OwnerID,
-			CorpID:     cel.OwnerID,
-		},
-		Damage: destiny.DamageState{Shield: 1.0, Tau: ehp.ShieldTau, Armor: 1.0, Structure: 1.0},
-		HP: destiny.HPState{
-			MaxShield: ehp.ShieldHP, CurShield: ehp.ShieldHP,
-			MaxArmor: ehp.ArmorHP, CurArmor: ehp.ArmorHP,
-			MaxStructure: ehp.StructureHP, CurStructure: ehp.StructureHP,
-			ShieldTau: ehp.ShieldTau,
-		},
-		Resists: [3][4]float64{ehp.ShieldRes, ehp.ArmorRes, ehp.HullRes},
-	}
-
+	entity := conquerableStationEntity(cel, ehp)
 	ss.RegisterStationEntity(entity)
 	// Update CelDamage so the station starts with full HP fractions.
 	ss.SetCelDamage(entityID, entity.Damage)
@@ -20340,7 +20326,10 @@ func weaponCycleLoop(ctx context.Context, c *evenet.Conn, addr string, accountID
 				}})
 
 				// Notify NPC manager if target is an NPC (feeds threat table).
-				if ds.solarSystem != nil && ds.solarSystem.IsStructureEntity(targetID) {
+				if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) {
+					// A conquerable station: fair game, no threat, standings or crime (conquest.go).
+					noteStationHit(ds.solarSystem, target, ds.corpID, charID)
+				} else if ds.solarSystem != nil && ds.solarSystem.IsStructureEntity(targetID) {
 					// Player-owned structure: kill credit, the guns'
 					// aggression memory, CONCORD, reinforcement.
 					structureDamaged(ds.solarSystem, target, ds.entity, modTypeID, applied, destroyed, sqldb)
@@ -20362,13 +20351,16 @@ func weaponCycleLoop(ctx context.Context, c *evenet.Conn, addr string, accountID
 				dmgState.Timestamp = server.Win32TimeNow()
 				broadcastDamageState(ds, targetID, dmgState)
 
+				// A conquerable station changes hands when its shield reaches 0 (conquerStation).
+				if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) && stationShieldDown(target) && ds.corpID != 0 {
+					stopWeaponFX(c, addr, accountID, charID, ds, modItemID, modTypeID, targetID, effectName, sqldb)
+					log.Printf("[%s] weapon cycle: station %d CONQUERED by corp %d", addr, targetID, ds.corpID)
+					conquerStation(ds.solarSystem, target, ds.corpID, charID, sqldb)
+					return
+				}
+
 				if destroyed {
 					stopWeaponFX(c, addr, accountID, charID, ds, modItemID, modTypeID, targetID, effectName, sqldb)
-					if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) {
-						log.Printf("[%s] weapon cycle: station %d CONQUERED by corp %d", addr, targetID, ds.corpID)
-						handleStationConquered(ds, target, ds.corpID, charID, sqldb)
-						return
-					}
 					log.Printf("[%s] weapon cycle: target %d DESTROYED", addr, targetID)
 					if target.IsPlayer && target.Conn != nil && target.PlayerState != nil {
 						queuePlayerDeath(target.PlayerState.(*destinyConn), target.Slim.TypeID == 670)
@@ -20670,7 +20662,10 @@ func weaponApplyMissile(c *evenet.Conn, addr string, accountID int64, charID int
 			}})
 
 			// Notify NPC manager if target is an NPC (feeds threat table).
-			if ds.solarSystem != nil && ds.solarSystem.IsStructureEntity(targetID) {
+			if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) {
+				// A conquerable station: fair game, no threat, standings or crime (conquest.go).
+				noteStationHit(ds.solarSystem, tgt, ds.corpID, charID)
+			} else if ds.solarSystem != nil && ds.solarSystem.IsStructureEntity(targetID) {
 				// Weapon on the kill report is the launcher, not the charge.
 				structureDamaged(ds.solarSystem, tgt, ds.entity, modTypeID, applied, destroyed, sqldb)
 			} else if !tgt.IsPlayer && ds.entity != nil {
@@ -20693,12 +20688,14 @@ func weaponApplyMissile(c *evenet.Conn, addr string, accountID int64, charID int
 			dmgState.Timestamp = server.Win32TimeNow()
 			broadcastDamageState(ds, targetID, dmgState)
 
+			// A conquerable station changes hands when its shield reaches 0 (conquerStation).
+			if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) && stationShieldDown(tgt) && ds.corpID != 0 {
+				log.Printf("[%s] missile impact: station %d CONQUERED by corp %d", addr, targetID, ds.corpID)
+				conquerStation(ds.solarSystem, tgt, ds.corpID, charID, sqldb)
+				return
+			}
+
 			if destroyed {
-				if ds.solarSystem != nil && ds.solarSystem.IsStationEntity(targetID) {
-					log.Printf("[%s] missile impact: station %d CONQUERED by corp %d", addr, targetID, ds.corpID)
-					handleStationConquered(ds, tgt, ds.corpID, charID, sqldb)
-					return
-				}
 				log.Printf("[%s] missile impact: target %d DESTROYED", addr, targetID)
 				if tgt.IsPlayer && tgt.Conn != nil && tgt.PlayerState != nil {
 					queuePlayerDeath(tgt.PlayerState.(*destinyConn), tgt.Slim.TypeID == 670)
@@ -23007,72 +23004,6 @@ func handlePlayerPodKilled(ds *destinyConn, sqldb *sql.DB) {
 
 	log.Printf("[death] player charID=%d respawned at homeStation=%d (system=%d) in capsule %d",
 		charID, homeStationID, homeLoc.SolarSystemID, newCapsuleID)
-}
-
-// handleStationConquered flips a conquerable station's ownership to the
-// attacking corporation, resets its HP to full, persists the change to DB,
-// and notifies all players in the system.
-func handleStationConquered(ds *destinyConn, station *destiny.Entity, newCorpID, attackerCharID int64, sqldb *sql.DB) {
-	if ds.solarSystem == nil {
-		return
-	}
-	stationID := station.ID
-	oldCorpID := station.Slim.CorpID
-
-	// 1. Reset station HP to full.
-	station.HP.CurShield = station.HP.MaxShield
-	station.HP.CurArmor = station.HP.MaxArmor
-	station.HP.CurStructure = station.HP.MaxStructure
-
-	// 2. Update ownership on entity.
-	station.Slim.OwnerID = newCorpID
-	station.Slim.CorpID = newCorpID
-
-	// 3. Update CelSlims to match (for new arrivals).
-	for i := range ds.solarSystem.CelSlims {
-		if ds.solarSystem.CelSlims[i].ItemID == int64(stationID) {
-			ds.solarSystem.CelSlims[i].OwnerID = newCorpID
-			ds.solarSystem.CelSlims[i].CorpID = newCorpID
-			break
-		}
-	}
-
-	// 4. Update CelDamage to full HP.
-	fullDmg := station.DamageStateFrac()
-	fullDmg.Timestamp = server.Win32TimeNow()
-	ds.solarSystem.SetCelDamage(stationID, fullDmg)
-
-	// 5. Persist to database.
-	if sqldb != nil {
-		dbCtx, dbCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := evedb.UpdateStationOwner(dbCtx, sqldb, int64(stationID), newCorpID); err != nil {
-			log.Printf("[conquer] DB update failed for station %d: %v", stationID, err)
-		}
-		dbCancel()
-	}
-	refreshStationOwnerCaches(ds.solarSystem.ID)
-
-	// 6. Broadcast to all players in system.
-	players := ds.solarSystem.GetAllPlayersInSystem()
-	for _, p := range players {
-		if p.Conn == nil {
-			continue
-		}
-		p.SendStamped(func(stamp uint32) error {
-			// Send updated damage state (full HP) plus OnSlimItemChange so the
-			// client updates the station's owner in the overview.
-			if err := destiny.SendDamageStateChange(p.Conn, globalNodeID, p.AccountID, stamp, stationID, fullDmg); err != nil {
-				return err
-			}
-			return destiny.SendSlimItemChange(p.Conn, globalNodeID, p.AccountID, stamp, station.Slim)
-		})
-	}
-
-	// 7. Pilots docked inside: the lobby re-reads its owner on this push.
-	pushStationOwnerChanged(globalSessReg, int64(stationID), newCorpID)
-
-	log.Printf("[conquer] station %d conquered: corp %d → %d (attacker charID=%d) in system %d",
-		stationID, oldCorpID, newCorpID, attackerCharID, ds.solarSystem.ID)
 }
 
 // sendStandingNotification tells a client its standing from an NPC owner moved from

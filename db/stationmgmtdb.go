@@ -616,10 +616,15 @@ func ServiceAccessAllowed(r ServiceAccessRule, standing, charSec float64) bool {
 	return charSec >= r.MinimumCharSecurity && charSec <= r.MaximumCharSecurity
 }
 
-// OwnerStandingToward is the owner corporation's declared standing toward a
-// pilot from crpStandings, most specific first: the pilot, their corporation,
-// their alliance. 0 when none is declared.
+// OwnerStandingToward is the owner corporation's standing toward a pilot as the station's rules read
+// it: +10 for a pilot in the owner's own alliance; else the owner's declared crpStandings, most
+// specific first (the pilot, their corporation, their alliance); else what the owner's alliance
+// declares toward the pilot's alliance or corporation (AllianceRelationStanding); else 0.
 func OwnerStandingToward(ctx context.Context, db *sql.DB, ownerCorpID, charID, corpID, allianceID int64) float64 {
+	ownerAlliance, _ := GetCorpAllianceID(ctx, db, ownerCorpID)
+	if ownerAlliance != 0 && allianceID == ownerAlliance {
+		return 10
+	}
 	for _, to := range []int64{charID, corpID, allianceID} {
 		if to == 0 {
 			continue
@@ -630,6 +635,22 @@ func OwnerStandingToward(ctx context.Context, db *sql.DB, ownerCorpID, charID, c
 			ownerCorpID, to).Scan(&s); err == nil {
 			return s
 		}
+	}
+	return AllianceRelationStanding(AllianceRelationshipToward(ctx, db, ownerAlliance, allianceID, corpID))
+}
+
+// AllianceRelationStanding is the standing an alliance relationship counts for at a station: Friend
+// 7.5, NAP 2.5, Competitor -2.5, Enemy -7.5, none 0. Pure.
+func AllianceRelationStanding(rel int64) float64 {
+	switch rel {
+	case AllianceRelationshipFriend:
+		return 7.5
+	case AllianceRelationshipNAP:
+		return 2.5
+	case AllianceRelationshipCompetitor:
+		return -2.5
+	case AllianceRelationshipEnemy:
+		return -7.5
 	}
 	return 0
 }
