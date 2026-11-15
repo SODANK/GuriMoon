@@ -98,6 +98,20 @@ Build (about a minute the first time):
 rebuild.bat
 ```
 
+`rebuild.bat` compiles in every module found in the `modules` folder (for
+example a module repo you dropped there) and lists them as it builds:
+
+```
+=== module GM-Rolebots : collecting overlay ===
+=== Building server WITH modules: GM-Rolebots ===
+=== Build OK: C:\GuriMoon\gurimoon.exe (57.1 MB) ===
+```
+
+With no modules it says `Building server (no modules found)`. To leave one
+module out, put an empty file named `.disabled` in its folder.
+`rebuild.bat core` builds without any module. `rebuild.bat check` does a test
+compile into `build\` and leaves `gurimoon.exe` alone.
+
 Start:
 
 ```

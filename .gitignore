@@ -6,6 +6,9 @@ build/
 # Your own settings (copy config.example.json to config.json)
 config.json
 
+# Modules you drop into modules\ are their own repositories.
+/modules/*/
+
 # Logs
 *.log
 
