@@ -274,12 +274,28 @@ func adjustBalance(ctx context.Context, tx *sql.Tx, charID int64, delta float64)
 	return bal, true, err
 }
 
-// journal writes a market_journal row (errors logged only). rowOwnerID is whose
-// journal the row is in (market_journal.characterID). ownerID1/ownerID2 fill the
-// refType's fixed text; for refType 2 that is "<ownerID1> bought stuff from
-// <ownerID2>", so ownerID1 is always the buyer and ownerID2 the seller, on both journals.
-func journal(ctx context.Context, tx *sql.Tx, rowOwnerID, ownerID1, ownerID2 int64, amount, balance float64, reason string) {
-	journalRef(ctx, tx, RefTypeMarketTransaction, rowOwnerID, ownerID1, ownerID2, amount, balance, reason)
+// journal writes a market_journal row. rowOwnerID is whose journal the row is in
+// (market_journal.characterID). ownerID1/ownerID2 fill the refType's fixed text; for
+// refType 2 that is "<ownerID1> bought stuff from <ownerID2>", so ownerID1 is always the
+// buyer and ownerID2 the seller, on both journals. Errors follow txRowErr.
+func journal(ctx context.Context, tx *sql.Tx, rowOwnerID, ownerID1, ownerID2 int64, amount, balance float64, reason string) error {
+	return journalRef(ctx, tx, RefTypeMarketTransaction, rowOwnerID, ownerID1, ownerID2, amount, balance, reason)
+}
+
+// txRowErr is the error rule for the record rows a trade writes (journal, transaction
+// list). A lock conflict is returned: InnoDB has already rolled the whole transaction back,
+// so the caller must stop and let retryOutcome rerun the trade, or the statements after it
+// would commit one by one on their own. Any other failure costs only that row, so it is
+// logged and the trade goes on.
+func txRowErr(err error, what string, args ...interface{}) error {
+	if err == nil {
+		return nil
+	}
+	if IsRetryableTxError(err) {
+		return err
+	}
+	log.Printf(what+": %v", append(args, err)...)
+	return nil
 }
 
 // Wallet journal refTypes used by the market. The client draws each row's text
@@ -291,29 +307,27 @@ const (
 	RefTypeTransactionTax    = 54
 )
 
-// journalRef writes a market_journal row under an explicit refType.
-func journalRef(ctx context.Context, tx *sql.Tx, refTypeID, rowOwnerID, ownerID1, ownerID2 int64, amount, balance float64, reason string) {
-	if _, err := tx.ExecContext(ctx, `
+// journalRef writes a market_journal row under an explicit refType. Errors follow txRowErr.
+func journalRef(ctx context.Context, tx *sql.Tx, refTypeID, rowOwnerID, ownerID1, ownerID2 int64, amount, balance float64, reason string) error {
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO market_journal
 		  (characterID, transDate, refTypeID, ownerID1, ownerID2, argID1,
 		   accountID, amount, balance, reason, accountKey)
 		VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, 1000)`,
-		rowOwnerID, win32TimeNow(), refTypeID, ownerID1, ownerID2, amount, balance, reason); err != nil {
-		log.Printf("market journal (%s, char %d): %v", reason, rowOwnerID, err)
-	}
+		rowOwnerID, win32TimeNow(), refTypeID, ownerID1, ownerID2, amount, balance, reason)
+	return txRowErr(err, "market journal (%s, char %d)", reason, rowOwnerID)
 }
 
-// recordTransaction writes a market_transactions row (errors logged only).
-// ownerCharID is whose transaction list it is in (market_transactions.characterID);
-// clientID is the counterparty in the Client column. transactionType: 1 buy, 0 sell.
-func recordTransaction(ctx context.Context, tx *sql.Tx, ownerCharID, clientID, typeID, quantity int64, price float64, txType, regionID, stationID int64) {
-	if _, err := tx.ExecContext(ctx, `
+// recordTransaction writes a market_transactions row. ownerCharID is whose transaction
+// list it is in (market_transactions.characterID); clientID is the counterparty in the
+// Client column. transactionType: 1 buy, 0 sell. Errors follow txRowErr.
+func recordTransaction(ctx context.Context, tx *sql.Tx, ownerCharID, clientID, typeID, quantity int64, price float64, txType, regionID, stationID int64) error {
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO market_transactions
 		  (transactionDateTime, typeID, quantity, price, transactionType, characterID, clientID, regionID, stationID)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		win32TimeNow(), typeID, quantity, price, txType, ownerCharID, clientID, regionID, stationID); err != nil {
-		log.Printf("market transaction (char %d type %d): %v", ownerCharID, typeID, err)
-	}
+		win32TimeNow(), typeID, quantity, price, txType, ownerCharID, clientID, regionID, stationID)
+	return txRowErr(err, "market transaction (char %d type %d)", ownerCharID, typeID)
 }
 
 // typeInfo fetches name, group and category for entity creation; BuildEntityRow
@@ -744,8 +758,12 @@ func placeBuyOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, typeI
 		if _, _, err := adjustAccount(ctx, tx, acct, -cost); err != nil {
 			return nil, fmt.Errorf("PlaceBuyOrder debit: %w", err)
 		}
-		journal(ctx, tx, acct.OwnerID, acct.OwnerID, counterpartyID, -cost, balance, "Market purchase")
-		recordTransaction(ctx, tx, charID, counterpartyID, typeID, fill, askPrice, 1, parents.RegionID, askStationID)
+		if err := journal(ctx, tx, acct.OwnerID, acct.OwnerID, counterpartyID, -cost, balance, "Market purchase"); err != nil {
+			return nil, err
+		}
+		if err := recordTransaction(ctx, tx, charID, counterpartyID, typeID, fill, askPrice, 1, parents.RegionID, askStationID); err != nil {
+			return nil, err
+		}
 
 		// Seller (player only) receives proceeds minus sales tax, into the corporation's
 		// wallet when the ask was a corp order.
@@ -762,13 +780,19 @@ func placeBuyOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, typeI
 			} else if okc {
 				// Gross sale and sales tax are two journal rows, as the client
 				// expects: a single net row hides the tax from the seller.
-				journal(ctx, tx, askAcct.OwnerID, acct.OwnerID, askAcct.OwnerID, cost, newBal+tax, "Market sale")
+				if err := journal(ctx, tx, askAcct.OwnerID, acct.OwnerID, askAcct.OwnerID, cost, newBal+tax, "Market sale"); err != nil {
+					return nil, err
+				}
 				if tax > 0 {
-					journalRef(ctx, tx, RefTypeTransactionTax, askAcct.OwnerID, askAcct.OwnerID, askStationID, -tax, newBal, "Sales tax")
+					if err := journalRef(ctx, tx, RefTypeTransactionTax, askAcct.OwnerID, askAcct.OwnerID, askStationID, -tax, newBal, "Sales tax"); err != nil {
+						return nil, err
+					}
 				}
 				sellerBalance, sellerWalletOwner, sellerBalanceChanged = newBal, askAcct.OwnerID, true
 			}
-			recordTransaction(ctx, tx, askCharID, charID, typeID, fill, askPrice, 0, parents.RegionID, askStationID)
+			if err := recordTransaction(ctx, tx, askCharID, charID, typeID, fill, askPrice, 0, parents.RegionID, askStationID); err != nil {
+				return nil, err
+			}
 		}
 
 		// Consume the ask.
@@ -846,8 +870,12 @@ func placeBuyOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, typeI
 				if _, _, err := adjustAccount(ctx, tx, acct, -(escrow + fee)); err != nil {
 					return nil, fmt.Errorf("PlaceBuyOrder escrow debit: %w", err)
 				}
-				journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, -escrow, balance+fee, "Market escrow")
-				journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance, "Broker fee")
+				if err := journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, -escrow, balance+fee, "Market escrow"); err != nil {
+					return nil, err
+				}
+				if err := journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance, "Broker fee"); err != nil {
+					return nil, err
+				}
 				if minVolume < 1 {
 					minVolume = 1
 				}
@@ -1223,7 +1251,9 @@ func placeSellOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, type
 				if newBal, okc, err := adjustAccount(ctx, tx, bidAcct, -shortfall); err != nil {
 					return nil, fmt.Errorf("PlaceSellOrder buyer debit: %w", err)
 				} else if okc {
-					journal(ctx, tx, bidAcct.OwnerID, bidAcct.OwnerID, acct.OwnerID, -shortfall, newBal, "Market purchase (margin)")
+					if err := journal(ctx, tx, bidAcct.OwnerID, bidAcct.OwnerID, acct.OwnerID, -shortfall, newBal, "Market purchase (margin)"); err != nil {
+						return nil, err
+					}
 					buyerBalance, buyerBalanceChanged = newBal, true
 				}
 			}
@@ -1233,7 +1263,9 @@ func placeSellOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, type
 			if err != nil {
 				return nil, err
 			}
-			recordTransaction(ctx, tx, bidCharID, charID, typeID, fill, bidPrice, 1, parents.RegionID, bidStationID)
+			if err := recordTransaction(ctx, tx, bidCharID, charID, typeID, fill, bidPrice, 1, parents.RegionID, bidStationID); err != nil {
+				return nil, err
+			}
 			out.Fills = append(out.Fills, MarketFill{
 				CounterpartyID: bidCharID, Price: bidPrice, Quantity: fill,
 				StationID: bidStationID, ItemEntityIDs: deltaItemIDs(bidDeltas),
@@ -1256,11 +1288,17 @@ func placeSellOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, type
 		if _, _, err := adjustAccount(ctx, tx, acct, proceeds); err != nil {
 			return nil, fmt.Errorf("PlaceSellOrder credit: %w", err)
 		}
-		journal(ctx, tx, acct.OwnerID, bidCounterpartyID, acct.OwnerID, gross, balance+tax, "Market sale")
-		if tax > 0 {
-			journalRef(ctx, tx, RefTypeTransactionTax, acct.OwnerID, acct.OwnerID, stationID, -tax, balance, "Sales tax")
+		if err := journal(ctx, tx, acct.OwnerID, bidCounterpartyID, acct.OwnerID, gross, balance+tax, "Market sale"); err != nil {
+			return nil, err
 		}
-		recordTransaction(ctx, tx, charID, bidCounterpartyID, typeID, fill, bidPrice, 0, parents.RegionID, bidStationID)
+		if tax > 0 {
+			if err := journalRef(ctx, tx, RefTypeTransactionTax, acct.OwnerID, acct.OwnerID, stationID, -tax, balance, "Sales tax"); err != nil {
+				return nil, err
+			}
+		}
+		if err := recordTransaction(ctx, tx, charID, bidCounterpartyID, typeID, fill, bidPrice, 0, parents.RegionID, bidStationID); err != nil {
+			return nil, err
+		}
 
 		// Consume the bid.
 		if bidVol-fill <= 0 {
@@ -1316,7 +1354,9 @@ func placeSellOrderOnce(ctx context.Context, db *sql.DB, charID, stationID, type
 					if _, _, err := adjustAccount(ctx, tx, acct, -fee); err != nil {
 						return nil, fmt.Errorf("PlaceSellOrder fee debit: %w", err)
 					}
-					journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance, "Broker fee")
+					if err := journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance, "Broker fee"); err != nil {
+						return nil, err
+					}
 					if minVolume < 1 {
 						minVolume = 1
 					}
@@ -1422,7 +1462,9 @@ func cancelMarketOrderOnce(ctx context.Context, db *sql.DB, charID, orderID int6
 				return nil, fmt.Errorf("CancelMarketOrder refund: %w", err)
 			}
 			if okc {
-				journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, escrow, newBal, "Market escrow refund")
+				if err := journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, escrow, newBal, "Market escrow refund"); err != nil {
+					return nil, err
+				}
 				// Only the caller's own wallet display is refreshed from this;
 				// a corp refund shows up in the corp wallet on its next read.
 				out.NewBalance, out.BalanceChanged = newBal, !acct.IsCorp
@@ -1559,9 +1601,13 @@ func modifyMarketOrderOnce(ctx context.Context, db *sql.DB, charID, orderID int6
 	if _, _, err := adjustAccount(ctx, tx, acct, -(fee + escrowDelta)); err != nil {
 		return nil, fmt.Errorf("ModifyMarketOrder debit: %w", err)
 	}
-	journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance+escrowDelta, "Broker fee (modify)")
+	if err := journalRef(ctx, tx, RefTypeBrokerFee, acct.OwnerID, acct.OwnerID, stationID, -fee, balance+escrowDelta, "Broker fee (modify)"); err != nil {
+		return nil, err
+	}
 	if escrowDelta != 0 {
-		journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, -escrowDelta, balance, "Market escrow adjustment")
+		if err := journalRef(ctx, tx, RefTypeMarketEscrow, acct.OwnerID, acct.OwnerID, stationID, -escrowDelta, balance, "Market escrow adjustment"); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE market_orders SET price = ?, escrow = escrow + ?, issued = ? WHERE orderID = ?`,

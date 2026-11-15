@@ -517,9 +517,21 @@ func handleCorpWarCall(c *evenet.Conn, addr string, cs *server.CallStream, pkt *
 // ── CONCORD exemption cache ──────────────────────────────────────────────────
 
 // The damage paths ask "is this shot a war shot" on every hit, so the answer
-// is cached for a minute per unordered owner-pair.  A war arming or cooling
-// mid-minute is off by at most that.
-type warPairKey struct{ a, b int64 }
+// is cached for a minute per unordered pair of sides, each side its corp and
+// alliance. A war arming or cooling mid-minute is off by at most that.
+// The key carries both IDs of each side: a war declared on one corporation
+// inside an alliance holds for that corp only, so two corps of one alliance
+// can get different answers against the same enemy.
+type warSide struct{ corp, alliance int64 }
+
+type warPairKey struct{ a, b warSide }
+
+func (s warSide) less(o warSide) bool {
+	if s.corp != o.corp {
+		return s.corp < o.corp
+	}
+	return s.alliance < o.alliance
+}
 
 var warHostileCache syncx.Map[warPairKey, warHostileEntry] // warPairKey → warHostileEntry
 
@@ -535,18 +547,13 @@ func WarShotIsLegal(sqldb *sql.DB, attackerCorp, attackerAlliance, victimCorp, v
 	if sqldb == nil {
 		return false
 	}
-	a, b := attackerAlliance, victimAlliance
-	if a == 0 {
-		a = attackerCorp
-	}
-	if b == 0 {
-		b = victimCorp
-	}
-	if a == 0 || b == 0 {
+	a := warSide{attackerCorp, attackerAlliance}
+	b := warSide{victimCorp, victimAlliance}
+	if a == (warSide{}) || b == (warSide{}) {
 		return false
 	}
 	key := warPairKey{a, b}
-	if a > b {
+	if b.less(a) {
 		key = warPairKey{b, a}
 	}
 	if v, ok := warHostileCache.Load(key); ok {
