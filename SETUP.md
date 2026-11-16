@@ -3,6 +3,10 @@
 How to run your own EVE Online 2005 server on your own computer.
 Time: about 30 minutes, mostly waiting for the database to load.
 
+> **On Linux?** Skip steps 1 to 5 and follow [Linux setup](#linux-setup)
+> instead. The Windows commands below (`set PATH`, `for /f`, `copy`,
+> `rebuild.bat`) do not work in a Linux terminal.
+
 All commands go in **Command Prompt** (cmd). To open one in the right place:
 open the GuriMoon folder in File Explorer, click the address bar, type `cmd`
 and press Enter.
@@ -178,6 +182,148 @@ mysqldump -ugurimoon -pgurimoon gurimoon_rmr > backup.sql
 
 ---
 
+## Linux setup
+
+Same server, Linux commands. Replaces steps 1 to 5 above. All commands go in
+a normal terminal. Examples use `apt` (Debian, Ubuntu, Mint). On Fedora use
+`dnf`, on Arch use `pacman`.
+
+### L1. What you need
+
+| Program | How to get it | Notes |
+|---|---|---|
+| **Go** | https://go.dev/dl/ | Version 1.24 or newer. Distro packages are often older, check with `go version`. |
+| **MariaDB** | `sudo apt install mariadb-server` | Version 11 or newer. If your distro ships 10.x, add the official repo from https://mariadb.org/download/?t=repo-config first. |
+| **Git** | `sudo apt install git` | Downloads this project. |
+| **EVE client** | You supply it | Windows program. Run it under Wine on this machine, or on a Windows PC that connects to this server (see "Playing with friends"). |
+
+If your distro's Go is too old, install the one from go.dev (use the file
+name you downloaded):
+
+```bash
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf ~/Downloads/go1.24.*.linux-amd64.tar.gz
+echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.profile
+```
+
+Log out and back in, then check:
+
+```bash
+go version
+mariadb --version
+```
+
+On Linux the database command is `mariadb`. Newer MariaDB packages may not
+include the old `mysql` name at all.
+
+### L2. Make MariaDB ignore table name case (required)
+
+**Do this before loading the database.** The game data uses lowercase table
+names but the server asks for them in mixed case (`invTypes`, `mapSolarSystems`).
+Windows doesn't care. Linux MariaDB does, and without this setting the server
+stops with `Table 'gurimoon_rmr.invTypes' doesn't exist` or similar.
+
+Create a config file with the setting. Debian, Ubuntu, Mint:
+
+```bash
+printf '[mysqld]\nlower_case_table_names = 1\n' | sudo tee /etc/mysql/mariadb.conf.d/99-gurimoon.cnf
+```
+
+Fedora, RHEL, Arch, openSUSE:
+
+```bash
+printf '[mysqld]\nlower_case_table_names = 1\n' | sudo tee /etc/my.cnf.d/99-gurimoon.cnf
+```
+
+Restart MariaDB and check. It must print `1`:
+
+```bash
+sudo systemctl enable --now mariadb
+sudo systemctl restart mariadb
+sudo mariadb -e "SELECT @@lower_case_table_names;"
+```
+
+If you already loaded the database before setting this, drop it
+(`sudo mariadb -e "DROP DATABASE gurimoon_rmr;"`) and redo L4 and L5.
+
+### L3. Download GuriMoon
+
+```bash
+git clone https://github.com/SODANK/GuriMoon.git
+cd GuriMoon
+```
+
+Stay in this folder for every step below.
+
+### L4. Create the database
+
+Linux MariaDB lets the system root log in with `sudo` and no password, so
+there's no root password to type here.
+
+```bash
+sudo mariadb -e "CREATE DATABASE gurimoon_rmr CHARACTER SET utf8mb4; CREATE USER 'gurimoon'@'localhost' IDENTIFIED BY 'gurimoon'; GRANT ALL ON gurimoon_rmr.* TO 'gurimoon'@'localhost';"
+```
+
+### L5. Fill it with the game universe
+
+This replaces the Windows `for /f` command in step 3.2. Takes a few minutes and
+prints each file name as it goes. It stops at the first file that fails.
+
+```bash
+for f in sql/*.sql; do echo "$f"; mariadb -ugurimoon -pgurimoon gurimoon_rmr < "$f" || { echo "FAILED: $f"; break; }; done
+```
+
+Check it. You should see three numbers, all above zero:
+
+```bash
+mariadb -ugurimoon -pgurimoon gurimoon_rmr -e "SELECT COUNT(*) FROM invTypes; SELECT COUNT(*) FROM mapSolarSystems; SELECT COUNT(*) FROM billTypes;"
+```
+
+The mixed-case names are on purpose. If this says a table doesn't exist, L2
+didn't take effect. Fix it, drop the database and redo L4 and L5.
+
+### L6. Settings, build and start
+
+```bash
+cp config.example.json config.json
+./rebuild.sh
+./gurimoon
+```
+
+`rebuild.sh` works like `rebuild.bat`: same modules, same `check` and `core`
+modes, and it writes `./gurimoon` instead of `gurimoon.exe`. A module that only ships `mod-rebuild.ps1` (no `mod-rebuild.sh`) is
+skipped with a warning.
+
+It is ready when you see `GuriMoon listening on 127.0.0.1:26000`. Stop it with
+**Ctrl+C**. Then carry on from step 6 (connect the client).
+
+**Port 80.** Linux only lets root use ports below 1024, so the news server on
+port 80 fails to start as a normal user. The game still works. To fix it,
+allow the binary to use low ports (redo after every rebuild):
+
+```bash
+sudo setcap 'cap_net_bind_service=+ep' ./gurimoon
+```
+
+Or set `"newsListen": ""` in `config.json` to turn it off.
+
+### Linux day to day
+
+Same as the Windows section above, with these commands:
+
+| Windows | Linux |
+|---|---|
+| `gurimoon.exe` | `./gurimoon` |
+| `rebuild.bat` | `./rebuild.sh` |
+| `mysql ...` | `mariadb ...` |
+| `mysqldump ...` | `mariadb-dump ...` |
+| `C:\Windows\System32\drivers\etc\hosts` | `/etc/hosts` (edit with `sudo nano /etc/hosts`). Wine uses it too. |
+| `netsh advfirewall ...` | `sudo ufw allow 26000,80/tcp` (if you use ufw) |
+| `ipconfig` | `ip addr` |
+| `data\` | `data/` |
+
+---
+
 ## Optional extras
 
 ### Admin panel and GM commands
@@ -248,10 +394,10 @@ The first start takes several minutes. Then carry on from step 6.
   `docker compose exec mariadb mariadb -ugurimoon -pgurimoon gurimoon_rmr -e "UPDATE account SET role = role | 56 WHERE accountName = 'yourname';"`
 - For friends, remove the `127.0.0.1:` prefix from the `26000` and `80` lines
   in `docker-compose.yml`.
+- Docker already sets MariaDB's `lower_case_table_names`, so the Linux L2 step
+  isn't needed here.
 
-Linux without Docker: same steps, with `./rebuild.sh`. MariaDB needs
-`lower_case_table_names = 1` under `[mysqld]` in its config, or the server
-can't find its tables.
+Linux without Docker: see [Linux setup](#linux-setup).
 
 ---
 
@@ -272,7 +418,12 @@ can't find its tables.
 | Admin panel has no portraits or icons | Set `clientPath` in `config.json`. Cosmetic only. |
 | Empty news panel, blank billboards | Add the hosts lines, and check port 80. |
 | Stations are silent | Run the sound fix above. |
-| Linux: `table ... doesn't exist` | See the Linux note under Docker. |
+| Linux: `Table 'gurimoon_rmr.invTypes' doesn't exist` (any mixed-case table) | MariaDB is case-sensitive. Do Linux step L2, then drop the database and redo L4 and L5. |
+| Linux: `syntax error near unexpected token` or `%f was unexpected` | You ran the Windows `for /f` command. Use the Linux loop in L5. |
+| Linux: `./rebuild.sh: Permission denied` | Older clone or a copy without file permissions. Run `chmod +x rebuild.sh`, or `sh rebuild.sh`. |
+| Linux: `ERROR 1698 Access denied for user 'root'@'localhost'` | Use `sudo mariadb`, not `mariadb -uroot -p`. |
+| Linux: `mysql: command not found` | Use `mariadb` instead. |
+| Linux: port 80 `permission denied` | See "Port 80" in L6. |
 
 ---
 

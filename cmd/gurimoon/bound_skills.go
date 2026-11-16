@@ -30,6 +30,7 @@ func boundCharStartTrainingSkill(cc *callCtx) error {
 	oldLoc, oldFlag := snapshotSkillItemState(sqldb, skillItemID)
 	var endOfTraining uint64
 	if sqldb != nil && charID != 0 {
+		prevItemID := trainingSkillItem(sqldb, charID)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		var err error
@@ -38,6 +39,7 @@ func boundCharStartTrainingSkill(cc *callCtx) error {
 			log.Printf("[%s] bound.CharStartTrainingSkill refused: %v", addr, err)
 			return server.SendCallException(c, pkt, accountID, skillTrainErrorPayload(err))
 		}
+		notifySkillSwitchedOff(c, accountID, prevItemID, skillItemID, sqldb)
 	} else {
 		endOfTraining = server.Win32TimeNow() + 25920000000000
 	}

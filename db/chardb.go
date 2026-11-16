@@ -4810,38 +4810,169 @@ func CreateCapsuleEntity(ctx context.Context, db *sql.DB, charID, locationID int
 	return id, nil
 }
 
-// CleanOrphanCapsules deletes capsule entities (typeID 670) no character entity
-// is aboard, with their entity_attributes rows. Safe to run at boot.
+// capsuleUnpilotedSQL holds for capsule row c when no character is aboard it. Only a
+// character entity (category Owner) counts as a pilot, with or without a character_ row:
+// items left inside a pod (rolebots have fitted modules and loaded ore into theirs) are
+// contents, not someone flying it.
+const capsuleUnpilotedSQL = `NOT EXISTS (
+	SELECT 1 FROM entity p
+	JOIN invTypes pt ON pt.typeID = p.typeID
+	JOIN invGroups pg ON pg.groupID = pt.groupID
+	WHERE p.locationID = c.itemID AND pg.categoryID = 1)`
+
+// CleanOrphanCapsules deletes capsule entities (typeID 670) no character is
+// aboard (deleteCapsule). Safe to run at boot.
 func CleanOrphanCapsules(ctx context.Context, db *sql.DB) (int64, error) {
-	// A capsule is active when a character entity's locationID points at it.
-	// entity_attributes rows go first, for the FK.
-	_, err := db.ExecContext(ctx, `
-		DELETE ea FROM entity_attributes ea
-		INNER JOIN entity c ON ea.itemID = c.itemID
-		LEFT JOIN entity pilot ON pilot.locationID = c.itemID AND pilot.typeID != 670
-		WHERE c.typeID = 670 AND pilot.itemID IS NULL`)
-	if err != nil {
-		return 0, fmt.Errorf("CleanOrphanCapsules (attributes): %w", err)
-	}
-	res, err := db.ExecContext(ctx, `
-		DELETE c FROM entity c
-		LEFT JOIN entity pilot ON pilot.locationID = c.itemID AND pilot.typeID != 670
-		WHERE c.typeID = 670 AND pilot.itemID IS NULL`)
+	return CleanOrphanCapsulesUpTo(ctx, db, 0)
+}
+
+// CleanOrphanCapsulesUpTo is CleanOrphanCapsules limited to capsules with itemID <= maxItemID
+// (0: no limit). A running server passes the entity high-water mark from its previous sweep:
+// a capsule is created a moment before its pilot is moved into it (death, clone jump, a
+// module's respawn), and only capsules older than one sweep interval are past that window.
+func CleanOrphanCapsulesUpTo(ctx context.Context, db *sql.DB, maxItemID int64) (int64, error) {
+	caps, err := selectCapsules(ctx, db, `
+		SELECT c.itemID, c.locationID FROM entity c
+		WHERE c.typeID = 670 AND (? = 0 OR c.itemID <= ?) AND `+capsuleUnpilotedSQL,
+		maxItemID, maxItemID)
 	if err != nil {
 		return 0, fmt.Errorf("CleanOrphanCapsules: %w", err)
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	// One pod that will not delete does not hold up the rest; the first error is reported.
+	var n int64
+	var firstErr error
+	for _, cp := range caps {
+		ok, err := deleteCapsule(ctx, db, cp[0], cp[1])
+		if err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("CleanOrphanCapsules: %w", err)
+			}
+			continue
+		}
+		if ok {
+			n++
+		}
+	}
+	return n, firstErr
+}
+
+// MaxEntityItemID is the highest itemID in entity: the high-water mark CleanOrphanCapsulesUpTo
+// is given one sweep later.
+func MaxEntityItemID(ctx context.Context, db *sql.DB) (int64, error) {
+	var id sql.NullInt64
+	if err := db.QueryRowContext(ctx, `SELECT MAX(itemID) FROM entity`).Scan(&id); err != nil {
+		return 0, fmt.Errorf("MaxEntityItemID: %w", err)
+	}
+	return id.Int64, nil
+}
+
+// DeleteSpareCapsules deletes every capsule charID owns but is not aboard. A capsule is the
+// pilot's active ship or nothing: it is never an asset, so one left behind by a board out of
+// it, a clone jump or a module path that moved the pilot itself would sit in a hangar as an
+// item. Returns the deleted rows, so a caller with a client connection can push their removal.
+func DeleteSpareCapsules(ctx context.Context, db *sql.DB, charID int64) ([]*EntityRow, error) {
+	if charID == 0 {
+		return nil, nil
+	}
+	caps, err := selectCapsules(ctx, db, `
+		SELECT c.itemID, c.locationID FROM entity c
+		JOIN entity ch ON ch.itemID = ?
+		WHERE c.ownerID = ? AND c.typeID = 670 AND c.itemID <> ch.locationID AND `+capsuleUnpilotedSQL,
+		charID, charID)
+	if err != nil {
+		return nil, fmt.Errorf("DeleteSpareCapsules: %w", err)
+	}
+	var gone []*EntityRow
+	for _, cp := range caps {
+		er, _ := GetEntityRow(ctx, db, cp[0])
+		ok, err := deleteCapsule(ctx, db, cp[0], cp[1])
+		if err != nil {
+			return gone, fmt.Errorf("DeleteSpareCapsules: %w", err)
+		}
+		if ok && er != nil {
+			gone = append(gone, er)
+		}
+	}
+	return gone, nil
+}
+
+// selectCapsules runs a query returning (itemID, locationID) capsule pairs.
+func selectCapsules(ctx context.Context, db *sql.DB, query string, args ...any) ([][2]int64, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][2]int64
+	for rows.Next() {
+		var cp [2]int64
+		if err := rows.Scan(&cp[0], &cp[1]); err != nil {
+			return nil, err
+		}
+		out = append(out, cp)
+	}
+	return out, rows.Err()
+}
+
+// deleteCapsule deletes one unpiloted capsule and its entity_attributes rows. Anything inside
+// it goes to the hangar of the station it sits in first, so nothing is lost with the pod. A
+// capsule in space with contents is left alone (false): there is no hangar to put them in.
+func deleteCapsule(ctx context.Context, db *sql.DB, capsuleID, locationID int64) (bool, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	var contents int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM entity WHERE locationID = ?`, capsuleID).Scan(&contents); err != nil {
+		return false, fmt.Errorf("capsule %d contents: %w", capsuleID, err)
+	}
+	if contents > 0 {
+		if locationID < stationIDBandFirst || locationID >= stationIDBandPastLast {
+			return false, nil
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE entity e
+			JOIN invTypes t ON t.typeID = e.typeID
+			JOIN invGroups g ON g.groupID = t.groupID
+			SET e.locationID = ?, e.flag = 4
+			WHERE e.locationID = ? AND g.categoryID <> 1`,
+			locationID, capsuleID); err != nil {
+			return false, fmt.Errorf("capsule %d unload: %w", capsuleID, err)
+		}
+		// Anything still aboard (a type the join does not know) would be stranded
+		// at a deleted location: keep the pod instead.
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM entity WHERE locationID = ?`, capsuleID).Scan(&contents); err != nil {
+			return false, fmt.Errorf("capsule %d contents: %w", capsuleID, err)
+		}
+		if contents > 0 {
+			return false, nil
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM entity_attributes WHERE itemID = ?`, capsuleID); err != nil {
+		return false, fmt.Errorf("capsule %d attributes: %w", capsuleID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM entity WHERE itemID = ?`, capsuleID); err != nil {
+		return false, fmt.Errorf("capsule %d: %w", capsuleID, err)
+	}
+	return true, tx.Commit()
 }
 
 // MoveCharacterIntoShip updates the character entity's locationID to point
 // at the given shipID (or capsuleID). This is how the game tracks which
-// ship a character is currently aboard.
+// ship a character is currently aboard. Any capsule the pilot owns and is no
+// longer aboard is deleted (DeleteSpareCapsules); that cleanup is best-effort,
+// the periodic orphan sweep catches what it misses.
 func MoveCharacterIntoShip(ctx context.Context, db *sql.DB, charID, shipID int64) error {
 	_, err := db.ExecContext(ctx,
 		`UPDATE entity SET locationID = ? WHERE itemID = ?`, shipID, charID)
 	if err != nil {
 		return fmt.Errorf("MoveCharacterIntoShip: %w", err)
+	}
+	if _, err := DeleteSpareCapsules(ctx, db, charID); err != nil {
+		log.Printf("MoveCharacterIntoShip charID=%d: %v", charID, err)
 	}
 	return nil
 }

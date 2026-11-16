@@ -1276,3 +1276,30 @@ func SendTerminalRemoveStop(
 	return sendActionList(c, nodeID, accountID, actions, false)
 }
 
+// SendSettleUnpiloted turns a piloted ship ball into an unpiloted hull in place,
+// at one stamp: Stop, zero velocity, snap to pos, clear the interactive flag
+// (menusvc checkShipBusy reads it, so "Board Ship" appears). The ball is never
+// removed, so the hull does not flicker. The new slim (no charID) goes
+// separately on the FX stamp (SendSlimItemChange): it is stamp-agnostic.
+func SendSettleUnpiloted(
+	c *evenet.Conn,
+	nodeID, accountID uint64,
+	stamp uint32,
+	entityID uint32,
+	pos Vec3,
+) error {
+	id := marshal.PyInt{Value: uint64(entityID)}
+	actions := []marshal.PyRep{
+		BuildSimpleAction("Stop", id),
+		BuildSimpleAction("SetBallVelocity", id,
+			marshal.PyReal{Value: 0}, marshal.PyReal{Value: 0}, marshal.PyReal{Value: 0}),
+		BuildSimpleAction("SetBallPosition", id,
+			marshal.PyReal{Value: pos.X}, marshal.PyReal{Value: pos.Y}, marshal.PyReal{Value: pos.Z}),
+		BuildSimpleAction("SetBallInteractive", id, marshal.PyInt{Value: 0}),
+	}
+	pairs := make([]marshal.PyRep, 0, len(actions))
+	for _, a := range actions {
+		pairs = append(pairs, marshal.PyTuple{Items: []marshal.PyRep{marshal.PyInt{Value: uint64(stamp)}, a}})
+	}
+	return sendActionList(c, nodeID, accountID, pairs, false)
+}

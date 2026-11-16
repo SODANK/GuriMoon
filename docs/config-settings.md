@@ -28,7 +28,7 @@ Dials exposed this way:
 | Area | Keys |
 |---|---|
 | CONCORD | `concord.responseDelaySec` (five values), `concord.lingerSec` |
-| Sentries and gates | `sentry.respawnMinutes`, `gate.cloakSec` |
+| Sentries and gates | `sentry.respawnMinutes`, `gate.cloakSec`, `gate.jumpFlashMs` (2500; how long a gate jump lets the JumpOut flash play before the system switch) |
 | Fixed dungeons | `dungeon.fixedRespawnMinutes` (10; how long a killed object of an ESP-placed dungeon stays dead) |
 | NPC | `npc.lockTimeSec`, `npc.lockTimeCapSec`, `npc.leashMult`, `npc.fleeAlignSec`  |
 | Loot | `loot.playerDropChance`, `loot.containerHours` (wreck cans and corpses share it), `loot.npcAnyChance`, `loot.npcLuckyChance`, `loot.npcJackpotChance` |

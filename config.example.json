@@ -26,8 +26,9 @@
   },
   "authentication": {
     "autoaccount": true,
-    "role": 1073741826,
+    "role": 1073741887,
     "slashRoles": 262200
+    // Standard account role is 1073741826
     // GM role is 1073741887
   },
   "character": {
@@ -98,6 +99,7 @@
     "sentry.respawnMinutes": 15,
     "dungeon.fixedRespawnMinutes": 10,
     "gate.cloakSec": 60,
+    "gate.jumpFlashMs": 2500,
     "npc.lockTimeSec": 3,
     "npc.lockTimeCapSec": 30,
     "npc.leashMult": 1.5,

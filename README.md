@@ -6,6 +6,8 @@
 
 **An EVE Online server emulation project for client version 3913 - Red Moon Rising (2005) written in .Go**
 
+Discord Server - https://discord.gg/nzYsvvazZ
+
 GuriMoon is a server emulator compatible with EVE Online's 2005 Red Moon Rising 3913 ‘Blood' client. The dawn of the titan shipline, and the last build featuring some of CCP/FC's more interesting design choices for EVE. All encapsulated in EVE Online's original graphics engine before its first major graphics overhaul with Trinity (2008). This is NOT the client, and it is not in the repo.
 
 Originally a part of the EveClassic project started by PixelCatBurglar, which was a broader initiative to create connectable emulators for multiple builds of EVE. (Yes, there's more.) GuriMoon is specifically focused on full restoration of EVE's 1931a version of Red Moon Rising. While also providing tools to give you the ability to modify and create your own experience to your preferences.
@@ -88,7 +90,9 @@ Which brings me to my last point. Please support Fenris Creations and the offici
 
 ESP = ‘EVE Server Pages’
 
-Packaged with the server is the ESP web page that you can access directly in your internet browser as long as the server is running. In this website are a wide spread of pages that talk to various tables throughout the database allowing you to modify, add and delete entries with a more human friendly front-end. No actual internet connection needed.
+Packaged with the server is the ESP web page that you can access directly in your internet browser as long as the server is running. In this website are a wide spread of pages that talk to various tables throughout the database allowing you to modify, add and delete entries with a more human friendly front-end. No actual internet connection needed. 
+
+To access ESP, type http://localhost:26080 into your browser while server is live. You will need an account with GM rights to access
 
 **Admin**
 * Tools related to general server functions

@@ -14,6 +14,7 @@ import (
 	"gurimoon/logx"
 	"gurimoon/marshal"
 	"gurimoon/modapi"
+	"gurimoon/safego"
 	"gurimoon/server"
 )
 
@@ -140,6 +141,8 @@ func ensureSystemLoaded(sysMgr *destiny.SystemManager, sysID int64, sqldb *sql.D
 		loadOpenSitesIntoSystem(addr, ss, sysID)
 		// Persisted loot containers.
 		loadLootContainersIntoSystem(addr, sqldb, ss, sysID)
+		// Ships their pilots ejected from (eject.go).
+		loadAbandonedShipsIntoSystem(addr, sqldb, ss, sysID)
 		// Scanner probes still alive here (memory only).
 		loadScanProbesIntoSystem(ss, sysID)
 		// Mines laid here (mines.go).
@@ -310,4 +313,38 @@ func ensureSystemLoaded(sysMgr *destiny.SystemManager, sysID int64, sqldb *sql.D
 	ss.StartShieldRegenTicker()
 
 	return ss, nil
+}
+
+// gateJumpFlashDelay is how long a stargate jump holds the session change after the JumpOut
+// flash, so the client sees the gate fire before its ballpark is torn down. server_settings
+// gate.jumpFlashMs, default 2500.
+func gateJumpFlashDelay() time.Duration {
+	return evedb.CachedSettingDuration("gate.jumpFlashMs", time.Millisecond, 2500, 200, 10000)
+}
+
+// prewarmJumpDestination builds sysID in the background while a jumping ship's gate flash
+// plays. The jumper's own registerUndock then takes ensureSystemLoaded's fast path, or waits
+// on the build lock for this build instead of starting its own.
+//
+// A system this call created is released again if no player has arrived a minute later
+// (a jump abandoned mid-flight); releaseSystem refuses while any player is in it.
+func prewarmJumpDestination(sysMgr *destiny.SystemManager, sysID int64, sqldb *sql.DB, addr string) {
+	if sysMgr == nil || sysID == 0 || sysMgr.Get(sysID) != nil {
+		return
+	}
+	go func() {
+		defer safego.Recover("prewarmJumpDestination")
+		started := time.Now()
+		ss, err := ensureSystemLoaded(sysMgr, sysID, sqldb, addr, nil, nil)
+		if err != nil {
+			log.Printf("[%s] jump prewarm sysID=%d: %v", addr, sysID, err)
+			return
+		}
+		log.Printf("[%s] jump prewarm sysID=%d ready in %s", addr, sysID,
+			time.Since(started).Round(time.Millisecond))
+		time.AfterFunc(time.Minute, func() {
+			defer safego.Recover("prewarmJumpDestination.release")
+			releaseSystem(sysMgr, ss, sqldb)
+		})
+	}()
 }

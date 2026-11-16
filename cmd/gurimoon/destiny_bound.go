@@ -761,8 +761,14 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		ds.solarSystem = nil
 		ds.entity = nil
 
-		// Phase 2 (~800ms): session-change to destination system.
-		time.Sleep(800 * time.Millisecond)
+		// Build the destination while the flash plays, so the switch below does not wait on a
+		// cold system (sentries, belts, NPC spawners).
+		prewarmJumpDestination(ds.sysMgr, destSysID, sqldb, addr)
+
+		// Phase 2: the session change tears down the client's ballpark, so it waits until the
+		// JumpOut flash has played. The ship already left the source system above, so nothing
+		// can shoot or tackle it during the wait.
+		time.Sleep(gateJumpFlashDelay())
 		oldSysID := ds.sysID
 		oldConstID := ds.constellationID
 		oldRegID := ds.regionID

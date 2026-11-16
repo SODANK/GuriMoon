@@ -282,13 +282,48 @@ func (ss *SolarSystem) GetLootContainerPosition(entityID uint32) (Vec3, bool) {
 	defer ss.mu.RUnlock()
 	for i, bd := range ss.LootBalls {
 		if bd.EntityID == entityID {
-			if ss.LootSlims[i].GroupID == lootGroupBiomass {
+			if ss.LootSlims[i].GroupID == lootGroupBiomass || ss.LootSlims[i].CategoryID == lootCategoryShip {
 				return Vec3{}, false
 			}
 			return bd.Pos, true
 		}
 	}
 	return Vec3{}, false
+}
+
+// lootCategoryShip is invCategories 6: an abandoned hull, which rides the loot
+// slices for SetState and grid delivery but is neither a container nor on the
+// loot expiry clock.
+const lootCategoryShip = 6
+
+// AddAbandonedShip registers an unpiloted hull in the loot slices with its
+// damage. It gets no spawn time, so the loot expiry sweep never takes it.
+// Safe for concurrent use.
+func (ss *SolarSystem) AddAbandonedShip(bd BallDesc, slim SlimItem, dmg DamageState) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	ss.LootBalls = append(ss.LootBalls, bd)
+	ss.LootSlims = append(ss.LootSlims, slim)
+	if ss.LootDamage == nil {
+		ss.LootDamage = make(map[uint32]DamageState)
+	}
+	ss.LootDamage[bd.EntityID] = dmg
+}
+
+// GetAbandonedShip returns an unpiloted hull's ball, slim and damage. Safe for
+// concurrent use.
+func (ss *SolarSystem) GetAbandonedShip(entityID uint32) (BallDesc, SlimItem, DamageState, bool) {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	for i, bd := range ss.LootBalls {
+		if bd.EntityID == entityID {
+			if ss.LootSlims[i].CategoryID != lootCategoryShip {
+				break
+			}
+			return bd, ss.LootSlims[i], ss.LootDamage[entityID], true
+		}
+	}
+	return BallDesc{}, SlimItem{}, DamageState{}, false
 }
 
 // GetLootBall returns any ball in the loot slices, container or corpse, with

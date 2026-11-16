@@ -3,20 +3,18 @@ package main
 // Ship Maintenance Array: storing and boarding ships in space. The client's
 // calls arrive on the ship moniker (menusvc StoreVessel / BoardStoredShip via
 // PerformSessionChange); the reply is ignored and the client waits for the
-// shipid session change. The server does what the death path does for a
-// capsule: old hull off the grid, pilot into the new one with the old
-// ballpark state, new ball delivered, then session.shipid. Launch Ship and
-// Scoop to Ship Maintenance Bay are refused out loud: both need an unpiloted
-// ship ball in space, which this server does not model.
+// shipid session change. The pilot moves with swapPilotInSpace (eject.go):
+// new ball delivered, then session.shipid, then the old hull leaves the
+// pilot's grid (bystanders lose it at once). Launch Ship and
+// Scoop to Ship Maintenance Bay are refused out loud. Unpiloted hulls exist
+// now (eject.go) but neither path is wired to them yet.
 
 import (
 	"context"
 	"database/sql"
 	"log"
-	"time"
 
 	evedb "gurimoon/db"
-	"gurimoon/destiny"
 	"gurimoon/marshal"
 	evenet "gurimoon/net"
 	"gurimoon/server"
@@ -27,15 +25,33 @@ const groupCapsule = 29
 func handleSMAShipCall(c *evenet.Conn, addr string, cs *server.CallStream, pkt *evenet.PyPacket,
 	accountID, charID, stationID int64, sqldb *sql.DB, ds *destinyConn) error {
 
-	switch cs.Method {
+	refusal, after := smaShipCall(c, addr, accountID, charID, stationID, cs.Method, cs.ArgTuple.Items, sqldb, ds)
+	if refusal != nil {
+		return server.SendCallException(c, pkt, accountID, refusal)
+	}
+	if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
+		return err
+	}
+	if after != nil {
+		after()
+	}
+	return nil
+}
+
+// smaShipCall runs one Ship Maintenance Array ship call. Like shipSpaceCall
+// (eject.go) it returns the UserError to raise, or a function to run once the
+// reply, plain or the inline bind tuple, has gone out. The client builds a
+// fresh ship moniker per call, so these usually arrive inline on the bind.
+func smaShipCall(c *evenet.Conn, addr string, accountID, charID, stationID int64, method string,
+	args []marshal.PyRep, sqldb *sql.DB, ds *destinyConn) (marshal.PyRep, func()) {
+
+	switch method {
 	case "LaunchFromContainer", "ScoopToSMA":
-		return corpUserErr(c, pkt, accountID,
-			"Unpiloted ships cannot be left floating in space here. Board the ship instead.")
+		return customError("Unpiloted ships cannot be left floating in space here. Board the ship instead."), nil
 	}
 	if sqldb == nil || ds == nil || ds.entity == nil || ds.solarSystem == nil || stationID != 0 {
-		return corpUserErr(c, pkt, accountID, "You must be in space to do that.")
+		return customError("You must be in space to do that."), nil
 	}
-	args := cs.ArgTuple.Items
 	arg := func(i int) int64 {
 		if i < len(args) {
 			if v, ok := args[i].(marshal.PyInt); ok {
@@ -50,68 +66,66 @@ func handleSMAShipCall(c *evenet.Conn, addr string, cs *server.CallStream, pkt *
 	smaID := arg(0)
 	sma, why := smaForPilot(ctx, sqldb, ds, charID, smaID)
 	if why != "" {
-		return corpUserErr(c, pkt, accountID, why)
+		return customError(why), nil
 	}
 
-	switch cs.Method {
+	switch method {
 	case "StoreVessel":
 		if ds.shipGroupID == groupCapsule {
-			return corpUserErr(c, pkt, accountID, "A capsule cannot be stored.")
+			return customError("A capsule cannot be stored."), nil
 		}
 		if why := smaHasRoom(ctx, sqldb, sma.EntityID, ds.shipID); why != "" {
-			return corpUserErr(c, pkt, accountID, why)
+			return customError(why), nil
 		}
 		oldShip := ds.shipID
 		capsuleID, err := evedb.CreateCapsuleEntity(ctx, sqldb, charID, ds.sysID, ds.charName)
 		if err != nil {
 			log.Printf("[%s] StoreVessel capsule: %v", addr, err)
-			return corpUserErr(c, pkt, accountID, "Could not eject you into a capsule.")
+			return customError("Could not eject you into a capsule."), nil
 		}
-		pos := ds.dm.Pos
+		pos := ds.entity.Pos()
 		_ = evedb.UpdateEntityPosition(ctx, sqldb, capsuleID, pos.X, pos.Y, pos.Z)
 		if _, err := sqldb.ExecContext(ctx,
 			`UPDATE entity SET locationID = ?, flag = 0 WHERE itemID = ?`, sma.EntityID, oldShip); err != nil {
 			log.Printf("[%s] StoreVessel move ship: %v", addr, err)
 			_ = evedb.DeleteEntity(ctx, sqldb, capsuleID)
-			return corpUserErr(c, pkt, accountID, "Could not store the ship.")
+			return customError("Could not store the ship."), nil
 		}
-		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
-			return err
+		return nil, func() {
+			swapPilotInSpace(c, addr, accountID, charID, sqldb, ds, capsuleID, oldHull{})
+			log.Printf("[%s] ship %d stored in SMA %d by char %d (now in capsule %d)", addr, oldShip, sma.EntityID, charID, capsuleID)
 		}
-		swapPilotShipInSpace(c, addr, accountID, charID, sqldb, ds, capsuleID, false)
-		log.Printf("[%s] ship %d stored in SMA %d by char %d (now in capsule %d)", addr, oldShip, sma.EntityID, charID, capsuleID)
-		return nil
 
 	case "BoardStoredShip":
 		shipID := arg(1)
 		er, err := evedb.GetEntityRow(ctx, sqldb, shipID)
 		if err != nil || er == nil || er.LocationID != sma.EntityID || er.CategoryID != 6 {
-			return corpUserErr(c, pkt, accountID, "That ship is not in this Ship Maintenance Array.")
+			return customError("That ship is not in this Ship Maintenance Array."), nil
 		}
 		if er.OwnerID != charID {
-			return corpUserErr(c, pkt, accountID, "That ship belongs to someone else.")
+			return customError("That ship belongs to someone else."), nil
 		}
 		if uerr := boardSkillError(ctx, sqldb, charID, shipID); uerr != nil {
-			return server.SendCallException(c, pkt, accountID, uerr)
+			return uerr, nil
 		}
 		// A pilot the police are engaging may not swap out of the fight.
 		if concordIsFlagged(charID) {
-			return clientMsgErr(c, pkt, accountID, "ShipInvolvedInPoliceCrime", nil)
+			return server.BuildUserError("ShipInvolvedInPoliceCrime", nil), nil
 		}
 		oldShip := ds.shipID
 		wasCapsule := ds.shipGroupID == groupCapsule
 		if !wasCapsule {
 			// Trade places: the current ship goes into the array.
 			if why := smaHasRoom(ctx, sqldb, sma.EntityID, oldShip); why != "" {
-				return corpUserErr(c, pkt, accountID, why)
+				return customError(why), nil
 			}
 		}
-		pos := ds.dm.Pos
+		pos := ds.entity.Pos()
 		if _, err := sqldb.ExecContext(ctx,
 			`UPDATE entity SET locationID = ?, flag = 0, x = ?, y = ?, z = ? WHERE itemID = ?`,
 			ds.sysID, pos.X, pos.Y, pos.Z, shipID); err != nil {
 			log.Printf("[%s] BoardStoredShip launch: %v", addr, err)
-			return corpUserErr(c, pkt, accountID, "Could not launch the ship.")
+			return customError("Could not launch the ship."), nil
 		}
 		if !wasCapsule {
 			if _, err := sqldb.ExecContext(ctx,
@@ -119,15 +133,13 @@ func handleSMAShipCall(c *evenet.Conn, addr string, cs *server.CallStream, pkt *
 				log.Printf("[%s] BoardStoredShip store old ship: %v", addr, err)
 			}
 		}
-		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
-			return err
+		return nil, func() {
+			swapPilotInSpace(c, addr, accountID, charID, sqldb, ds, shipID, oldHull{deleteRow: wasCapsule})
+			log.Printf("[%s] char %d boarded ship %d from SMA %d (old ship %d, capsule=%v)",
+				addr, charID, shipID, sma.EntityID, oldShip, wasCapsule)
 		}
-		swapPilotShipInSpace(c, addr, accountID, charID, sqldb, ds, shipID, wasCapsule)
-		log.Printf("[%s] char %d boarded ship %d from SMA %d (old ship %d, capsule=%v)",
-			addr, charID, shipID, sma.EntityID, oldShip, wasCapsule)
-		return nil
 	}
-	return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	return customError("That is not possible here."), nil
 }
 
 // smaForPilot resolves and validates the array a pilot is using: a Ship
@@ -166,86 +178,4 @@ func smaHasRoom(ctx context.Context, sqldb *sql.DB, smaID, shipID int64) string 
 		return "There is not enough room in the Ship Maintenance Array."
 	}
 	return ""
-}
-
-// swapPilotShipInSpace moves the pilot's presence on the grid from the current ship to newShipID.
-// The old hull is removed (stored, or a capsule deleted when deleteOld). Order follows the death
-// path: old ball out, new entity registered with the old ballpark state, new ball in, then
-// session.shipid, because the client sets bp.ego from the session only once the ball exists.
-func swapPilotShipInSpace(c *evenet.Conn, addr string, accountID, charID int64, sqldb *sql.DB,
-	ds *destinyConn, newShipID int64, deleteOld bool) {
-
-	ctx, cancel := context.WithTimeout(context.Background(), starbaseSweepTimeout)
-	defer cancel()
-
-	oldEntity := ds.entity
-	oldID := oldEntity.ID
-	oldShipDBID := ds.shipID
-	ss := ds.solarSystem
-
-	clearPlayerCombatState(ds)
-	if globalDroneMgr != nil && oldShipDBID != 0 {
-		globalDroneMgr.AbandonControl(oldShipDBID)
-	}
-
-	if err := evedb.MoveCharacterIntoShip(ctx, sqldb, charID, newShipID); err != nil {
-		log.Printf("[%s] ship swap: MoveCharacterIntoShip %d: %v", addr, newShipID, err)
-		return
-	}
-	if deleteOld {
-		_ = evedb.DeleteEntity(ctx, sqldb, oldShipDBID)
-	}
-
-	// The old hull leaves every grid it is on, a plain removal, not an explosion,
-	// including the pilot's own.
-	for _, p := range ss.RemoveEntity(oldID) {
-		if p.Conn == nil || !p.KnowsBall(oldID) {
-			continue
-		}
-		if err := p.SendStamped(func(stamp uint32) error {
-			return destiny.SendRemoveBalls(p.Conn, globalNodeID, p.AccountID, stamp, []uint32{oldID})
-		}); err == nil {
-			p.ForgetBalls(oldID)
-		}
-	}
-	if c != nil {
-		oldEntity.SendStampedUrgent(func(stamp uint32) error {
-			return destiny.SendRemoveBalls(c, globalNodeID, uint64(accountID), stamp, []uint32{oldID})
-		})
-	}
-
-	// Rebuild the pilot's destiny state on the new hull where it floats.
-	ds.pendingBallparkFrom = oldEntity
-	ds.pendingBallparkOldID = oldID
-	ds.dm = nil
-	initDestiny(addr, charID, 0, sqldb, ds)
-	if ds.dm == nil {
-		ds.pendingBallparkFrom = nil
-		log.Printf("[%s] ship swap: initDestiny failed for ship %d", addr, newShipID)
-		return
-	}
-	registerUndock(c, addr, uint64(accountID), charID, sqldb, ds)
-	ds.pendingBallparkFrom = nil
-	if ds.entity == nil || c == nil {
-		return
-	}
-
-	e := ds.entity
-	bd := e.BallDesc()
-	bd.CorpID = uint32(e.Slim.CorpID)
-	bd.Name = e.BallName()
-	dmg := e.DamageStateFrac()
-	dmg.Timestamp = server.Win32TimeNow()
-	if err := e.SendStampedUrgent(func(stamp uint32) error {
-		return destiny.SendAddBallsFull(c, globalNodeID, uint64(accountID), stamp,
-			[]destiny.BallDesc{bd}, []destiny.SlimItem{e.Slim},
-			map[uint32]destiny.DamageState{e.ID: dmg})
-	}); err != nil {
-		log.Printf("[%s] ship swap: AddBalls %d: %v", addr, newShipID, err)
-	}
-	e.ClaimUnknownBalls(e.ID)
-	time.Sleep(50 * time.Millisecond) // let the ball land before the session points at it
-	if err := sendShipIDSessionChange(c, addr, oldShipDBID, newShipID); err != nil {
-		log.Printf("[%s] ship swap: session change: %v", addr, err)
-	}
 }

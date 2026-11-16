@@ -497,6 +497,35 @@ func notifySkillInjected(c *evenet.Conn, accountID, charID, skillItemID int64, n
 // snapshotSkillItemState reads a skill item's location and flag before a
 // training-start mutates them, so the follow-up OnItemChange can tell the
 // client which container the skillbook left.
+// trainingSkillItem returns the itemID of the skill charID is training now, or 0.
+// Read before StartTrainingSkill so the switch can tell the client the old skill stopped.
+func trainingSkillItem(sqldb *sql.DB, charID int64) int64 {
+	if sqldb == nil || charID == 0 {
+		return 0
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if st, err := evedb.GetSkillTraining(ctx, sqldb, charID); err == nil && st != nil {
+		return st.SkillItemID
+	}
+	return 0
+}
+
+// notifySkillSwitchedOff tells the client that prevItemID stopped training because
+// another skill was started. StartTrainingSkill banks it and resets its flag to 7 in
+// the DB, but without this the client keeps it flagged in training next to the new
+// one. Silent: the switch is the player's own action.
+func notifySkillSwitchedOff(c *evenet.Conn, accountID, prevItemID, newItemID int64, sqldb *sql.DB) {
+	if prevItemID == 0 || prevItemID == newItemID {
+		return
+	}
+	_ = server.SendNotification(c, accountID, "OnSkillTrainingStopped", "charid", marshal.PyTuple{Items: []marshal.PyRep{
+		marshal.PyInt{Value: uint64(prevItemID)},
+		marshal.PyInt{Value: 1}, // silent
+	}})
+	sendSkillFlagChange(c, accountID, prevItemID, 61, 0, sqldb)
+}
+
 func snapshotSkillItemState(sqldb *sql.DB, skillItemID int64) (oldLocationID, oldFlag int64) {
 	oldFlag = 7
 	if sqldb == nil {
@@ -919,6 +948,7 @@ func main() {
 	startResearchSlotSweep(tickMgr)
 	startDunSiteSweep(tickMgr)
 	startMapHistoryPurgeSweep(tickMgr, sqldb)
+	startOrphanCapsuleSweep(tickMgr, sqldb)
 	startConcordWatch(tickMgr, sqldb)
 	startPoliceWatch(tickMgr, sqldb)
 	startCustomsWatch(tickMgr, sqldb)
@@ -3680,6 +3710,8 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 			// moniker.Bind unpacks the response as (boundObj, callResult); the inline call's result
 			// is the second item.
 			inlineResult := computeInlineBindResult(c, *accountID, addr, pkt.Dest.Service, cs, *charID, *stationID, sqldb, ds)
+			boardHeld := false // set by an inline Board that moved the pilot
+			var afterBind func() // runs once the bind reply is out (inline Eject / in-space Board)
 			// The client builds fresh monikers per drone command, so entity Cmd* and ship
 			// Drop/ScoopDrone arrive inlined here. They need the live result (Drop returns the
 			// launched IDs, Cmd* the failure dict).
@@ -3726,6 +3758,32 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 									}))
 							}
 							inlineResult = r
+						case pkt.Dest.Service == "ship" && (mth == "Eject" || mth == "Evacuate" ||
+							(mth == "Board" && *stationID == 0)):
+							// eject.go. The client builds a fresh ship moniker per call, so these
+							// arrive here; a refusal raised on the bind reaches PerformSessionChange
+							// and releases its 30 s lock.
+							if mth != "Board" && *stationID != 0 {
+								return server.SendCallException(c, pkt, *accountID,
+									customError("You cannot eject while docked."))
+							}
+							refusal, after := shipSpaceCall(c, addr, *accountID, *charID, mth, argsTuple.Items, sqldb, ds)
+							if refusal != nil {
+								log.Printf("[%s] ship.%s(inline): refused charID=%d", addr, mth, *charID)
+								return server.SendCallException(c, pkt, *accountID, refusal)
+							}
+							inlineResult = marshal.PyNone{}
+							afterBind = after
+						case pkt.Dest.Service == "ship" && (mth == "StoreVessel" || mth == "BoardStoredShip" ||
+							mth == "LaunchFromContainer" || mth == "ScoopToSMA"):
+							// smaship.go, same shape as Eject above.
+							refusal, after := smaShipCall(c, addr, *accountID, *charID, *stationID, mth, argsTuple.Items, sqldb, ds)
+							if refusal != nil {
+								log.Printf("[%s] ship.%s(inline): refused charID=%d", addr, mth, *charID)
+								return server.SendCallException(c, pkt, *accountID, refusal)
+							}
+							inlineResult = marshal.PyNone{}
+							afterBind = after
 						case pkt.Dest.Service == "ship" && mth == "Board":
 							// Refuse the bind when the pilot lacks the hull's prerequisites; raising here stops the
 							// board before the entity move below.
@@ -3738,6 +3796,15 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 										log.Printf("[%s] ship.Board(inline): rejected shipID=%d charID=%d", addr, int64(shipIDRep.Value), *charID)
 										return server.SendCallException(c, pkt, *accountID, uerr)
 									}
+									// The board and its SCN run before the bind reply (boardDockedShip).
+									newShipID := int64(shipIDRep.Value)
+									prevShipID, berr := boardDockedShip(c, addr, *accountID, *charID, newShipID, sqldb)
+									if berr != nil {
+										log.Printf("[%s] ship.Board(inline): %v", addr, berr)
+									} else {
+										boardHeld = true
+									}
+									log.Printf("[%s] → ship.MachoBindObject(Board) charID=%d shipID=%d→%d", addr, *charID, prevShipID, newShipID)
 								}
 							}
 						case pkt.Dest.Service == "ship" && mth == "ScoopDrone":
@@ -3755,10 +3822,16 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 				}
 			}
 			log.Printf("[%s] → MachoBindObject svc=%q → bindSpec=%q", addr, pkt.Dest.Service, bindSpec)
-			if err := server.SendCallRsp(c, pkt, *accountID, marshal.PyTuple{Items: []marshal.PyRep{
-				boundObj, inlineResult,
-			}}); err != nil {
+			bindRsp := marshal.PyTuple{Items: []marshal.PyRep{boundObj, inlineResult}}
+			if boardHeld {
+				// An inline Board's bind reply waits for godma's re-prime (boardhold.go).
+				acct := *accountID
+				holdBoardReply(c, func() { _ = server.SendCallRsp(c, pkt, acct, bindRsp) })
+			} else if err := server.SendCallRsp(c, pkt, *accountID, bindRsp); err != nil {
 				return err
+			}
+			if afterBind != nil {
+				afterBind()
 			}
 			// Remember the bind so bound calls on this bind ID resolve to the agent.
 			if pkt.Dest.Service == "agentMgr" && len(cs.ArgTuple.Items) >= 1 {
@@ -3814,35 +3887,6 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 						if argsTuple, ok := callTuple.Items[1].(marshal.PyTuple); ok {
 							locType, locNum, warpRange := parseWarpToLocationArgs(argsTuple)
 							runAgentWarpToLocation(c, addr, *accountID, *charID, agentID, locType, locNum, warpRange, sqldb, ds, sessReg, npcMgr)
-						}
-					}
-				}
-			}
-			// Inline Board: move the character into the ship and send the session change so
-			// session.shipid follows.
-			if pkt.Dest.Service == "ship" && inlineBindMethod(cs) == "Board" {
-				if callTuple, ok := cs.ArgTuple.Items[1].(marshal.PyTuple); ok && len(callTuple.Items) >= 2 {
-					if argsTuple, ok := callTuple.Items[1].(marshal.PyTuple); ok && len(argsTuple.Items) >= 1 {
-						// Re-runs the bind pre-check's gate as defence in depth.
-						if shipIDRep, ok := argsTuple.Items[0].(marshal.PyInt); ok && inlineBoardAllowed(addr, sqldb, *charID, *stationID, int64(shipIDRep.Value)) {
-							newShipID := int64(shipIDRep.Value)
-							ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-							prevShipID, _ := evedb.GetCurrentShipID(ctx, sqldb, *charID)
-							_, err := sqldb.ExecContext(ctx,
-								`UPDATE entity SET locationID = ?, flag = 57 WHERE itemID = ?`,
-								newShipID, *charID)
-							// Boarding a real ship from a capsule leaves an orphan capsule row; delete it.
-							if err == nil && ds.shipTypeID == 670 && prevShipID != 0 && prevShipID != newShipID {
-								_ = evedb.DeleteEntity(ctx, sqldb, prevShipID)
-							}
-							cancel()
-							if err != nil {
-								log.Printf("[%s] ship.Board(inline): update entity: %v", addr, err)
-							}
-							log.Printf("[%s] → ship.MachoBindObject(Board) charID=%d shipID=%d→%d", addr, *charID, prevShipID, newShipID)
-							if err := sendShipIDSessionChange(c, addr, prevShipID, newShipID); err != nil {
-								log.Printf("[%s] Board SCN: %v", addr, err)
-							}
 						}
 					}
 				}
@@ -3910,6 +3954,7 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 							if skillIDRep, ok := argsTuple.Items[0].(marshal.PyInt); ok {
 								skillItemID := int64(skillIDRep.Value)
 								oldLoc, oldFlag := snapshotSkillItemState(sqldb, skillItemID)
+								prevItemID := trainingSkillItem(sqldb, *charID)
 								ctxT, cancelT := context.WithTimeout(context.Background(), 10*time.Second)
 								endOfTraining, err := evedb.StartTrainingSkill(ctxT, sqldb, *charID, skillItemID)
 								cancelT()
@@ -3929,6 +3974,7 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 									}
 								} else {
 									log.Printf("[%s] → skillMgr.MachoBindObject(CharStartTrainingSkill) charID=%d skillItemID=%d", addr, *charID, skillItemID)
+									notifySkillSwitchedOff(c, *accountID, prevItemID, skillItemID, sqldb)
 									notifyArgs := marshal.PyTuple{Items: []marshal.PyRep{
 										marshal.PyInt{Value: uint64(skillItemID)},
 										marshal.PyInt{Value: endOfTraining},
@@ -8626,7 +8672,9 @@ func computeInlineBindResult(c *evenet.Conn, accountID int64, addr, svc string, 
 	case "dogmaIM":
 		switch methodStr.Value {
 		case "ShipGetInfo":
-			return buildShipGetInfoRep(addr, charID, sqldb)
+			rep := buildShipGetInfoRep(addr, charID, sqldb)
+			boardPrimeServed(c)
+			return rep
 		case "CharGetInfo":
 			return buildCharGetInfoRep(addr, charID, sqldb)
 		case "CheckSendLocationInfo":
@@ -8926,13 +8974,15 @@ func computeInlineBindResult(c *evenet.Conn, accountID int64, addr, svc string, 
 }
 
 // inlineHandledPostBind reports whether svc.method is an inline bind call that the
-// MachoBindObject handler runs after the bind response, so None here is correct. Keep
-// in sync with the inline blocks in the MachoBindObject branch of the dispatch loop.
+// MachoBindObject handler runs itself (after the bind response; Board before it), so
+// None here is correct. Keep in sync with the inline blocks in the MachoBindObject
+// branch of the dispatch loop.
 func inlineHandledPostBind(svc, method string) bool {
 	switch svc {
 	case "ship":
 		switch method {
-		case "Undock", "Board", "Drop", "ScoopDrone", "Scoop", "AssembleShip":
+		case "Undock", "Board", "Drop", "ScoopDrone", "Scoop", "AssembleShip", "Eject", "Evacuate",
+			"StoreVessel", "BoardStoredShip", "LaunchFromContainer", "ScoopToSMA":
 			return true
 		}
 	case "skillMgr":
@@ -9072,7 +9122,9 @@ func handleBoundCall(cc *callCtx) error {
 		return server.SendCallRsp(c, pkt, accountID, buildCharGetInfoRep(addr, charID, sqldb))
 
 	case "ShipGetInfo":
-		return server.SendCallRsp(c, pkt, accountID, buildShipGetInfoRep(addr, charID, sqldb))
+		err := server.SendCallRsp(c, pkt, accountID, buildShipGetInfoRep(addr, charID, sqldb))
+		boardPrimeServed(c)
+		return err
 
 	case "ListStations":
 		return boundListStations(cc)
@@ -12686,6 +12738,7 @@ func handleSkillMgr(c *evenet.Conn, addr string, cs *server.CallStream, pkt *eve
 
 		var endOfTraining uint64
 		if sqldb != nil && charID != 0 {
+			prevItemID := trainingSkillItem(sqldb, charID)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 			var err error
@@ -12694,6 +12747,7 @@ func handleSkillMgr(c *evenet.Conn, addr string, cs *server.CallStream, pkt *eve
 				log.Printf("[%s] skillMgr.CharStartTrainingSkill refused: %v", addr, err)
 				return server.SendCallException(c, pkt, accountID, skillTrainErrorPayload(err))
 			}
+			notifySkillSwitchedOff(c, accountID, prevItemID, skillItemID, sqldb)
 		} else {
 			endOfTraining = server.Win32TimeNow() + 25920000000000
 		}
@@ -14098,14 +14152,20 @@ func handleShipSvc(c *evenet.Conn, addr string, cs *server.CallStream, pkt *even
 	accountID, charID int64, stationID *int64, sqldb *sql.DB, ds *destinyConn, sysMgr *destiny.SystemManager) error {
 	switch cs.Method {
 	case "Eject", "Evacuate":
-		// Only an exception releases the client's 30 s session-change lock around Eject/Evacuate (sessions.py),
-		// and no unpiloted ship balls exist, so the call is refused rather than answered None.
-		msg := "Ejecting from your ship in space is not supported."
-		if cs.Method == "Evacuate" {
-			msg = "Evacuating a ship's clone vats is not supported."
+		// eject.go. A refusal must be an exception: only that releases the client's 30 s
+		// session-change lock (sessions.py PerformSessionChange).
+		if *stationID != 0 {
+			return corpUserErr(c, pkt, accountID, "You cannot eject while docked.")
 		}
-		return clientMsgErr(c, pkt, accountID, "CustomError", map[string]marshal.PyRep{
-			"error": marshal.PyString{Value: msg}})
+		refusal, after := shipSpaceCall(c, addr, accountID, charID, cs.Method, cs.ArgTuple.Items, sqldb, ds)
+		if refusal != nil {
+			return server.SendCallException(c, pkt, accountID, refusal)
+		}
+		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
+			return err
+		}
+		after()
+		return nil
 	case "Undock":
 		initDestiny(addr, charID, *stationID, sqldb, ds)
 		log.Printf("[%s] → shipSvc.Undock charID=%d", addr, charID)
@@ -14131,10 +14191,17 @@ func handleShipSvc(c *evenet.Conn, addr string, cs *server.CallStream, pkt *even
 		return nil
 
 	case "Board":
-		// A ship floating in space needs an unpiloted ship ball, which is not modelled; the docked path
-		// would move the pilot into it and leave their ship's ball behind.
+		// In space the only boardable ships are unpiloted hulls (eject.go).
 		if *stationID == 0 {
-			return corpUserErr(c, pkt, accountID, "Boarding a ship in space is only possible from a Ship Maintenance Array.")
+			refusal, after := shipSpaceCall(c, addr, accountID, charID, "Board", cs.ArgTuple.Items, sqldb, ds)
+			if refusal != nil {
+				return server.SendCallException(c, pkt, accountID, refusal)
+			}
+			if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
+				return err
+			}
+			after()
+			return nil
 		}
 		// Board(shipID) is the "Make Active Ship" button. It moves the character into the new ship
 		// (flagPilot 57) and sends an SCN for session.shipid.
@@ -14157,29 +14224,18 @@ func handleShipSvc(c *evenet.Conn, addr string, cs *server.CallStream, pkt *even
 				return server.SendCallException(c, pkt, accountID, uerr)
 			}
 		}
-		var prevShipID int64
-		{
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			// Read the old shipID first; the SCN carries (old, new).
-			prevShipID, _ = evedb.GetCurrentShipID(ctx, sqldb, charID)
-			_, err := sqldb.ExecContext(ctx,
-				`UPDATE entity SET locationID = ?, flag = 57 WHERE itemID = ?`,
-				newShipID, charID)
-			if err != nil {
-				log.Printf("[%s] shipSvc.Board: update entity: %v", addr, err)
-			}
-			// The vacated capsule is deleted; it is not an asset.
-			if err == nil && ds.shipTypeID == 670 && prevShipID != 0 && prevShipID != newShipID {
-				_ = evedb.DeleteEntity(ctx, sqldb, prevShipID)
-			}
+		// The SCN goes out before the reply (boardDockedShip).
+		prevShipID, err := boardDockedShip(c, addr, accountID, charID, newShipID, sqldb)
+		if err != nil {
+			log.Printf("[%s] shipSvc.Board: %v", addr, err)
 		}
 		log.Printf("[%s] → shipSvc.Board shipID=%d charID=%d prevShipID=%d", addr, newShipID, charID, prevShipID)
-		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
-			return err
+		if err != nil {
+			return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 		}
-		// The SCN updates session.shipid without a relog.
-		return sendShipIDSessionChange(c, addr, prevShipID, newShipID)
+		// The reply waits for godma's re-prime (boardhold.go).
+		holdBoardReply(c, func() { _ = server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}) })
+		return nil
 
 	case "AssembleShip":
 		// AssembleShip([itemID, ...]) sets singleton=1. The client sends one list of itemIDs.
@@ -14348,6 +14404,39 @@ func sendShipIDSessionChange(c *evenet.Conn, addr string, oldShipID, newShipID i
 	}
 	log.Printf("[%s] → SessionChangeNotification (shipid %d→%d)", addr, oldShipID, newShipID)
 	return c.SendPacket(b)
+}
+
+// boardDockedShip moves the pilot into newShipID (flagPilot 57), deletes the
+// capsule they leave and sends the shipid SCN. Call it before the Board reply:
+// the hangar fits turrets from session.shipid as soon as Board returns
+// (station base.py FitHardpoints), so a reply ahead of the SCN draws the old
+// ship's guns on the new hull. On a failed move no SCN is sent.
+//
+// A capsule is the active ship or nothing, never a hangar item. Every capsule
+// the pilot owns and is not aboard goes (the one just vacated, and any left
+// by an earlier path), and the client is told: its hangar listing still holds
+// the vacated capsule, which would otherwise stay on show as an item.
+func boardDockedShip(c *evenet.Conn, addr string, accountID, charID, newShipID int64, sqldb *sql.DB) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	prevShipID, _ := evedb.GetCurrentShipID(ctx, sqldb, charID)
+	if _, err := sqldb.ExecContext(ctx,
+		`UPDATE entity SET locationID = ?, flag = 57 WHERE itemID = ?`,
+		newShipID, charID); err != nil {
+		return prevShipID, fmt.Errorf("update entity: %w", err)
+	}
+	gone, err := evedb.DeleteSpareCapsules(ctx, sqldb, charID)
+	if err != nil {
+		log.Printf("[%s] Board: DeleteSpareCapsules charID=%d: %v", addr, charID, err)
+	}
+	scnErr := sendShipIDSessionChange(c, addr, prevShipID, newShipID)
+	// After the SCN, so the client has already left the capsule when it hears it is gone.
+	if c != nil {
+		for _, er := range gone {
+			_ = server.SendNotification(c, accountID, "OnItemChange", "charid", itemDeletedNotifArgs(er))
+		}
+	}
+	return prevShipID, scnErr
 }
 
 // sendUndockSessionChange sends an SCN that moves the client from docked to in space: stationid,
@@ -19015,18 +19104,6 @@ func boardSkillError(ctx context.Context, sqldb *sql.DB, charID, shipID int64) m
 	})
 }
 
-// inlineBoardAllowed is boardRefusal for the inline Board's execution step,
-// which runs after the bind's answer has gone and so cannot raise.
-func inlineBoardAllowed(addr string, sqldb *sql.DB, charID, stationID, shipID int64) bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if boardRefusal(ctx, sqldb, charID, stationID, shipID) != nil {
-		log.Printf("[%s] ship.Board(inline): refused at execution shipID=%d charID=%d", addr, shipID, charID)
-		return false
-	}
-	return true
-}
-
 // boardFacts is what boardRefusal reads from the database, split out so the
 // ownership rules can be tested without one.
 type boardFacts struct {
@@ -22426,6 +22503,50 @@ func startMapHistoryPurgeSweep(tickMgr *tick.Manager, sqldb *sql.DB) {
 		if err := evedb.PurgeOldMapHistory(ctx, sqldb, 48); err != nil {
 			log.Printf("[map] history purge: %v", err)
 		}
+		return true
+	})
+}
+
+// orphanCapsuleSweepTicks is how often a running server deletes capsules nobody is aboard
+// (10 minutes at 1s/tick). Boot does the same with no age limit.
+const orphanCapsuleSweepTicks = 600
+
+// startOrphanCapsuleSweep deletes capsules no character is aboard while the server runs, not
+// only at boot. The core's own paths delete the capsule a pilot leaves (boardDockedShip,
+// MoveCharacterIntoShip), but a module that moves its pilots with its own SQL (rolebots
+// boarding hulls, respawning) can leave pods behind, and each one shows in a station hangar.
+// Only capsules that already existed at the previous sweep are taken: one created a moment
+// ago may be about to receive its pilot. The DB work runs off the tick lane.
+func startOrphanCapsuleSweep(tickMgr *tick.Manager, sqldb *sql.DB) {
+	if sqldb == nil {
+		return
+	}
+	var running atomic.Bool
+	var highWater int64 // entity MAX(itemID) at the previous sweep; 0 until the first
+	tickMgr.RegisterPeriodic("orphan-capsule-sweep", orphanCapsuleSweepTicks, func(uint64) bool {
+		if !running.CompareAndSwap(false, true) {
+			return true
+		}
+		go func() {
+			defer running.Store(false)
+			defer safego.Recover("orphanCapsuleSweep")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			next, err := evedb.MaxEntityItemID(ctx, sqldb)
+			if err != nil {
+				log.Printf("[capsule] orphan sweep: %v", err)
+				return
+			}
+			if highWater > 0 {
+				if n, err := evedb.CleanOrphanCapsulesUpTo(ctx, sqldb, highWater); err != nil {
+					log.Printf("[capsule] orphan sweep: %v", err)
+					return
+				} else if n > 0 {
+					log.Printf("[capsule] orphan sweep: deleted %d capsule(s) no pilot is aboard", n)
+				}
+			}
+			highWater = next
+		}()
 		return true
 	})
 }
