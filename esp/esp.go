@@ -376,8 +376,10 @@ func New(listenAddr string, db *sql.DB, sessions *SessionRegistry, startTime tim
 		}
 	}
 
-	// Validate model directories; keep only ones that exist.
-	var validModelDirs []string
+	// Validate model directories; keep only ones that exist. Non-nil so the
+	// models status API encodes "roots" as [] rather than null — the editor
+	// calls roots.join() and blanks out on null (e.g. Docker, no modelsDirs).
+	validModelDirs := []string{}
 	for _, d := range modelsDirs {
 		if d == "" {
 			continue
