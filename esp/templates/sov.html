@@ -172,7 +172,7 @@ document.querySelectorAll('.sov-region-form').forEach(f => {
     if (ids.length === 0) {
       title.textContent = 'Set Sov for ALL Regions';
       btn.textContent = 'Apply to All Regions';
-      status.innerHTML = 'No regions tagged — this repaints <strong>every</strong> region in the universe.';
+      status.innerHTML = 'No regions tagged. This changes <strong>every</strong> region.';
       return;
     }
     title.textContent = 'Set Sov for ' + ids.length + ' Tagged Region' + (ids.length > 1 ? 's' : '');

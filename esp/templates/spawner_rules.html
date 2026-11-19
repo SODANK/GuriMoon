@@ -30,7 +30,7 @@
 {{if .Result}}<div class="alert alert-success" style="margin-top:10px">{{.Result}}</div>{{end}}
 
 {{range .Gaps}}
-<div class="alert alert-error">⚠ No rule covers security {{.}} — belts in those systems spawn nothing.</div>
+<div class="alert alert-error">⚠ No rule covers security {{.}}. Belts there spawn nothing.</div>
 {{end}}
 
 {{if .Rules}}
@@ -80,7 +80,7 @@
 </div>
 <p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:900px">Safest to deadliest. Bounds are inclusive and the higher band wins at an overlap. Keep ranges touching so every security level is covered.</p>
 {{else}}
-<div class="card"><p style="color:#f87171">No spawner rules — no belt anywhere will spawn anything.</p></div>
+<div class="card"><p style="color:#f87171">No spawner rules. No belt will spawn anything.</p></div>
 {{end}}
 
 <div class="card" style="max-width:900px;margin-top:16px">
@@ -134,7 +134,7 @@
 </div>
 
 {{range .TierGaps}}
-<div class="alert alert-error">⚠ No squad tier covers security {{.}} — belts there fall back to a neutral tier. They still spawn, but with no difficulty variance, no commanders and no officers.</div>
+<div class="alert alert-error">⚠ No squad tier covers security {{.}}. Belts there use a neutral tier: no variance, commanders or officers.</div>
 {{end}}
 
 {{if .Tiers}}
@@ -180,7 +180,7 @@
 </div>
 <p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:1180px">Rows with the same band share one draw. Weight 0 switches a tier off.</p>
 {{else}}
-<div class="card"><p style="color:#f87171">No squad tiers — every belt falls back to a neutral tier: ordinary waves, no commanders, no officers.</p></div>
+<div class="card"><p style="color:#f87171">No squad tiers. Every belt uses a neutral tier: no commanders or officers.</p></div>
 {{end}}
 
 <div class="card" style="max-width:1180px;margin-top:16px">

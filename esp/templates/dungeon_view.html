@@ -146,7 +146,7 @@
     Faction: <select name="factionID" style="padding:2px 4px;font-size:12px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
       {{range $.AllFactions}}<option value="{{.FactionID}}"{{if eq .FactionID $.Dungeon.FactionID}} selected{{end}}>{{.FactionName}}</option>{{end}}
     </select> |
-    <span title="Shown on the star map's DED Deadspace Report beside the site name; the system is coloured by its highest rating (10 red, 1 green).">DED:</span>
+    <span title="Shown in the star map's DED Deadspace Report. 10 is red, 1 is green.">DED:</span>
     <select name="dedLevel" style="padding:2px 4px;font-size:12px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
       <option value="0"{{if eq .Dungeon.DEDLevel 0}} selected{{end}}>unrated</option>
       {{range $i := .DEDLevels}}<option value="{{$i}}"{{if eq $.Dungeon.DEDLevel $i}} selected{{end}}>{{$i}}/10</option>{{end}}
@@ -155,7 +155,7 @@
     Status: <span>{{.Dungeon.Status}}</span>
     <button type="submit" class="btn-sm">Save</button>
   </form>
-  | <span style="color:#4b5563">Layout (positions, drag &amp; drop) lives in the 3D editor — this page is for logic: triggers, ball AI, names, waves, loot, leashes, gates, beacons.</span>
+  | <span style="color:#4b5563">Positions and layout are edited in the 3D editor.</span>
 </div>
 
 <!-- Room tabs -->
@@ -190,7 +190,7 @@
       <input type="hidden" name="action" value="roomphenomena">
       <input type="hidden" name="roomID" value="{{$room.RoomID}}">
       <label style="font-size:12px;color:#a78bfa;display:flex;align-items:center;gap:4px;cursor:pointer"
-             title="Deadspace: while this room is loaded, warp drives do not work inside the pocket. Players get &quot;natural phenomena are disrupting the warp&quot; and must fly sublight or use an acceleration gate. Warping clear of the site still works. On by default.">
+             title="Warp drives do not work inside this room. Players must fly sublight or use an acceleration gate. Warping out of the site still works. On by default.">
         <input type="checkbox" name="naturalPhenomena" value="1"{{if $room.NaturalPhenomena}} checked{{end}}>
         Natural phenomena
       </label>
@@ -384,10 +384,10 @@
               <label>Pitch<input type="number" name="pitch" step="any" value="{{printf "%.2f" $obj.Pitch}}"></label>
               <label>Roll<input type="number" name="roll" step="any" value="{{printf "%.2f" $obj.Roll}}"></label>
               <label>Radius<input type="number" name="radius" step="any" value="{{printf "%.1f" $obj.Radius}}"></label>
-              <label title="Name broadcast to the client for this ball. Blank = the item type's name.">Ball name<input type="text" name="ballName" value="{{$obj.BallName}}" style="width:160px"></label>
-              <label title="Multiplies this ball's shield, armour and structure HP at spawn. 1 = the type's own HP. Resists are unchanged.">HP &times;<input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" $obj.HPScale}}" style="width:56px"></label>
-              <label title="0 = spawns with the room. N = held until a spawnWave trigger for wave N fires.">Wave<input type="number" name="spawnWave" min="0" value="{{$obj.SpawnWave}}" style="width:52px"></label>
-              <label title="Solid balls are a collision sphere of the ball's Radius: ships bounce off them, and a warp through one drops out at its surface. Clouds, beacons and force fields default to flown-through.">Collision<select name="solid">
+              <label title="Name the client shows for this ball. Blank = the item type's name.">Ball name<input type="text" name="ballName" value="{{$obj.BallName}}" style="width:160px"></label>
+              <label title="Multiplies shield, armour and structure HP. 1 = the type's own HP.">HP &times;<input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" $obj.HPScale}}" style="width:56px"></label>
+              <label title="0 = spawns with the room. N = held until a spawnWave trigger for wave N.">Wave<input type="number" name="spawnWave" min="0" value="{{$obj.SpawnWave}}" style="width:52px"></label>
+              <label title="Solid balls are a collision sphere: ships bounce off and warps stop at the surface. Clouds, beacons and force fields default to flown-through.">Collision<select name="solid">
                 <option value=""{{if not $obj.SolidAuthored}} selected{{end}}>Type default ({{if $obj.SolidDefault}}solid{{else}}none{{end}})</option>
                 <option value="1"{{if and $obj.SolidAuthored $obj.Solid}} selected{{end}}>Solid</option>
                 <option value="0"{{if and $obj.SolidAuthored (not $obj.Solid)}} selected{{end}}>Fly through</option>
@@ -469,14 +469,14 @@
         <tr class="npc-setup-row" data-oid="{{.ObjectID}}" data-faction="{{.NPCFactionID}}" data-leash="{{.LeashObjectID}}">
           <td>{{.ObjectID}}</td>
           <td style="color:#c5c8d0">{{.TypeName}}</td>
-          <td><input type="text" name="ballName" value="{{.BallName}}" placeholder="(type name)" style="width:150px;padding:2px 4px;font-size:11px"{{if eq .CategoryID 6}} title="Category 6 hull — the client ignores custom names on these"{{end}}></td>
-          <td><input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" .HPScale}}" style="width:52px;padding:2px 4px;font-size:11px{{if ne .HPScale 1.0}};color:#fdc593{{end}}" title="Multiplies this ball's shield, armour and structure HP at spawn. 1 = the type's own HP. Resists are unchanged."></td>
+          <td><input type="text" name="ballName" value="{{.BallName}}" placeholder="(type name)" style="width:150px;padding:2px 4px;font-size:11px"{{if eq .CategoryID 6}} title="Category 6 hull. The client ignores custom names on these."{{end}}></td>
+          <td><input type="number" name="hpScale" min="0.01" step="any" value="{{printf "%g" .HPScale}}" style="width:52px;padding:2px 4px;font-size:11px{{if ne .HPScale 1.0}};color:#fdc593{{end}}" title="Multiplies shield, armour and structure HP. 1 = the type's own HP."></td>
           <td><input type="number" name="spawnWave" min="0" value="{{.SpawnWave}}" style="width:48px;padding:2px 4px;font-size:11px" title="0 = spawns with the room"></td>
           <td><select class="npc-faction-sel" data-oid="{{.ObjectID}}" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px">
             <option value="0" title="NPCs inherit the dungeon faction; structures get none">(default)</option>
             {{range $.AllFactions}}<option value="{{.FactionID}}">{{.FactionName}}</option>{{end}}
           </select></td>
-          <td><select class="npc-stance-sel" data-oid="{{.ObjectID}}" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="aggressive: engages any hostile it sees. defensive: only fights back. passive: never engages, even when shot. What the ball can DO (move, shoot, run its EWAR) comes from its type.">
+          <td><select class="npc-stance-sel" data-oid="{{.ObjectID}}" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="aggressive: engages any hostile. defensive: only fights back. passive: never engages. What the ball can do comes from its type.">
             {{range $.Stances}}<option value="{{.}}">{{.}}</option>{{end}}
           </select></td>
           <td><input type="number" name="aggressionRange" value="{{printf "%.0f" .AggressionRange}}" step="any" style="width:70px;padding:2px 4px;font-size:11px"></td>
@@ -490,14 +490,14 @@
           <td><input type="number" name="orbitDistance" value="{{if .OrbitDistance}}{{printf "%.0f" .OrbitDistance}}{{else}}0{{end}}" step="any" placeholder="5000" style="width:70px;padding:2px 4px;font-size:11px" title="0 = default 5000 m"></td>
           <td style="text-align:center">
             {{if isStructureGroup .GroupID}}
-              <input type="checkbox" name="invulnerable"{{if .Invulnerable}} checked{{end}} title="Structure takes no damage and can never be destroyed. It still locks and still draws fire.">
+              <input type="checkbox" name="invulnerable"{{if .Invulnerable}} checked{{end}} title="Takes no damage and is never destroyed. Still locks and draws fire.">
             {{else}}
               <span style="color:#6b7280" title="Only structures can be made invulnerable">&mdash;</span>
             {{end}}
           </td>
           <td>
             {{if isStructureGroup .GroupID}}
-              <select name="solid" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="Solid: ships bounce off a sphere of this ball's radius. Moving balls (rats) always collide; this only matters for structures.">
+              <select name="solid" style="padding:2px 4px;font-size:11px;background:var(--win-hover);color:#e2e8f0;border:1px solid #374151;border-radius:3px" title="Ships bounce off a sphere of this ball's radius. Rats always collide, so this only matters for structures.">
                 <option value=""{{if not .SolidAuthored}} selected{{end}}>default ({{if .SolidDefault}}on{{else}}off{{end}})</option>
                 <option value="1"{{if and .SolidAuthored .Solid}} selected{{end}}>on</option>
                 <option value="0"{{if and .SolidAuthored (not .Solid)}} selected{{end}}>off</option>
@@ -548,7 +548,7 @@
       <div class="loot-ball" data-oid="{{.ObjectID}}" data-label="#{{.ObjectID}} {{if .BallName}}{{.BallName}}{{else}}{{.TypeName}}{{end}}" style="display:none;margin:6px 0;padding:6px 8px;border:1px solid #2a3a30;border-radius:4px;background:#0c140f">
         <div style="font-size:12px;color:#c5c8d0;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
           <span>#{{.ObjectID}} {{if .BallName}}<span style="color:#fdc593">{{.BallName}}</span> <span style="color:#6b7280">({{.TypeName}})</span>{{else}}{{.TypeName}}{{end}}
-          {{if isStructureGroup .GroupID}} <span style="color:#9ca3af;font-size:10px">[structure]</span>{{if .Invulnerable}} <span style="color:#f87171;font-size:10px" title="An invulnerable structure is never destroyed, so these drops never land. Untick Invulnerable in Ball Setup.">[invulnerable &mdash; never drops]</span>{{end}}{{end}}</span>
+          {{if isStructureGroup .GroupID}} <span style="color:#9ca3af;font-size:10px">[structure]</span>{{if .Invulnerable}} <span style="color:#f87171;font-size:10px" title="Invulnerable structures are never destroyed, so these drops never land. Untick Invulnerable in Ball Setup.">[invulnerable &mdash; never drops]</span>{{end}}{{end}}</span>
           <span style="margin-left:auto;white-space:nowrap">
             <button type="button" class="btn-sm" onclick="copyBallLoot(this)" title="Copy this ball's drop list and Items dropped range">Copy</button>
             <button type="button" class="btn-sm" onclick="pasteBallLoot(this)" title="Replace this ball's drops with the copied list. Works across rooms and dungeons.">Paste</button>
@@ -558,7 +558,7 @@
           <tr><th>Item</th><th>TypeID</th><th>Min</th><th>Max</th><th>Chance</th><th></th></tr>
           {{range .Loot}}
           <tr data-lootid="{{.LootID}}" data-typeid="{{.ItemTypeID}}">
-            <td style="color:#c5c8d0">{{.ItemName}}{{if .IsBlueprint}} <span style="color:#fdc593;font-size:10px" title="Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint's max runs">[BPC]</span>{{end}}</td>
+            <td style="color:#c5c8d0">{{.ItemName}}{{if .IsBlueprint}} <span style="color:#fdc593;font-size:10px" title="Drops as one blueprint copy. Min/Max are its runs, capped at the blueprint's max.">[BPC]</span>{{end}}</td>
             <td>{{.ItemTypeID}}</td>
             <td>{{.MinQty}}{{if .IsBlueprint}} runs{{end}}</td>
             <td>{{.MaxQty}}{{if .IsBlueprint}} runs{{end}}</td>
@@ -580,7 +580,7 @@
           <button type="button" class="btn-sm" onclick="addBallLoot(this)">+ Add Drop</button>
         </div>
         <div class="add-obj-bar loot-range" style="padding:4px 0 0">
-          <span style="font-size:12px;color:#9ca3af" title="How many different entries of this list drop per kill. Blank = no bound.">Items dropped</span>
+          <span style="font-size:12px;color:#9ca3af" title="How many different entries drop per kill. Blank = no limit.">Items dropped</span>
           <input type="number" class="loot-min-drops" min="0" placeholder="any" value="{{if gt .LootMinDrops 0}}{{.LootMinDrops}}{{end}}" style="width:58px" title="Fewest different items per kill (blank = no floor)">
           <span style="color:#6b7280">to</span>
           <input type="number" class="loot-max-drops" min="0" placeholder="any" value="{{if gt .LootMaxDrops 0}}{{.LootMaxDrops}}{{end}}" style="width:58px" title="Most different items per kill (blank = no cap)">

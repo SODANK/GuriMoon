@@ -1848,6 +1848,9 @@ type KillHit struct {
 	IsNPC        bool
 	FinalBlow    bool
 	Time         int64 // unix seconds of this attacker's most recent hit
+	// EntityID is the attacker's ball, when the hit came from one (RecordKillHit). 0 for the
+	// paths that record only an owner (drones, mines): resolve those by type and character.
+	EntityID uint32
 }
 
 // RecordKillHit stores/updates the attacker's kill-report snapshot on this
@@ -1869,6 +1872,7 @@ func (e *Entity) RecordKillHit(attacker *Entity, weaponTypeID int64, damage floa
 		Damage:       damage,
 		IsNPC:        !attacker.IsPlayer,
 		FinalBlow:    finalBlow,
+		EntityID:     attacker.ID,
 	})
 	ObserveCombat(nil, e, attacker, damage, finalBlow)
 }
@@ -1908,6 +1912,9 @@ func (e *Entity) RecordKillHitRaw(key int64, hit KillHit) {
 		}
 		if hit.WeaponTypeID == 0 {
 			hit.WeaponTypeID = prev.WeaponTypeID
+		}
+		if hit.EntityID == 0 {
+			hit.EntityID = prev.EntityID
 		}
 	}
 	if hit.Time == 0 {
