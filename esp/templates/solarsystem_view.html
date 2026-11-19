@@ -35,9 +35,7 @@
   <div class="card">
     <h3>Seed a New Celestial</h3>
     <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-      Inserts a row into <code>mapDenormalize</code>. The object becomes a real, warpable celestial
-      the next time the system loads. Seeded belts get asteroids; a <strong>Dungeon Entrance</strong>
-      is a beacon that spawns its linked dungeon room when a player warps to it.
+      Adds a warpable object to this system. Belts get asteroids. A <strong>Dungeon Entrance</strong> opens its dungeon when a player warps in.
     </p>
     <form method="POST" action="/solarsystem/{{.Info.SolarSystemID}}">
       <input type="hidden" name="action" value="addCelestial">
@@ -108,10 +106,10 @@
             <input type="text" name="roomIdx" value="1" style="width:80px">
           </div>
         </div>
-        {{if not .Dungeons}}<p style="color:#fbbf24;font-size:12px">No dungeons authored yet — create one in the Dungeon Editor first.</p>{{end}}
+        {{if not .Dungeons}}<p style="color:#fbbf24;font-size:12px">No dungeons yet. Create one in the Dungeon Editor first.</p>{{end}}
       </div>
       <button type="submit">Seed Celestial</button>
-      {{if .Players}}<span style="color:#fbbf24;font-size:12px;margin-left:8px">System is loaded ({{len .Players}} inside) — appears after reload.</span>{{end}}
+      {{if .Players}}<span style="color:#fbbf24;font-size:12px;margin-left:8px">System is loaded ({{len .Players}} inside). Appears after reload.</span>{{end}}
     </form>
   </div>
 
@@ -286,7 +284,7 @@ const GROUP_SIZE  = {6:13,7:7,8:3.5,9:3,10:5,15:5,310:4.5};
 // Confirm deletes.
 document.querySelectorAll('.del-cel').forEach(f => {
   f.addEventListener('submit', e => {
-    if (!confirm('Delete custom celestial "' + f.dataset.name + '"? This removes it from the map data.')) e.preventDefault();
+    if (!confirm('Delete custom celestial "' + f.dataset.name + '"?')) e.preventDefault();
   });
 });
 </script>

@@ -21,9 +21,7 @@
   {{$c.CorporationName}} &lt;{{$c.TickerName}}&gt;
 </h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  Corporation {{$c.CorporationID}}{{if $c.IsNPC}} &mdash; NPC corporation, static content{{end}}.
-  A logo is not an image: it is three shape IDs and three colour IDs the client composites
-  itself (<code>uix.GetCorpLogo</code>). Nothing here can hand the client a picture.
+  Corporation {{$c.CorporationID}}{{if $c.IsNPC}}. NPC corporation, static content{{end}}.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
@@ -80,11 +78,8 @@
 <div class="card">
   <h3>Logo</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Three layers, each a shape and a colour from the client's paintshop library. The client
-    only draws a layer whose shape ID is set, and reads the colour's diffuse out of its own
-    asset &mdash; so a colour with no diffuse (Thin Black) leaves the layer unpainted.
-    {{if not .HasArt}}<br><b>No client art found.</b> Set <code>esp.clientPath</code> to a client
-    install to see the shapes; the IDs below still save correctly without it.{{end}}
+    Three layers, each a shape and a colour. A layer with no shape is not drawn, and a colour with no diffuse (Thin Black) leaves it unpainted.
+    {{if not .HasArt}}<br><b>No client art found.</b> Set <code>esp.clientPath</code> to a client install to see the shapes.{{end}}
   </p>
   <form method="POST" action="{{.Self}}">
     <input type="hidden" name="action" value="logo">
@@ -144,8 +139,7 @@
     {{if $c.AllianceID}}<a href="/alliance/{{$c.AllianceID}}" style="margin-left:8px">open alliance</a>{{end}}
   </form>
   <p style="font-size:11px;color:#6b7280;margin-top:8px">
-    The client carries allianceid in its session, so a member who is already logged in keeps the
-    old value until relog.
+    Online members keep the old alliance until they relog.
   </p>
 </div>
 
@@ -153,11 +147,8 @@
 <div class="card">
   <h3>Shares ({{.Issued}} issued)</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    A shareholder is any owner, pilot or corporation. The corporation's own treasury is a real
-    holding &mdash; it is what the corp wallet's Shares tab lists and what management gives out
-    from. A ballot weighs the voter's shares plus every holding of a corporation they are CEO
-    of, so <b>the CEO votes the treasury</b>{{if $c.CEOID}} (currently {{.CEOWeight}} shares
-    behind the CEO's vote){{end}}. Open votes are re-weighed on every change; closed ones never.
+    Holders can be pilots or corporations. The treasury is the corporation's own holding.
+    <b>The CEO votes the treasury</b>{{if $c.CEOID}} ({{.CEOWeight}} shares behind the CEO's vote){{end}}.
   </p>
   {{if .Holders}}
   <table>
@@ -212,28 +203,24 @@
 <div class="card">
   <h3>Delete corporation</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    NPC corporation &mdash; static content. Agents, stations, standings and the NPC market all
-    hang off it, so it cannot be deleted.
+    NPC corporations cannot be deleted.
   </p>
 </div>
 {{else if $c.Deleted}}
 <div class="card">
   <h3>Delete corporation</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Already closed. The row is kept so employment history and killmails still resolve the name.
+    Already closed.
   </p>
 </div>
 {{else}}
 <div class="card" style="border-left:3px solid var(--accent)">
   <h3>Delete corporation</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Moves every pilot back to their previous NPC corp (members online now get the session change
-    immediately), leaves the alliance, finishes its wars, writes off its unpaid bills, and drops
-    its offices, applications, shares, titles, votes, sovereignty claims and chat channel.
-    The corporation row and its name are kept and marked closed, so employment history and
-    killmails still resolve &mdash; the same state the in-game close leaves behind.
+    Returns every pilot to their previous NPC corp, leaves the alliance, ends wars, and removes offices, shares, titles and sovereignty claims.
+    The corporation is kept and marked closed.
     {{if $c.Balance}}The {{formatISK $c.Balance}} in its wallet is forfeited.{{end}}
-    Starbases must be removed first; the delete refuses while any exist.
+    Remove its starbases first.
   </p>
   <form class="inline-form" method="POST" action="{{.Self}}">
     <input type="hidden" name="action" value="delete">

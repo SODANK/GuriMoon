@@ -210,44 +210,30 @@
       <details class="trig-help">
         <summary>Reference — events, actions, body formatting</summary>
         <p class="trig-hint">
-          <b>Events:</b> <code>roomEnter</code> fires when the player warps into / loads this room ·
-          <code>npcDamaged</code> when the player first shoots a ball ·
-          <code>npcKilled</code> on ball death · <code>roomCleared</code> when the last hostile ball dies ·
-          <code>gateActivated</code> when an acceleration gate in this room is used ·
-          <code>itemPlaced</code> when a pilot drags an item from their cargo hold into a container ball.
-          Name the ball and the item, and a quantity if it takes more than one: the count is what the container
-          holds, so several drops add up. A container takes items only while an <code>itemPlaced</code> trigger
-          listens to it, and the pilot can take them back out.
-          (The event names are the stored wire values — everything in space is a ball.)
-          <b>Actions:</b> <code>transmission</code> = the TRANSMISSIONS popup window ·
-          <code>localChat</code> = a narrator line in Local (body text only, no sender) · <code>popup</code> = plain message box ·
-          <code>spawnWave</code> = spawn this room's balls assigned to that wave group (set <b>Wave</b> per ball
-          below or in the 3D editor; wave balls stay hidden until their wave spawns) ·
-          <code>completeDungeon</code> = finish the site: a mission's objective is met, an open site starts its
-          clear countdown. Rats still alive stay. A kill-item mission still wants its item delivered ·
-          <code>music</code> = crossfade the pilot's music to a track, the same switch a gate's <code>dunMusicUrl</code> makes.
-          With <code>roomEnter</code> it plays as the ship lands; when the track ends the normal playlist resumes.
-          A pilot who has stopped or paused their music hears nothing.
-          Chain waves with several once-only <code>roomCleared → spawnWave</code> triggers: each clear releases
-          the next unfired wave in order.
-          One event can run several actions: add a trigger per action, for example an <code>itemPlaced</code>
-          that spawns a wave and a second one on the same ball and item that speaks a <code>localChat</code> line.
+          <b>Events:</b> <code>roomEnter</code> player warps into the room ·
+          <code>npcDamaged</code> player first shoots a ball ·
+          <code>npcKilled</code> a ball dies · <code>roomCleared</code> last hostile ball dies ·
+          <code>gateActivated</code> an acceleration gate in the room is used ·
+          <code>itemPlaced</code> a pilot drops an item from cargo into a container ball. Name the ball, the item and the quantity.
+          A container takes items only while an <code>itemPlaced</code> trigger listens to it.
+          <b>Actions:</b> <code>transmission</code> TRANSMISSIONS popup ·
+          <code>localChat</code> narrator line in Local ·
+          <code>popup</code> plain message box ·
+          <code>spawnWave</code> spawn this room's balls in that wave group (set <b>Wave</b> per ball below or in the 3D editor) ·
+          <code>completeDungeon</code> finish the site: a mission objective is met, or an open site starts its clear countdown. Rats still alive stay, and a kill-item mission still wants its item ·
+          <code>music</code> switch the pilot's music track. With <code>roomEnter</code> it plays on landing.
+          To chain waves, add several <code>roomCleared → spawnWave</code> triggers. Each clear releases the next wave.
+          To run several actions on one event, add one trigger per action.
         </p>
         <p class="trig-hint">
-          Transmission <b>Icon</b> = an <code>eveGraphics</code> graphicID (its icon string is used; corp-logo sheet icons show corp logos).
-          Transmission body is HTML — embed client images inline: <code>&lt;img src=corplogo:1000125 width=64 height=64&gt;</code>,
+          Transmission <b>Icon</b> is a graphic ID. The body is HTML and can embed images:
+          <code>&lt;img src=corplogo:1000125 width=64 height=64&gt;</code>,
           <code>typeicon:587</code>, <code>portrait:&lt;charID&gt;</code>, <code>icon:38_14</code>.
-          <b>Defer</b> holds the popup until the player drops out of warp (client-side <code>[d]</code> header prefix).
+          <b>Defer</b> holds the popup until the pilot drops out of warp.
         </p>
         <p class="trig-hint">
-          Local chat body is plain text and is always sent as a <b>narrator line</b>: the client prints the body
-          only, with no <i>Sender &gt;</i> prefix (<i>The mercenary squad leader has arrived to face you!</i>).
-          Write the speaker into the text if you want one (<i>EoM Priest: Purge the unbelievers!</i>).
-          Narrator lines are tinted cyan by the client unless a colour is set.
-          Start the body with <code>/emote </code> to opt out and get a roleplay line instead
-          (<i>* Name does something</i>), which does show the speaker name.
-          The portrait square left of each line is a chat-window setting, not something the server sends —
-          click the top <b>compact</b> mode button on the chat window to drop the picture column.
+          Local chat body is plain text, shown as a narrator line with no sender. Write the speaker into the text if you want one.
+          Start the body with <code>/emote </code> for a roleplay line that shows the speaker name.
         </p>
       </details>
 
@@ -469,23 +455,12 @@
     <details open>
       <summary style="cursor:pointer;color:#a78bfa;font-size:12px;user-select:none">Ball Setup — name, wave, AI, faction, leash</summary>
       <p class="trig-hint">
-        <b>Name</b> is what the client shows in brackets, the overview and Show Info for this ball — the type
-        is only the template, so a spawned Serpentis Scout can broadcast as <i>Kruul's Bodyguard</i>. Blank = the
-        type's own name. Category 6 (player-hull Ships) is the one exception: the client always renders those
-        by type name, so custom names on hull-category balls are ignored — use a category 11 Entity type.
-        <b>Wave</b> 0 spawns the ball with the room; 1+ holds it back until a <code>spawnWave</code> trigger
-        for that number fires.
-        <b>Leash</b> anchors the ball to another ball in this room: with no target it flies a circle around
-        that ball at <b>Orbit</b> metres instead of sitting still. Great for patrols around a structure.
-        <b>Invuln</b> only applies to structures (Large Collidable Objects and Structures, spawn containers,
-        sentry guns). Those are lockable and destructible by default; tick Invuln to nail one down as
-        permanent scenery — it still locks and still eats fire, it just never loses HP. Structures never
-        count toward a <i>killAll</i> objective either way, but one can still be named as a mission's
-        target type.
-        <b>Solid</b> makes a structure a collision sphere of its radius: ships bounce off it, and a warp
-        line through it drops out of warp at its surface. On by default for everything except clouds,
-        beacons and force fields. Rats always collide; scenery that is not a structure is set from its
-        row in the objects table (or the 3D editor).
+        <b>Name</b> is what the client shows for this ball. Blank uses the type's name. Category 6 (player-hull ships) ignore custom names, so use a category 11 Entity type.
+        <b>Wave</b> 0 spawns with the room. 1+ waits for a <code>spawnWave</code> trigger for that number.
+        <b>Leash</b> ties the ball to another ball in this room. With no target it circles that ball at <b>Orbit</b> metres.
+        <b>Invuln</b> applies to structures only. They still lock and draw fire but never lose HP, and never count toward a <i>killAll</i> objective.
+        <b>Solid</b> makes a structure a collision sphere: ships bounce off it and warps through it stop at its surface.
+        On by default except for clouds, beacons and force fields. Rats always collide.
       </p>
       <table class="obj-table" style="margin-top:4px">
         <tr><th>#</th><th>Type</th><th>Name</th><th>HP &times;</th><th>Wave</th><th>Faction</th><th>Stance</th><th>Aggr</th><th>Leash to</th><th>Orbit m</th><th>Invuln</th><th>Solid</th><th></th></tr>
@@ -557,25 +532,15 @@
       <details class="trig-help">
       <summary>Reference — how drops work</summary>
       <p class="trig-hint">
-        Drops authored here belong to <b>this ball in this dungeon</b>, not to its item type — kill that ball, get
-        that item. They roll on their own <b>Chance</b> (100% = guaranteed), skip the normal haul gate and the
-        max-drops cap, and land in the same wreck can as the type/group loot tables. Use it for mission
-        objective items and scripted flavour drops. Qty rolls between <b>Min</b> and <b>Max</b>.
-        A <b>blueprint</b> always drops as one <b>copy</b> (ME 0 / PE 0), never an original: Min/Max are its
-        <b>runs</b>, capped at the blueprint's own max runs.
-        Destructible structures (containers, Overseer's structures, LCOs, sentries) are listed too and drop
-        theirs where they die. An <b>invulnerable</b> structure never dies, so its list never drops.
+        Drops here belong to <b>this ball in this dungeon</b>, not its item type. Each rolls its own <b>Chance</b> (100% = guaranteed)
+        and a quantity between <b>Min</b> and <b>Max</b>. A <b>blueprint</b> drops as one copy (ME 0 / PE 0) and Min/Max are its runs.
+        Invulnerable structures never die, so their drops never land.
       </p>
       <p class="trig-hint">
-        <b>Items dropped</b> bounds how many <i>different</i> entries of a ball's list land per kill (blank = no bound).
-        Each entry still rolls its own Chance first. Short of the minimum, entries that missed are added, picked by
-        their Chance; over the maximum, extras are cut at random and 100% entries are kept first. A minimum above
-        the number of entries just means every entry drops.
+        <b>Items dropped</b> limits how many different entries drop per kill. Blank means no limit.
       </p>
       <p class="trig-hint">
-        <b>Copy</b> and <b>Paste</b> move a whole list, Items dropped range included, to another ball in any room or
-        dungeon. Paste replaces what the target had. The copy points at the source ball, so edits made to it before
-        you paste carry over.
+        <b>Copy</b> and <b>Paste</b> move a whole list to another ball in any room or dungeon. Paste replaces the target's list.
       </p>
       </details>
       {{range $room.Objects}}
@@ -632,7 +597,7 @@
   <div class="gate-setup-wrap" data-room="{{$ri}}" style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
     <details>
       <summary style="cursor:pointer;color:#facc15;font-size:12px;user-select:none">Gate Setup</summary>
-      <p style="color:#6b7280;font-size:11px;margin:4px 0">Track plays for the activating pilot (<code>dunMusicUrl</code>). Combat tracks ship in <code>resDungeons.stuff</code>, the rest in <code>resMusic.stuff</code>. Gates aim at and land players on the next room's Beacon automatically. Use a <b>gateActivated</b> trigger above for departure messages. To switch music on landing instead, add a <b>Player enters room</b> trigger with <b>Switch music track</b>.</p>
+      <p style="color:#6b7280;font-size:11px;margin:4px 0">The track plays for the pilot who activates the gate. Gates land players on the next room's Beacon. For departure messages use a <b>gateActivated</b> trigger. To switch music on landing instead, use a <b>Player enters room</b> trigger with <b>Switch music track</b>.</p>
       <table class="obj-table" style="margin-top:4px">
         <tr><th>#</th><th>Type</th><th>Music Track</th><th></th></tr>
         {{range $room.Objects}}
@@ -662,7 +627,7 @@
   <div class="beacon-setup-wrap" data-room="{{$ri}}" style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px">
     <details>
       <summary style="cursor:pointer;color:var(--accent-hi);font-size:12px;user-select:none">Beacon Setup</summary>
-      <p style="color:#6b7280;font-size:11px;margin:4px 0">Description shows in the client's Show Info window and as the bookmark hint for the beacon (<code>dunDescription</code>). The beacon also marks the room's warp-in point.</p>
+      <p style="color:#6b7280;font-size:11px;margin:4px 0">Description shows in Show Info and as the bookmark hint. The beacon also marks the room's warp-in point.</p>
       <table class="obj-table" style="margin-top:4px">
         <tr><th>#</th><th>Type</th><th>Description</th><th></th></tr>
         {{range $room.Objects}}

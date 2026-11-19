@@ -23,10 +23,9 @@ tr.cov-silent td { background: #2a2413; }
 
 <h2>RPC Coverage</h2>
 <p class="cov-note">
-  Every call the client has made to this server, and what the dispatcher did with it.
-  <strong>unhandled</strong> = no handler, client got an exception.
-  <strong>fallthrough</strong> / <strong>stub</strong> = the server answered <code>None</code> and the
-  client silently rendered nothing — the failure mode playtesting does not catch.
+  Every client call and how the server handled it.
+  <strong>unhandled</strong>: no handler, the client got an exception.
+  <strong>fallthrough</strong> and <strong>stub</strong>: the server returned nothing and the client showed nothing.
 </p>
 
 <div class="cov-tiles">
@@ -68,10 +67,8 @@ tr.cov-silent td { background: #2a2413; }
 <h3>Never called</h3>
 {{if .ExpectedTotal}}
 <p class="cov-note">
-  {{.ExpectedTotal}} calls found by a static scan of the client scripts
-  (scanned {{.ExpectedAt}} UTC); these have never arrived. Each one is a UI surface
-  nobody has exercised yet — this list is the playtest to-do. <em>Sites</em> is how many
-  places in the client can make the call.
+  {{.ExpectedTotal}} calls the client can make (scanned {{.ExpectedAt}} UTC) that the server has never received.
+  <em>Sites</em> is how many places in the client make the call.
 </p>
 <div class="card">
   {{if .Missing}}
@@ -87,17 +84,14 @@ tr.cov-silent td { background: #2a2413; }
 </div>
 {{else}}
 <div class="card">
-  <p>No client scan loaded. This section lists calls the client can make that the server has
-  never seen. It needs <code>{{.ExpectedPath}}</code>, a static scan of the client's own
-  scripts, which this installation does not carry; the live ledger above works without it.</p>
+  <p>No client scan loaded. Needs <code>{{.ExpectedPath}}</code>.</p>
 </div>
 {{end}}
 
 <h3>Client tracebacks</h3>
 <p class="cov-note">
-  Exceptions the client mailed back after a call succeeded — the server answered with the
-  wrong shape. <em>Preceding calls</em> is the last few RPCs on that connection, oldest first;
-  the culprit is usually the last one.
+  Exceptions the client reported after a call succeeded, meaning the server answered with the wrong shape.
+  <em>Preceding calls</em> are the last few calls on that connection, oldest first.
 </p>
 {{if .Traces}}
 {{range .Traces}}

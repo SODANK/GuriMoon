@@ -86,7 +86,7 @@
 {{$v := .Vitals}}
 {{$live := .Sites}}
 {{with .O}}
-<p class="sx-lede">Everything happening on the shard right now and over the last day and week. Figures come from the database every 30 seconds; the vitals strip is read live. A rolebot counts as a player.</p>
+<p class="sx-lede">Shard activity now and over the last 24 hours and 7 days. Rolebots count as players.</p>
 
 {{range .Warnings}}<div class="alert alert-error" style="margin-bottom:14px">Panel unavailable &mdash; {{.}}</div>{{end}}
 
@@ -136,7 +136,7 @@
 <div class="sx-grid">
   <div class="sx-p c6">
     <h3>Economy <span class="hint">ISK created and destroyed</span></h3>
-    <p class="note">Wallet journal, classified by reference type. Transfers between wallets move ISK without creating or destroying it. The journal keeps the newest rows per character, so only these two windows are complete.</p>
+    <p class="note">From the wallet journal. Transfers between wallets are not counted.</p>
     {{if or .Economy.Faucets .Economy.Sinks}}
     <table>
       <tr><th>Line</th><th class="r">24h</th><th class="r">7d</th></tr>
@@ -173,7 +173,6 @@
   <div class="c6 sx-stack">
   <div class="sx-p">
     <h3>Market <span class="hint"><a href="/market/supply">NPC supply</a></span></h3>
-    <p class="note">Live order book and completed trades.</p>
     <table class="kv">
       <tr><td>Active orders</td><td class="r"><b>{{commas .Market.ActiveOrders}}</b></td></tr>
       <tr><td>&nbsp;&nbsp;by pilots</td><td class="r">{{commas .Market.PlayerOrders}}</td></tr>
@@ -202,7 +201,6 @@
 
   <div class="sx-p c4">
     <h3>Industry <span class="hint"><a href="/industry/factories">Science &amp; Industry</a></span></h3>
-    <p class="note">Assembly lines and the jobs on them.</p>
     <div class="sx-meter" title="{{commas .Industry.Stats.BusyLines}} of {{commas .Industry.Stats.Lines}} lines busy"><div style="width:{{printf "%.3f" .Industry.LinesPct}}%"></div></div>
     <table class="kv">
       <tr><td>Lines in use</td><td class="r"><b>{{commas .Industry.Stats.BusyLines}}</b> / {{commas .Industry.Stats.Lines}} &middot; {{printf "%.1f" .Industry.LinesPct}}%</td></tr>
@@ -218,7 +216,6 @@
 
   <div class="sx-p c4">
     <h3>Dungeons <span class="hint"><a href="/dungeon-spawners">Spawners</a></span></h3>
-    <p class="note">Open sites placed by the spawner rules.</p>
     <table class="kv">
       <tr><td>Open sites</td><td class="r"><b>{{commas .Sites.Open}}</b></td></tr>
       <tr><td>Cleared, awaiting despawn</td><td class="r">{{commas .Sites.Cleared}}</td></tr>
@@ -238,7 +235,7 @@
 
   <div class="sx-p c4">
     <h3>Combat <span class="hint"><a href="/killboard">Killboard</a></span></h3>
-    <p class="note">Kill reports with at least one capsuleer attacker; rat kills counted apart.</p>
+    <p class="note">Kills with at least one player attacker. Rat kills are counted separately.</p>
     <table class="kv">
       <tr><td>Kills 24h / 7d</td><td class="r"><b>{{commas .Combat.Kills.H24}}</b> / {{commas .Combat.Kills.D7}}</td></tr>
       <tr><td>Pods 24h / 7d</td><td class="r">{{commas .Combat.PodKills.H24}} / {{commas .Combat.PodKills.D7}}</td></tr>
@@ -258,7 +255,6 @@
 
   <div class="sx-p c4">
     <h3>Missions <span class="hint"><a href="/missions">Templates</a></span></h3>
-    <p class="note">Agent missions held by pilots.</p>
     <table class="kv">
       <tr><td>Offered, not yet accepted</td><td class="r">{{commas .Missions.Offered}}</td></tr>
       <tr><td>In progress</td><td class="r"><b>{{commas .Missions.Accepted}}</b></td></tr>
@@ -271,7 +267,6 @@
 
   <div class="sx-p c4">
     <h3>Mining <span class="hint"><a href="/industry/belts">Asteroid belts</a></span></h3>
-    <p class="note">Persistent belt fields and ore changing hands on the market.</p>
     <table class="kv">
       <tr><td>Systems with a field</td><td class="r"><b>{{commas .Mining.Asteroids.Fields}}</b></td></tr>
       <tr><td>Fields due to regenerate</td><td class="r">{{commas .Mining.Asteroids.Expired}}{{if .Mining.RegenDays}} <span class="sub">every {{.Mining.RegenDays}} d</span>{{else}} <span class="sub">regeneration off</span>{{end}}</td></tr>
@@ -284,7 +279,6 @@
 
   <div class="sx-p c4">
     <h3>Sovereignty &amp; structures</h3>
-    <p class="note">Claimed space and what holds it.</p>
     <table class="kv">
       <tr><td><a href="/sov">Claimed systems</a></td><td class="r"><b>{{commas .Sovereignty.ClaimedSystems}}</b> by {{commas .Sovereignty.ClaimingAlliances}} alliance{{if ne .Sovereignty.ClaimingAlliances 1}}s{{end}}</td></tr>
       <tr><td><a href="/starbases">Starbases</a></td><td class="r"><b>{{commas .Sovereignty.Towers}}</b></td></tr>
@@ -297,7 +291,6 @@
 
   <div class="sx-p c4">
     <h3>Skills</h3>
-    <p class="note">Pilots with a skill in training.</p>
     <table class="kv">
       <tr><td>Training now</td><td class="r"><b>{{commas .Skills.Training}}</b> of {{commas .Population.Pilots}} pilots</td></tr>
       <tr><td>Finishing within 24h</td><td class="r">{{commas .Skills.FinishingIn24h}}</td></tr>
@@ -313,7 +306,6 @@
 
   <div class="sx-p c4">
     <h3>Server vitals <span class="hint">live</span></h3>
-    <p class="note">Process and database pool, read as the page loads.</p>
     <table class="kv">
       <tr><td>Uptime</td><td class="r"><b>{{formatDuration $v.Uptime}}</b></td></tr>
       <tr><td>Systems loaded</td><td class="r">{{$v.LoadedSystems}}</td></tr>

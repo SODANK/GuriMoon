@@ -1,9 +1,7 @@
 {{define "content"}}
 <h2>Courier Contracts</h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  Player and bot courier contracts. Bots post contracts for scattered assets
-  and accept contracts that pass their reward/jump filter. Collateral is real
-  ISK at risk &mdash; a failed contract forfeits it to the issuer.
+  Player and bot courier contracts. A failed contract forfeits its collateral to the issuer.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}

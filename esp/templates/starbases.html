@@ -22,12 +22,8 @@ tr.sb-detail strong { display: block; font-size: 12px; color: #e0e4ec; margin-to
 <div class="card">
   <h3>Anchoring security ceiling</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    Normally each type carries its own ceiling in the shipped data: control towers anchor below
-    {{printf "%.2f" .DefaultMaxSec}}, and a Moon Harvesting Array carries
-    <code>anchoringSecurityLevelMax</code> 0.4 (0.3 for II and III) — which is why moon mining is a
-    lowsec-and-below activity without a line of code saying so. Setting a value here overrides
-    <em>every</em> ceiling at once, for a test shard that wants moon mining in highsec. Leave empty
-    to use the shipped attributes.
+    Each tower and moon harvesting array has its own security limit, which is why moon mining is lowsec and below.
+    A value here overrides all of them (for highsec moon mining on a test shard). Leave empty for the defaults.
   </p>
   <form method="POST" action="/starbases" class="inline-form">
     <input type="hidden" name="action" value="secoverride">
@@ -75,9 +71,7 @@ tr.sb-detail strong { display: block; font-size: 12px; color: #e0e4ec; margin-to
                 </tbody>
               </table>
               <p style="font-size:11px;color:#6b7280;margin-top:4px">
-                This is the same answer <code>posMgr.GetMoonForTower</code> gives the management
-                window's Moon tab. If the client shows nothing while this shows rows, the problem
-                is on the wire, not in the data.
+                What the management window's Moon tab shows. If the client shows nothing while this has rows, the problem is not the data.
               </p>
               {{else}}
               <p style="font-size:12px;color:#6b7280">No pool — the tower has no moon.</p>
@@ -105,9 +99,7 @@ tr.sb-detail strong { display: block; font-size: 12px; color: #e0e4ec; margin-to
                 </tbody>
               </table>
               <p style="font-size:11px;color:#6b7280;margin-top:4px">
-                A harvester produces only into a silo it is wired to, which is retail behaviour.
-                Both the material and the wiring are set in game, in the management window's
-                Production tab.
+                A harvester only produces into a silo it is wired to. Set material and wiring in game, on the Production tab.
               </p>
               {{else}}
               <p style="font-size:12px;color:#6b7280">Nothing anchored to this tower.</p>
@@ -129,20 +121,15 @@ tr.sb-detail strong { display: block; font-size: 12px; color: #e0e4ec; margin-to
   </table>
   {{else}}
   <p style="font-size:12px;color:#6b7280">
-    No control towers anchored. One is planted in game with the right-click Anchor entry on a
-    launched tower, or with <code>/posplant &lt;typeID&gt; &lt;moonID&gt;</code>.
+    No control towers anchored. Anchor one in game, or use <code>/posplant &lt;typeID&gt; &lt;moonID&gt;</code>.
   </p>
   {{end}}
 </div>
 <div class="card">
   <h3>POS templates</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    A template is captured from a POS players built in game: the tower type, every anchored
-    structure's type and offset from the tower (inside its anchor radius), what each one handles,
-    and the Production wiring. Save one from a tower above (or <code>/possave &lt;towerID&gt; &lt;name&gt;</code>),
-    then stamp it at any moon here or with <code>/posspawn &lt;name&gt; &lt;moonID&gt; [online] [fuelDays]</code>.
-    Placement rules (security ceiling, one tower per moon, sovereignty) apply to a stamp exactly as
-    to <code>/posplant</code>.
+    A saved POS layout: tower, structures and Production wiring. Save one from a tower above (or <code>/possave &lt;towerID&gt; &lt;name&gt;</code>),
+    then stamp it at a moon here or with <code>/posspawn &lt;name&gt; &lt;moonID&gt; [online] [fuelDays]</code>. The same placement rules as <code>/posplant</code> apply.
   </p>
   {{if .Templates}}
   <table>

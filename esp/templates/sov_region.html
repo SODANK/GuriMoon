@@ -8,8 +8,7 @@
   <h3>Set Whole Region</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
     Region faction: {{if .RegionFactionName}}<strong>{{.RegionFactionName}}</strong>{{else}}<span style="color:#4b5563">none</span>{{end}}.
-    Applying an owner here repaints the region row, all constellations and all {{len .Systems}} systems.
-    NPC faction = empire space on the map; alliance = player sov claims (same data as <code>/claim</code>).
+    Applying sets the region, its constellations and all {{len .Systems}} systems. NPC factions set empire space. Alliances set player sov claims.
   </p>
   <form method="POST" action="/sov/region/{{.RegionID}}" class="inline-form sov-region-form" data-region="{{.RegionName}}" data-count="{{len .Systems}}">
     <input type="hidden" name="action" value="region">
@@ -31,7 +30,7 @@
 
 <div class="card" style="margin-bottom:16px">
   <h3 id="bulkTitle">Set Sov for Tagged Systems</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag systems in the table below, pick an owner, Apply. Only tagged systems change (region/constellation faction rows stay as they are).</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag systems below, pick an owner, Apply. Only tagged systems change.</p>
   <form method="POST" action="/sov/region/{{.RegionID}}" id="bulkForm" class="inline-form" style="margin-bottom:0">
     <input type="hidden" name="action" value="bulksystem">
     <input type="hidden" name="systemIDs" id="bulkSystemIDs">

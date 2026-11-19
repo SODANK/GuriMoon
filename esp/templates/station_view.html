@@ -32,13 +32,8 @@
 
 <div class="card">
   <h3>Station Model</h3>
-  <p class="model-hint">The hull is the station <em>type</em>: <code>staStations.stationTypeID</code> →
-     <code>invTypes.graphicID</code> → <code>eveGraphics.url3D</code>, the <code>.blue</code> the client draws.
-     The ball rendered in space is built from <code>mapDenormalize.typeID</code>, so swapping writes
-     both columns together. The hangar graphic and the undock offset/orientation are columns of the
-     <em>type</em> row too and follow on their own — nothing is copied per station, and a type with
-     no hangar graphic is refused because there would be nothing to dock into.
-     A client already loaded into this system keeps the old model until the system reloads.</p>
+  <p class="model-hint">Swapping the model changes the station's type. Hangar graphic and undock position come with the type. Types with no hangar graphic are refused.
+     Clients already in this system keep the old model until it reloads.</p>
 
   <div class="model-current">
     {{if and .HasModels .CurrentType.HasModel}}
@@ -89,7 +84,7 @@
           {{if .Conquerable}}<span class="tag-conq">conq</span>{{end}}
           {{if ne .GroupID 15}}<span class="tag-off">{{.GroupName}}</span>{{end}}
           {{if not .HasModel}}<span class="tag-off">no .glb</span>{{end}}
-          {{if not .HangarGraphicID}}<span class="tag-bad" title="staStationTypes.hangarGraphicID is NULL — nothing to dock into">no hangar</span>{{end}}
+          {{if not .HangarGraphicID}}<span class="tag-bad" title="This type has no hangar graphic, so there is nothing to dock into">no hangar</span>{{end}}
           {{if and (eq .DockEntryX 0.0) (eq .DockEntryY 0.0) (eq .DockEntryZ 0.0)}}<span class="tag-off" title="ships would undock at the station's own position">undock 0,0,0</span>{{end}}
         </div>
       </div>
@@ -152,17 +147,10 @@
 
 <div class="card">
   <h3>Services ({{.D.OperationName}})</h3>
-  <p class="model-hint">A station does not own its services — its <em>operation</em> does, and
-     {{.OpInfo.SharedBy}} station{{if ne .OpInfo.SharedBy 1}}s{{end}} run this one. The client reads
-     the set as one bitmask (<code>serviceMask</code>, the sum of the ticked IDs) at the moment it
-     docks, and joins the same operation&nbsp;→&nbsp;service table itself for the S&amp;I window's
-     install gate and the star map's service overlay. So saving a set that differs from the
-     operation's moves <em>this station</em> onto its own copy of the operation rather than
-     rewriting the shipped row under every other station using it; the copy keeps the description
-     and activity, and is deleted again if the station is later moved off it.
-     {{if .OpInfo.Custom}}<br><b>This station already has its own operation ({{.OpInfo.OperationID}})</b>
-     — edits below rewrite it in place.{{end}}
-     <br>A pilot standing in the station keeps the old buttons until they undock and dock again.</p>
+  <p class="model-hint">Services come from the station's <em>operation</em>, shared by {{.OpInfo.SharedBy}} station{{if ne .OpInfo.SharedBy 1}}s{{end}}.
+     Saving a different set gives this station its own copy of the operation, so others are unaffected.
+     {{if .OpInfo.Custom}}<br><b>This station has its own operation ({{.OpInfo.OperationID}}).</b> Edits below change it in place.{{end}}
+     <br>Pilots docked now see the old buttons until they redock.</p>
 
   <form method="POST" action="/station/{{.D.StationID}}">
     <input type="hidden" name="action" value="services">
@@ -179,8 +167,7 @@
       <button type="submit">Save Services</button>
       <span class="dim">Mask now: <b id="svcMask">{{.D.ServiceMask}}</b>
         · <a href="#" id="svcNone">clear all</a> · <a href="#" id="svcAll">tick all</a>
-        · at least one service must stay ticked — an operation with none is missing from the
-        list the client indexes by operationID, and it does not check</span>
+        · at least one service must stay ticked</span>
     </div>
   </form>
 </div>

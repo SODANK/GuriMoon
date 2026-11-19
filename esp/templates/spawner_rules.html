@@ -5,11 +5,11 @@
 </style>
 
 <h2>NPC Spawner Rules</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How many ships a belt wave holds, by security. <b>What</b> spawns is entirely the region's business — see <a href="/region-spawns">Region Spawns</a>. These rules only set the size of the wave.</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How many ships a belt wave holds, by security. What spawns is set on <a href="/region-spawns">Region Spawns</a>.</p>
 
 <div class="card" style="max-width:900px;background:var(--bg)">
   <p style="font-size:12px;color:#9ca3af;margin:0">
-    Each belt rolls a <a href="#tiers" style="color:#e0e4ec">squad tier</a>, adds that tier's size deltas to the <b style="color:#e0e4ec">min</b>–<b style="color:#e0e4ec">max</b> window below, then fills every slot by weighted-random pick from that region's <b style="color:#e0e4ec">normal and hauler</b> listings eligible at the system's security. A min of 0 means some belts come up empty. Commanders and officers are <b style="color:#e0e4ec">not</b> in that draw — each has its own chance and its own pool, set per tier.
+    Each belt rolls a <a href="#tiers" style="color:#e0e4ec">squad tier</a>, which shifts the <b style="color:#e0e4ec">min</b>–<b style="color:#e0e4ec">max</b> wave size below. A min of 0 means some belts spawn empty.
   </p>
 </div>
 
@@ -22,7 +22,7 @@
     </div>
     <button type="submit">Save</button>
     <div style="flex:1;min-width:260px;font-size:12px;color:#9ca3af">
-      How long a belt stays empty after its last rat dies (or after it rolled an empty wave) before it rolls a new one. Applies <b style="color:#e0e4ec">live</b> — belts already waiting are judged against the new value from when they were cleared. Default {{printf "%g" .WaveTimerDefaultMin}} min. Same setting as <i>Reseed cooldown</i> on <a href="/region-spawns">Region Spawns</a>.
+      Wait before a cleared belt respawns. Applies live. Default {{printf "%g" .WaveTimerDefaultMin}} min. Same as <i>Reseed cooldown</i> on <a href="/region-spawns">Region Spawns</a>.
     </div>
   </form>
 </div>
@@ -78,7 +78,7 @@
   </div>
   {{end}}
 </div>
-<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:900px">Sorted safest → deadliest. Both bounds are inclusive; where two rules overlap at a boundary the higher band wins. Keep the ranges touching so every security level is covered.</p>
+<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:900px">Safest to deadliest. Bounds are inclusive and the higher band wins at an overlap. Keep ranges touching so every security level is covered.</p>
 {{else}}
 <div class="card"><p style="color:#f87171">No spawner rules — no belt anywhere will spawn anything.</p></div>
 {{end}}
@@ -119,17 +119,17 @@
 </div>
 
 <h2 id="tiers" style="margin-top:32px">Squad Tiers</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How <b>hard</b> a belt is. Every wave draws one of these, weighted, from the tiers covering the system's security — so two belts in the same system can be very different places.</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">How <b>hard</b> a belt is. Each wave draws one tier, weighted, from those covering the system's security.</p>
 
 <div class="card" style="max-width:1180px;background:#0a1017">
   <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">
-    <b style="color:#e0e4ec">Weight</b> is relative within a band; the % beside it is that row's real share. <b style="color:#e0e4ec">Size Δ</b> is added to the spawner rule's window above. <b style="color:#e0e4ec">Cmdr %</b> and <b style="color:#e0e4ec">Officer %</b> are the chance <em>per wave</em> — a commander replaces a slot the wave already had, an officer is an extra ball on top.
+    <b style="color:#e0e4ec">Weight</b> is relative within a band, and the % beside it is the real share. <b style="color:#e0e4ec">Size Δ</b> adjusts the rule's wave size above. <b style="color:#e0e4ec">Cmdr %</b> and <b style="color:#e0e4ec">Officer %</b> are the per-wave chances.
   </p>
   <p style="font-size:12px;color:#9ca3af;margin:0 0 8px">
-    <b style="color:#e0e4ec">Sec floor</b> is the difficulty lever. A region's listings carry a max security that already sorts them by hull — frigates 1.0, destroyers 0.8, cruisers 0.6, battleships 0.4 — so filtering the base pool at a <em>floor</em> instead of the system's own security leaves only the smaller hulls. Floor 0.9 in null-sec is a belt of high-sec-grade frigates. Leave it at 0 for "whatever this system's security allows". It only ever narrows, and it applies to the base pool alone: the commander and officer pools always filter at the system's real security, so a floor can never drag a null-sec officer into low-sec.
+    <b style="color:#e0e4ec">Sec floor</b> limits a tier to smaller hulls by filtering ordinary ships at the floor instead of the system's security. 0 means no floor. Commanders and officers ignore it.
   </p>
   <p style="font-size:12px;color:#f0a868;margin:0">
-    ⚠ Tiers and the rarity settings are read <b>once at boot</b>. An edit here does not affect a running server until it is restarted.
+    &#9888; Read at boot. Restart the server for tier and rarity edits to take effect.
   </p>
 </div>
 
@@ -178,7 +178,7 @@
   </tbody>
 </table>
 </div>
-<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:1180px">Rows sharing exactly the same band are one draw; the share column is over that band. A weight of 0 switches a tier off without deleting it. High-sec ships with no hard or deadly row on purpose — 0.9+ belts are meant to feel exactly as they always have.</p>
+<p style="font-size:12px;color:#6b7280;margin-top:12px;max-width:1180px">Rows with the same band share one draw. Weight 0 switches a tier off.</p>
 {{else}}
 <div class="card"><p style="color:#f87171">No squad tiers — every belt falls back to a neutral tier: ordinary waves, no commanders, no officers.</p></div>
 {{end}}

@@ -1,12 +1,8 @@
 {{define "content"}}
 <h2>Escrow Listings</h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  Item exchange listings. A player posts items at a station with a price tag;
-  another player pays and gets the items. Bots list researched BPOs and
-  surplus fitted ships.
-  {{if .ClosedKeepDays}}Counts cover every open listing and the closed ones
-  from the last {{.ClosedKeepDays}} days; older closed listings are pruned
-  (<code>escrow.closedKeepDays</code>).{{end}}
+  Items posted at a station for a price. Another player pays to claim them.
+  {{if .ClosedKeepDays}}Closed listings are kept for {{.ClosedKeepDays}} days.{{end}}
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}

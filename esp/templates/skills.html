@@ -95,7 +95,7 @@
 <div class="sw-head">
   <h2>Skills &mdash; <a href="/character/{{.Char.CharacterID}}">{{.Char.CharacterName}}</a></h2>
   <span class="sw-sp">{{.TotalSP}} total skill points &middot; {{.KnownCount}} skills known</span>
-  <span class="sw-wallet" title="Skillbooks are bought at the market average plus a markup; the ISK goes to Genolution Biotech">{{formatISK .Char.Balance}}</span>
+  <span class="sw-wallet" title="Skillbook price is market average plus a markup">{{formatISK .Char.Balance}}</span>
   <input type="text" id="sw-search" placeholder="Search skills...">
 </div>
 
@@ -173,7 +173,7 @@
       {{if .Queue}}
       <form method="post" action="{{.Self}}" class="sw-action-form" style="display:inline; float:right; margin-top:4px">
         <input type="hidden" name="action" value="skip">
-        <button class="sw-skip" title="Abort current training (SP banked) and start the next queued skill">Skip &#x25B6;</button>
+        <button class="sw-skip" title="Stop current training (SP banked) and start the next">Skip &#x25B6;</button>
       </form>
       {{end}}
     </div>
@@ -210,7 +210,7 @@
         </form>
         {{if .Queue}}
         <form method="post" action="{{.Self}}" style="display:inline"
-              title="Re-sort the queue so no skill sits ahead of its own lower levels or its prerequisites">
+              title="Re-sort so no skill precedes its prerequisites or lower levels">
           <input type="hidden" name="action" value="normalize">
           <button>Repair order</button>
         </form>
@@ -226,9 +226,7 @@
 
   <div class="sw-minmax">
     <h3>Min-max queue</h3>
-    <p class="hint">Fills the queue with every remaining level of every skill you have injected,
-      quickest step first &mdash; so the level 1s land before the 2s, the 2s before the 3s,
-      and the most skills finish per hour. Prerequisites are respected.</p>
+    <p class="hint">Queues every remaining level of every injected skill, fastest first. Prerequisites are respected.</p>
     <form method="post" action="{{.Self}}">
       <input type="hidden" name="action" value="minmax">
       <label>Up to level
@@ -259,9 +257,7 @@
 
   <div class="sw-minmax">
     <h3>GM grant</h3>
-    <p class="hint">Writes the skill into the character at a fixed level &mdash; no skillbook, no ISK,
-      no training time. This is the character page's old "Give Skill" box; it lives here now, next to
-      the catalogue it acts on. The client builds its skill list at login, so the pilot must relog.</p>
+    <p class="hint">Sets a skill to a fixed level with no skillbook, ISK or training time. The pilot must relog.</p>
     <form method="post" action="{{.Self}}">
       <input type="hidden" name="action" value="grant">
       <label>Skill

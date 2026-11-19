@@ -134,16 +134,14 @@
       <div class="form-group">
         <label>Expires After (days)</label>
         <input type="number" name="expiryDays" value="{{.Template.ExpiryDays}}" min="1">
-        <small>From acceptance. Not handed in by then, it fails and the agent sends the failure letter.</small>
+        <small>Counted from acceptance. An overdue mission fails and mails the failure letter.</small>
       </div>
       <div class="form-group mv-wide" id="storylineNote" style="display:none">
         <p class="mv-hint" style="margin:0">
-          <b>Storyline deck.</b> Only storyline agents draw this template, and they draw
-          nothing else. They have nothing for a pilot who has not been invited &mdash; an
-          invite is earned by finishing a run of missions for one faction, and the run
-          length is set on
-          <a href="/agents/distribution">Mission Distribution</a>. Level and faction filter
-          still apply: they decide which storyline agents can pull it.
+          <b>Storyline deck.</b> Only storyline agents offer this template, and only to
+          invited pilots. The invite run length is set on
+          <a href="/agents/distribution">Mission Distribution</a>. Level and faction
+          filter still apply.
         </p>
       </div>
       <div class="form-group mv-wide">
@@ -192,10 +190,7 @@
   <div class="card mv-section">
     <h3>Player Choices<span class="h3note">leave blank for the generic wording</span></h3>
     <p class="mv-hint">
-      These are the buttons the player picks from in the agent conversation. Each slot
-      replaces one caption &mdash; an empty slot keeps the generic one shown beside it,
-      so a template only words the choices it cares about.
-      <b>More Information</b> only appears at all while its reply text below is set.
+      The buttons the player picks in the agent conversation. An empty slot keeps the generic caption shown beside it.
     </p>
     <div class="mv-choice">
       <div class="btn-generic">Accept<small>takes the mission</small></div>
@@ -231,7 +226,7 @@
 
   <div class="card mv-section">
     <h3>Agent Replies<span class="h3note">what the agent says after a choice</span></h3>
-    <p class="mv-hint">An empty reply falls back to the server's generic line for that choice.</p>
+    <p class="mv-hint">An empty reply uses the generic line.</p>
     <div class="mv-text">
       <label>On accept</label>
       <textarea name="acceptText" rows="3">{{.Template.AcceptText.String}}</textarea>
@@ -249,12 +244,12 @@
     <div class="mv-text">
       <label>On failure (letter)</label>
       <textarea name="failText" rows="4">{{.Template.FailText.String}}</textarea>
-      <small>Mailed by the agent when the mission expires (see Expires After). Generic: "{agentName} here. You accepted this assignment and never saw it through, so I have given it to someone else. That will not be forgotten."</small>
+      <small>Mailed when the mission expires. Generic: "{agentName} here. You accepted this assignment and never saw it through, so I have given it to someone else. That will not be forgotten."</small>
     </div>
     <div class="mv-text">
       <label>More Information</label>
       <textarea name="moreInfoText" rows="4">{{.Template.MoreInfoText.String}}</textarea>
-      <small>While this is empty the More Information button is not shown at all.</small>
+      <small>The More Information button is hidden while this is empty.</small>
     </div>
   </div>
 
@@ -274,7 +269,7 @@
           <option value="{{.DungeonVID}}" {{if and $.Template.DungeonVID.Valid (eq $.Template.DungeonVID.Int64 .DungeonVID)}}selected{{end}}>{{.Name}} ({{.DungeonVID}})</option>
           {{end}}
         </select>
-        <small>A kill template with no dungeon &mdash; or a dungeon with no rooms &mdash; is rejected at offer time and the agent falls back to another mission.</small>
+        <small>A kill template needs a dungeon with rooms, or the agent offers another mission.</small>
       </div>
       <div class="form-group">
         <label>Room Index</label>
@@ -305,7 +300,7 @@
           <option value="{{.FactionID}}" {{if and $.Template.EnemyFactionID.Valid (eq $.Template.EnemyFactionID.Int64 .FactionID)}}selected{{end}}>{{.FactionName}}</option>
           {{end}}
         </select>
-        <small>Takes the enemy standing hit below. "None" or Unknown means no faction is on the receiving end.</small>
+        <small>Takes the enemy standing hit below. None or Unknown hits no faction.</small>
       </div>
     </div>
 
@@ -457,11 +452,9 @@
   <div class="card mv-section">
     <h3>Standings<span class="h3note">0 = no change</span></h3>
     <p class="mv-hint">
-      Every field here is optional. <b>Zero means the mission does not touch that standing
-      at all</b> &mdash; nothing is written and the client is not notified. Values are in
-      displayed standing units; losses are stored negative.
-      Rats killed inside the dungeon still carry their own per-kill faction hit, which is a
-      property of the NPC, not of this template.
+      Every field is optional. <b>Zero leaves that standing untouched.</b>
+      Values are in displayed standing units; losses are negative.
+      Dungeon rats still apply their own per-kill faction hit.
     </p>
     <table class="mv-std">
       <tr>

@@ -14,11 +14,8 @@
 <div class="card">
   <h3>Construction Platforms</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    A platform anchors for an hour, then any CEO or Director of the owning corporation
-    completes it in space with the right-click <strong>Build</strong> entry. These controls exist
-    for the cases the client cannot reach: a platform whose corporation has dissolved, or a planet
-    the operator wants back. <strong>Force Build still checks sovereignty and the anchoring
-    delay</strong> — only the role, skill and password gates are skipped.
+    Platforms are normally built in space by a CEO or Director. Use these for stuck cases, such as a dissolved corporation.
+    <strong>Force Build still checks sovereignty and the anchoring delay.</strong>
   </p>
   {{if .Platforms}}
   <table>
@@ -61,8 +58,7 @@
 <div class="card">
   <h3>Stations in the Outpost Band</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    Every station at ID 61000001 and above: the ones players have built, plus the three that shipped
-    in CCP's own export. Docked pilots counts players only — NPC agents carry a stationID too.
+    Player-built stations plus the three that shipped with the game. Docked pilots counts players only.
   </p>
   {{if .Outposts}}{{template "outpostTable" .Outposts}}{{else}}
   <p style="font-size:12px;color:#6b7280">No stations exist in the outpost band.</p>
@@ -72,8 +68,7 @@
 <div class="card">
   <h3>Conquerable Stations</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    The NPC-built stations of nullsec whose type is flagged conquerable, below the outpost band.
-    They change hands the same way outposts do; Transfer sets the owner directly.
+    Conquerable nullsec stations. Transfer sets the owner directly.
   </p>
   {{if .Conquerables}}{{template "outpostTable" .Conquerables}}{{else}}
   <p style="font-size:12px;color:#6b7280">No conquerable stations exist.</p>

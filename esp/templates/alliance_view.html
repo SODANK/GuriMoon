@@ -5,9 +5,8 @@
   {{$a.AllianceName}} &lt;{{$a.ShortName}}&gt;
 </h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  Alliance {{$a.AllianceID}} &mdash; in game the client draws
-  {{if $a.LogoMapped}}logo tile <b>{{$a.LogoTile}}</b> for this ID{{else}}the <b>01_01 fallback</b>,
-  because this ID is not in the client's logo table{{end}}.
+  Alliance {{$a.AllianceID}}. The client shows
+  {{if $a.LogoMapped}}logo tile <b>{{$a.LogoTile}}</b>{{else}}the <b>01_01 fallback</b> logo{{end}}.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
@@ -16,12 +15,9 @@
 <div class="card" style="border-left:3px solid var(--accent)">
   <h3>ID below the player-entity range</h3>
   <p style="font-size:12px;color:#fca5a5;max-width:900px">
-    This alliance is numbered {{$a.AllianceID}}, under the client's minimum of 100000000.
-    <code>cfg.IsAlliance</code> returns 0 for it, so the client does not recognise it as an
-    alliance at all &mdash; its name and ticker will not resolve wherever an owner is looked up.
-    Renumbering is what fixes it: run the server with <code>-renumber apply</code>
-    (<code>db/migrateids.go</code>), which moves player corps and alliances into the client's
-    range and rewrites the references.
+    ID {{$a.AllianceID}} is under the client's minimum of 100000000, so the client does not recognise
+    this as an alliance and its name and ticker will not show.
+    Run the server with <code>-renumber apply</code> to move player corps and alliances into range.
   </p>
 </div>
 {{end}}
@@ -42,7 +38,7 @@
           <td><input type="text" name="allianceName" value="{{$a.AllianceName}}" required style="width:340px"></td></tr>
       <tr><td style="color:#6b7280">Ticker</td>
           <td><input type="text" name="shortName" value="{{$a.ShortName}}" maxlength="5" required style="width:90px">
-              <span style="font-size:11px;color:#6b7280">written to entity / alliance_shortnames / eveNames / eveStaticOwners on save</span></td></tr>
+              </td></tr>
       <tr><td style="color:#6b7280">Description</td>
           <td><textarea name="description" rows="3" style="width:100%">{{$a.Description}}</textarea></td></tr>
       <tr><td style="color:#6b7280">URL</td>
@@ -70,23 +66,16 @@
 <div class="card">
   <h3>Client logo</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    <b>The ID is the logo.</b> <code>uix.GetAllianceLogo</code> is a hardcoded table of 70
-    allianceIDs, each drawing one 128px tile of the client's own
-    <code>alliance01..20.dds</code> sheets. Nothing the server sends changes that, so choosing
-    one of these logos means <em>moving the alliance onto that ID</em> &mdash; every reference to
-    it is rewritten in one transaction, and its online members are handed the new
-    <code>allianceid</code> session value. The art below is cropped straight out of the client,
-    so it is exactly what the game will draw.
+    <b>The ID is the logo.</b> Picking a slot moves the alliance onto that ID and renumbers everything that references it.
   </p>
   <p style="font-size:12px;color:#9ca3af">
     Currently
-    {{if $a.LogoMapped}}on slot <b>{{$a.LogoTile}}</b>{{else}}on no slot &mdash; the client draws
-    the <b>01_01 fallback</b>{{end}}, at ID {{$a.AllianceID}}.
+    {{if $a.LogoMapped}}on slot <b>{{$a.LogoTile}}</b>{{else}}on no slot, so the client shows
+    the <b>01_01 fallback</b>{{end}}.
   </p>
   {{if not .TileArt}}
   <p style="font-size:12px;color:#fca5a5">
-    The client's <code>alliance01..20.dds</code> atlases were not found, so the tiles are listed
-    by number only. Point <code>esp.clientPath</code> at a client install to see the art.
+    Client logo art not found, so tiles show by number only. Set <code>esp.clientPath</code> to a client install.
   </p>
   {{end}}
   <form method="POST" action="{{.Self}}">
@@ -123,12 +112,9 @@
 <div class="card">
   <h3>Logo</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    This image is the server's own. It is rendered by the admin panel, the in-game browser
-    pages and killmail HTML &mdash; everywhere the server owns the pixels. The game client's
-    Show Info window does not use it: it draws
-    {{if $a.LogoMapped}}tile {{$a.LogoTile}}{{else}}the 01_01 fallback{{end}} from its own
-    <code>alliance01..20.dds</code> atlases, keyed on the allianceID alone.
-    Files are stored in <code>{{.StoreDir}}</code>.
+    Used by this panel, the in-game browser and killmails. The game client's Show Info ignores it
+    and draws {{if $a.LogoMapped}}tile {{$a.LogoTile}}{{else}}the 01_01 fallback{{end}} from the alliance ID.
+    Stored in <code>{{.StoreDir}}</code>.
   </p>
   {{if .HasLogo}}
   <p><img src="/alliancelogo/{{$a.AllianceID}}" style="max-height:128px;background:#1a1010;padding:6px"></p>
@@ -150,11 +136,8 @@
 <div class="card">
   <h3>Member corporations ({{len .MemberRows}})</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    <b>Chosen executor</b> is that corporation's own vote &mdash; the client's Members tab shows
-    it, and prints "Secret" for a member that has not declared. The executor is recomputed from
-    those votes: one corporation one vote, the incumbent keeps the seat on a tie or when nobody
-    has voted, and a dictatorial alliance ignores them entirely (the client refuses to send
-    support for anyone but the sitting executor while that flag is on).
+    <b>Chosen executor</b> is each corporation's vote. The executor is recomputed from the votes,
+    and the incumbent keeps the seat on a tie. Dictatorial alliances ignore votes.
   </p>
   {{if .MemberRows}}
   <table>
@@ -220,11 +203,8 @@
 <div class="card">
   <h3>Applications ({{len .Applications}})</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    A corporation applies from its own corp window and a Director of the executor corporation
-    answers. <b>Accepting joins nobody.</b> The client tells the applicant that acceptance takes
-    24 hours, so the corporation joins on the sweep once the waiting period is up &mdash; only
-    then does the application read Effective. Accept and Reject are the only answers the client's
-    dialog offers, so they are the only two the server takes.
+    <b>Accepting does not join the corporation at once.</b> It joins when the waiting period below is up,
+    and the application then reads Effective.
   </p>
   <form class="inline-form" method="POST" action="{{.Self}}" style="margin-bottom:10px">
     <input type="hidden" name="action" value="acceptdelay">
@@ -268,8 +248,7 @@
 <div class="card">
   <h3>Standings ({{len .Relationships}})</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Declared relationships towards other alliances and corporations &mdash; the client's
-    Standings tab, where a Director of the executor corporation sets them.
+    Standings declared towards other alliances and corporations.
   </p>
   {{if .Relationships}}
   <table>
@@ -303,8 +282,7 @@
 <div class="card" style="border-left:3px solid var(--accent)">
   <h3>Delete alliance</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Unlinks every member corporation, drops its sovereignty claims and removes the name rows.
-    Pilots logged in now keep the old allianceid in their session until relog.
+    Unlinks every member corporation and drops its sovereignty claims. Online pilots keep the alliance until they relog.
   </p>
   <form class="inline-form" method="POST" action="{{.Self}}">
     <input type="hidden" name="action" value="delete">

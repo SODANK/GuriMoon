@@ -1,8 +1,7 @@
 {{define "content"}}
 <h2>Create NPC</h2>
 <p style="font-size:12px;color:#9ca3af;margin:-4px 0 14px;max-width:900px">
-  Builds a new NPC type step by step. Work through the tabs on the left, check <b>Review</b>, then press <b>Create NPC</b>.
-  Loot comes from the group you pick; where it spawns is set afterwards on Region Spawns or in a dungeon.
+  Work through the tabs, check <b>Review</b>, then press <b>Create NPC</b>. Set spawn locations afterwards on Region Spawns.
 </p>
 
 {{if .Result}}<div class="alert alert-{{if contains .Result "Error"}}error{{else}}success{{end}}">{{.Result}}</div>{{end}}

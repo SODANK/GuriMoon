@@ -34,11 +34,9 @@
 
 <div class="card">
   <h3>Resolved Weapon Profile</h3>
-  <p style="font-size:11px;color:#6b7280;margin:0 0 10px">
-    What <code>GetNPCWeaponProfile</code> actually produces for this type at spawn time, after the loader's defaults and floors.
-  </p>
+  <p style="font-size:11px;color:#6b7280;margin:0 0 10px">Weapon stats this type spawns with.</p>
   {{if .Weapon.Unarmed}}
-  <p style="color:#6b7280">Unarmed — no damage attributes, so this type spawns as a passive target with no weapon cycle.</p>
+  <p style="color:#6b7280">Unarmed. No damage attributes, so it spawns as a passive target.</p>
   {{else}}
   <table>
     <tr>
@@ -73,7 +71,7 @@
 <p style="font-size:13px;margin:0 0 10px">
   <a href="/npcs/new?clone={{.NPC.TypeID}}">Clone into new NPC</a>
   <a href="/loot/npc/{{.NPC.TypeID}}" style="margin-left:14px">Loot for this NPC</a>
-  <span style="font-size:11px;color:#6b7280;margin-left:14px">Saving rewrites the values this menu manages. Attributes outside it, under Advanced below, are left alone.</span>
+  <span style="font-size:11px;color:#6b7280;margin-left:14px">Save only touches the values in this menu. Advanced attributes are left alone.</span>
 </p>
 
 <form method="POST">

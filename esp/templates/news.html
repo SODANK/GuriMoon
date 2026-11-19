@@ -4,35 +4,27 @@
 <details style="margin-bottom:12px;border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:#170d0d">
   <summary style="cursor:pointer;color:#a78bfa;font-size:13px;font-weight:bold;user-select:none">Client Setup &mdash; Hosts File</summary>
   <div style="color:#9ca3af;font-size:12px;margin-top:8px">
-    <p style="margin:0 0 6px">
-      The Blood 3913 client fetches news and billboard content from hardcoded hostnames.
-      To redirect these requests to your server, add entries to the <strong>hosts file</strong> on each client machine.
-    </p>
+    <p style="margin:0 0 6px">The client fetches news and billboards from fixed hostnames. Point them at this server in each client's <strong>hosts file</strong>.</p>
     <p style="margin:0 0 4px"><strong>Hosts file location:</strong></p>
     <ul style="margin:0 0 8px 18px">
-      <li><strong>Windows:</strong> <code>C:\Windows\System32\drivers\etc\hosts</code> (edit as Administrator)</li>
-      <li><strong>Linux / macOS:</strong> <code>/etc/hosts</code> (edit with sudo)</li>
+      <li><strong>Windows:</strong> <code>C:\Windows\System32\drivers\etc\hosts</code> (as Administrator)</li>
+      <li><strong>Linux / macOS:</strong> <code>/etc/hosts</code> (with sudo)</li>
     </ul>
-    <p style="margin:0 0 4px"><strong>Add these lines</strong> (replace <code>SERVER_IP</code> with your server&rsquo;s IP, or <code>127.0.0.1</code> if running locally):</p>
+    <p style="margin:0 0 4px"><strong>Add these lines.</strong> Use <code>127.0.0.1</code> if the server is local.</p>
     <pre style="background:#221616;padding:8px;border-radius:4px;margin:0 0 8px;overflow-x:auto;color:#e6edf3"><code>SERVER_IP    myeve.eve-online.com
 SERVER_IP    img.eve.is</code></pre>
     <ul style="margin:0 0 4px 18px;color:#9ca3af">
-      <li><code>myeve.eve-online.com</code> &mdash; news pages (<code>/mb/news.asp</code>), billboard ticker (<code>/mb/news-headlines.asp</code>), and billboard images (<code>/bitmaps/billboards/</code>)</li>
-      <li><code>img.eve.is</code> &mdash; character portraits used by WANTED billboard posters (<code>/serv.asp</code>, <code>/chr/serv.asp</code>)</li>
+      <li><code>myeve.eve-online.com</code>: news pages and billboards</li>
+      <li><code>img.eve.is</code>: WANTED poster portraits</li>
     </ul>
-    <p style="margin:4px 0 0;color:#6b7280;font-size:11px">
-      The news server must listen on port 80 (the client URLs carry no port). Configured via <code>"newsListen": ":80"</code> in config.json. Restart the server after changing config.
-    </p>
+    <p style="margin:4px 0 0;color:#6b7280;font-size:11px">The news server must listen on port 80 (<code>"newsListen": ":80"</code> in config.json). Restart after changing it.</p>
   </div>
 </details>
 
 <p style="color:#9ca3af;font-size:12px;margin-bottom:12px">
-  Articles are served to the game client at <code>/mb/news.asp</code> (character select screen)
-  and <code>/mb/news-headlines.asp</code> (billboard ticker).
-  The body is EVE-HTML — an old-HTML subset, <em>not</em> Markdown. Use the toolbar buttons below to insert tags.
-  Insert <code>&lt;!--more--&gt;</code> (the &#182; button) to cut the list view there with a "&raquo; read more" link.
-  Articles flagged <strong>Billboard Screen</strong> push their image onto in-space billboard screens
-  (upload square images, 512&times;512 works best; clients refresh within ~60s).
+  Articles for the client's character select screen and billboard ticker.
+  The body is EVE-HTML, not Markdown. Use the toolbar to insert tags, and the &#182; button to cut the list view with a "read more" link.
+  <strong>Billboard Screen</strong> articles show their image on in-space billboards (square images, 512&times;512 best).
 </p>
 
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
@@ -112,16 +104,14 @@ SERVER_IP    img.eve.is</code></pre>
 <div class="card">
   <h3>Images</h3>
   <p style="color:#9ca3af;font-size:12px;margin-bottom:8px">
-    Uploaded files land in <code>data/news-images/</code> and are served to the client at <code>/img/&lt;filename&gt;</code>.
-    Use one as the article image (right-hand thumbnail), inline in the body via the <strong>Img</strong> toolbar button,
-    or on billboards via the <strong>Billboard Screen</strong> flag.
+    Use an uploaded image as the article thumbnail, inline with the <strong>Img</strong> button, or on billboards with the <strong>Billboard Screen</strong> flag.
   </p>
   <ul style="color:#9ca3af;font-size:12px;margin:0 0 12px 18px">
-    <li><strong>Formats:</strong> JPG or PNG preferred; GIF works. BMP renders on news pages but cannot go on billboards.</li>
-    <li><strong>Article thumbnail:</strong> shown 170px wide in the news list — roughly square to 4:3 looks right, any size accepted.</li>
-    <li><strong>Inline body images:</strong> rendered at native pixel size in the client browser (~760px usable width at char select).</li>
-    <li><strong>Billboard screen:</strong> the server rescales the flagged article's image to a 512&times;512 baseline JPEG automatically (the 3D screen requires power-of-two textures). Upload square or near-square — non-square images get stretched to fit. In-space screens refresh within ~60s.</li>
-    <li><strong>WANTED portraits:</strong> separate system — drop <code>&lt;charID&gt;_256.jpg</code> files into <code>data/portraits/</code>; rescaled the same way.</li>
+    <li><strong>Formats:</strong> JPG or PNG. GIF works. BMP cannot go on billboards.</li>
+    <li><strong>Thumbnail:</strong> shown 170px wide. Roughly square to 4:3 looks right.</li>
+    <li><strong>Inline:</strong> shown at native pixel size, about 760px usable width.</li>
+    <li><strong>Billboard:</strong> auto-rescaled to 512&times;512, so non-square images get stretched.</li>
+    <li><strong>WANTED portraits:</strong> drop <code>&lt;charID&gt;_256.jpg</code> files into <code>data/portraits/</code>.</li>
   </ul>
   <form method="POST" action="/news" enctype="multipart/form-data" class="inline-form">
     <input type="file" name="imageFile" accept=".jpg,.jpeg,.png,.gif,.bmp" required>

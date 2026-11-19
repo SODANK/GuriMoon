@@ -74,16 +74,12 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <summary>What this page controls</summary>
   <div class="card" style="margin-top:8px">
     <p style="color:#9ca3af;font-size:12px;margin:0 0 6px">
-      <code>invcontrabandtypes</code> — the per-faction ban list. Customs officers
-      spawn at stargates in systems the faction claims at security
-      {{printf "%.2f" .CustomsMinSec}} and above, scan nearby ships' cargo, and act
-      on any row that matches: confiscate the item, fine the pilot, or open fire.
-      Pick a faction to see and edit its list.
+      Each faction's list of banned items. Customs officers at stargates in its systems
+      (security {{printf "%.2f" .CustomsMinSec}} and above) scan cargo and can confiscate,
+      fine or open fire. Pick a faction to edit its list.
     </p>
     <p style="color:#6b7280;font-size:12px;margin:0">
-      A rule only bites where that faction holds space, so the highsec column is
-      the real reach of its list — a faction with no highsec systems never scans
-      anyone.
+      Rules only apply in systems the faction holds.
     </p>
   </div>
 </details>
@@ -156,8 +152,7 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <summary>Bulk paste (factionID typeID standingLoss confiscateMinSec fineByValue attackMinSec per line)</summary>
   <div class="card" style="margin-top:8px">
     <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
-      Six values per line, for importing in bulk. Lines starting with
-      <code>#</code> are ignored. Existing faction/type pairs are replaced.
+      One rule per line. Lines starting with <code>#</code> are ignored. Existing faction/type pairs are replaced.
     </p>
     <form method="POST" action="/market/contraband">
       <input type="hidden" name="action" value="bulkAdd">
@@ -179,8 +174,8 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <span class="pill">Seize <b style="color:#fcd34d">{{.Faction.ConfiscateRows}}</b></span>
   <span class="pill">Fine <b style="color:#fdc593">{{.Faction.FineRows}}</b></span>
   <span class="pill">Attack <b style="color:#fca5a5">{{.Faction.AttackRows}}</b></span>
-  {{if gt .Faction.InertRows 0}}<span class="pill" title="Scanned and let through — see the warning on each row">Never fires <b class="warn">{{.Faction.InertRows}}</b></span>{{end}}
-  {{if gt .Faction.MissingTypeRows 0}}<span class="pill" title="typeID has no invTypes row on this server">Missing types <b class="warn">{{.Faction.MissingTypeRows}}</b></span>{{end}}
+  {{if gt .Faction.InertRows 0}}<span class="pill" title="Scanned and let through. See the warning on each row.">Never fires <b class="warn">{{.Faction.InertRows}}</b></span>{{end}}
+  {{if gt .Faction.MissingTypeRows 0}}<span class="pill" title="Item type does not exist on this server">Missing types <b class="warn">{{.Faction.MissingTypeRows}}</b></span>{{end}}
   <span style="color:#4b5563;font-size:11px">#{{.Faction.FactionID}}</span>
 </div>
 
@@ -191,20 +186,17 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
 </div>
 {{else if and .PatrolsKnown (not .Patrolled)}}
 <div class="alert alert-error">
-  This faction has highsec space but no customs officer corp or ship types wired
-  up in <code>customs.go</code>, so no officers spawn for it and
+  This faction has no customs officers set up, so
   <strong>nothing below is ever enforced</strong>.
 </div>
 {{end}}
 
 {{if gt .Faction.InertRows 0}}
 <div class="alert alert-error">
-  {{.Faction.InertRows}} of {{.Faction.Rows}} rows do nothing when scanned — a
-  threshold above {{printf "%.1f" .MaxSystemSec}} (no system is that safe), a
-  negative threshold, or no penalty at all. The shipped CCP data ships
-  <code>attackMinSec = 1.1</code> on every row, so attack is off everywhere until
-  you set it. Use <em>Clamp unreachable thresholds</em> below to make that
-  explicit, then set the numbers you want.
+  {{.Faction.InertRows}} of {{.Faction.Rows}} rows do nothing when scanned: a
+  threshold above {{printf "%.1f" .MaxSystemSec}}, a negative threshold, or no penalty at all.
+  Stock data has attack disabled on every row. Use <em>Clamp unreachable thresholds</em> below,
+  then set the values you want.
 </div>
 {{end}}
 
@@ -222,11 +214,11 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
       </div>
       <div id="typeResults" class="picker-results"></div>
       <div class="inline-form" style="margin-bottom:0">
-        <input type="text" name="standingLoss" value="0.1" style="width:60px" title="Faction standing lost per offence (not yet enforced by customs.go)">
+        <input type="text" name="standingLoss" value="0.1" style="width:60px" title="Faction standing lost per offence. Not applied yet.">
         <span style="color:#6b7280;font-size:12px">loss</span>
         <input type="text" name="confiscateMinSec" value="{{printf "%.2f" .CustomsMinSec}}" style="width:60px" title="Seize the item in systems at this security and above. 0 = never.">
         <span style="color:#6b7280;font-size:12px">seize&nbsp;sec&ge;</span>
-        <input type="text" name="fineByValue" value="2" style="width:60px" title="Fine = quantity × item basePrice × this. 0 = no fine.">
+        <input type="text" name="fineByValue" value="2" style="width:60px" title="Fine = quantity × item base price × this. 0 = no fine.">
         <span style="color:#6b7280;font-size:12px">fine&nbsp;&times;</span>
         <input type="text" name="attackMinSec" value="0" style="width:60px" title="Open fire in systems at this security and above. 0 = never.">
         <span style="color:#6b7280;font-size:12px">atk&nbsp;sec&ge;</span>
@@ -238,8 +230,7 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <div class="card" style="margin:0">
     <h3>Set One Field on All {{.Faction.Rows}} Rows</h3>
     <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
-      Rewrites that column on every one of this faction's rows at once — the fast
-      way to make a whole ban list actually enforce, or to switch it off.
+      Sets one column on all of this faction's rows at once.
     </p>
     <form method="POST" action="/market/contraband" class="inline-form" style="margin-bottom:6px">
       <input type="hidden" name="action" value="factionField">
@@ -258,7 +249,7 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
       <input type="hidden" name="factionID" value="{{.Faction.FactionID}}">
       <button type="submit" onclick="return confirm('Rewrite unreachable thresholds to 0 (off)?')">Clamp unreachable thresholds</button>
       <span style="color:#6b7280;font-size:12px;flex:1">Negative or above
-        {{printf "%.1f" .MaxSystemSec}} &rarr; 0. Same behaviour, readable numbers.</span>
+        {{printf "%.1f" .MaxSystemSec}} &rarr; 0. Behaviour is unchanged.</span>
     </form>
     {{if gt .Faction.MissingTypeRows 0}}
     <form method="POST" action="/market/contraband" class="inline-form" style="margin:0">
@@ -272,23 +263,16 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <details class="help card" style="margin:0">
     <summary>How the numbers work</summary>
     <p style="color:#9ca3af;font-size:12px;margin:8px 0 6px">
-      <strong>Seize sec</strong> and <strong>atk sec</strong> are minimum system
-      securities: customs.go acts when the system's security is at or above the
-      value, and treats 0 or a negative as off. Officers only exist at
-      {{printf "%.2f" .CustomsMinSec}} and above, so anything at or below that
-      figure applies in <em>all</em> of this faction's policed space, and anything
-      above {{printf "%.1f" .MaxSystemSec}} never applies anywhere.
+      <strong>Seize sec</strong> and <strong>atk sec</strong> are minimum system security.
+      0 or negative is off. Anything at or below {{printf "%.2f" .CustomsMinSec}} applies in all of
+      this faction's policed space. Anything above {{printf "%.1f" .MaxSystemSec}} never applies.
     </p>
     <p style="color:#9ca3af;font-size:12px;margin-bottom:6px">
-      <strong>Fine &times;</strong> multiplies the item's <code>basePrice</code>:
-      the pilot pays quantity &times; basePrice &times; this, with no security
-      gate, so any scan that finds the item charges it. An item with no basePrice
-      yields no fine at all.
+      <strong>Fine &times;</strong> multiplies the item's base price by the quantity, in any system.
+      Items with no base price are not fined.
     </p>
     <p style="color:#6b7280;font-size:12px;margin:0">
-      <strong>Loss</strong> is the faction standing penalty from the CCP data.
-      customs.go does not apply it yet — confiscation, fines and attack are wired,
-      standing loss is not, so the column is stored and displayed but inert.
+      <strong>Loss</strong> is the standing penalty. It is stored but not applied yet.
     </p>
   </details>
 </div>
@@ -316,14 +300,14 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
       </div>
         {{range .Rows}}
         <div class="cb-row">
-          <span class="nm" title="{{.TypeName}} (#{{.TypeID}}) — basePrice {{formatISK .BasePrice}}">
+          <span class="nm" title="{{.TypeName}} (#{{.TypeID}}), base price {{formatISK .BasePrice}}">
             {{if .WarnLabel}}<span class="warn" title="{{.WarnDetail}}">&#9888;</span> {{end}}
             {{if .TypeName}}{{.TypeName}}{{else}}<em style="color:#6b7280">not in invTypes</em>{{end}}
             <a class="tid" href="/market/contraband?type={{.TypeID}}" title="Which factions ban this type">#{{.TypeID}}</a>
             {{if .WarnLabel}}<span class="tid" style="color:#fbbf24">{{.WarnLabel}}</span>
             {{else if .SeizeEverywhere}}<span class="tid" style="color:#fcd34d">all policed space</span>{{end}}
           </span>
-          <span class="fine" title="quantity × basePrice × fineByValue">
+          <span class="fine" title="quantity × base price × fine multiplier">
             {{if and .Fines (gt .BasePrice 0.0)}}{{formatISK .FinePerUnit}}{{else}}&mdash;{{end}}</span>
           <form method="POST" action="/market/contraband">
             <input type="hidden" name="action" value="save">
@@ -331,13 +315,13 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
             <input type="hidden" name="typeID" value="{{.TypeID}}">
             <input type="text" name="standingLoss" value="{{printf "%.2f" .StandingLoss}}"
                    class="{{if eq .StandingLoss 0.0}}off{{end}}"
-                   title="Faction standing lost per offence — stored, but customs.go does not apply it yet">
+                   title="Faction standing lost per offence. Not applied yet.">
             <input type="text" name="confiscateMinSec" value="{{printf "%.2f" .ConfiscateMinSec}}"
                    class="{{if not .Confiscates}}off{{end}}"
                    title="Seize the item at this system security and above. 0 = never; above {{printf "%.1f" $.MaxSystemSec}} never fires.">
             <input type="text" name="fineByValue" value="{{printf "%.2f" .FineByValue}}"
                    class="{{if not .Fines}}off{{end}}"
-                   title="Fine = quantity × basePrice ({{formatISK .BasePrice}}) × this">
+                   title="Fine = quantity × base price ({{formatISK .BasePrice}}) × this">
             <input type="text" name="attackMinSec" value="{{printf "%.2f" .AttackMinSec}}"
                    class="{{if not .Attacks}}off{{end}}"
                    title="Open fire at this system security and above. 0 = never.">
@@ -371,8 +355,7 @@ details.help > summary { cursor:pointer; color:#a78bfa; font-size:12px; }
   <summary>Bulk paste (factionID typeID standingLoss confiscateMinSec fineByValue attackMinSec per line)</summary>
   <div class="card" style="margin-top:8px">
     <p style="color:#6b7280;font-size:12px;margin-bottom:8px">
-      Six values per line. Existing faction/type pairs are replaced, so this is
-      also the way to re-import a whole edited list.
+      One rule per line. Existing faction/type pairs are replaced.
     </p>
     <form method="POST" action="/market/contraband">
       <input type="hidden" name="action" value="bulkAdd">

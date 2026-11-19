@@ -171,8 +171,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
     {{else}}
       <div class="cv-noshot">
         No render held for this pilot.<br>
-        The server has no face renderer &mdash; the client draws the portrait from the
-        numbers below and keeps the picture on its own disk. Hand one over to see it here.
+        The server cannot draw faces. Upload renders from a client cache to see one here.
       </div>
     {{end}}
 
@@ -190,9 +189,8 @@ details.cv-fold > summary:hover { color:#e0e4ec }
 
     <div class="cv-ingest">
       <h4>Hand over renders</h4>
-      <p>Pick this pilot's <code>&lt;charID&gt;_&lt;size&gt;.png</code> files &mdash; or the whole
-         <code>cache/Pictures/Portraits</code> folder &mdash; from a machine running the client.
-         Files are matched by name, so a whole-folder hand-over files every pilot at once.</p>
+      <p>Pick <code>&lt;charID&gt;_&lt;size&gt;.png</code> files, or a client's whole
+         <code>cache/Pictures/Portraits</code> folder. Files are matched to pilots by name.</p>
       <form method="POST" action="/portrait/ingest" enctype="multipart/form-data">
         <input type="hidden" name="redirect" value="{{.Self}}">
         <input type="file" name="files" accept="image/png,image/jpeg" multiple>
@@ -215,7 +213,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
         <form method="POST" action="{{.Self}}" style="display:inline"
               onsubmit="return confirm('Delete the {{len .Stored}} stored render(s) for {{.Char.CharacterName}}? The client\'s own cache is not touched.')">
           <input type="hidden" name="action" value="dropportraits">
-          <button type="submit" title="Delete the server's copies — use after an appearance change">Drop stored</button>
+          <button type="submit" title="Delete the server's copies. Use after an appearance change.">Drop stored</button>
         </form>
         {{end}}
       </div>
@@ -232,7 +230,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
 
       <div class="cv-act">
         <h4>Wallet</h4>
-        <p>Credited straight to the balance with a refType-10 journal entry. Negative amounts debit.</p>
+        <p>Adds to the balance. Negative amounts debit.</p>
         <form method="POST" action="{{.Self}}" class="row">
           <input type="hidden" name="action" value="giveisk">
           <input type="number" name="amount" placeholder="Amount" step="0.01" style="width:150px" required>
@@ -242,7 +240,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
 
       <div class="cv-act cv-drop">
         <h4>Move to station</h4>
-        <p>Relocates the pilot and their current ship. The client caches its location, so a relog is required.</p>
+        <p>Moves the pilot and current ship. Relog required.</p>
         <form method="POST" action="{{.Self}}" class="row">
           <input type="hidden" name="action" value="moveto">
           <input type="text" id="cv-stsearch" placeholder="Search station..." autocomplete="off" style="flex:1;min-width:150px">
@@ -254,7 +252,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
 
       <div class="cv-act">
         <h4>Corporation</h4>
-        <p>Writes character_ and a chrEmployment record. Relog required.</p>
+        <p>Moves the pilot to another corporation. Relog required.</p>
         <form method="POST" action="{{.Self}}" class="row">
           <input type="hidden" name="action" value="changecorp">
           <select name="corporationID" style="flex:1;min-width:180px">
@@ -302,7 +300,7 @@ details.cv-fold > summary:hover { color:#e0e4ec }
         </tbody>
       </table>
       {{else}}
-      <div class="cv-empty">Queue is empty. The 3913 client has no queue UI &mdash; it is managed here.</div>
+      <div class="cv-empty">Queue is empty. Manage it in the skill window.</div>
       {{end}}
     </div>
 
@@ -326,8 +324,8 @@ details.cv-fold > summary:hover { color:#e0e4ec }
       </div>
       {{if .Online}}
       <p style="color:#6ee7b7;font-size:12px;margin-top:8px">
-        Connected from {{.Online.Addr}} since {{.Online.ConnectedAt.Format "2006-01-02 15:04"}}
-        &mdash; changes below that say "relog required" will not show until then.
+        Connected from {{.Online.Addr}} since {{.Online.ConnectedAt.Format "2006-01-02 15:04"}}.
+        Changes marked relog required apply on next login.
       </p>
       {{end}}
     </div>
@@ -340,12 +338,9 @@ details.cv-fold > summary:hover { color:#e0e4ec }
     <div class="card">
       <h3>Portrait appearance</h3>
     <p class="cv-hint">
-      These are the values the client renders the face from &mdash; the server stores numbers, not an image.
-      The lists hold only what <b>{{.Char.BloodlineName}} / {{.Char.GenderName}}</b> can wear
-      (the <code>chrBL*</code> tables); an ID from another bloodline renders as the wrong mesh or is
-      rejected by the foreign key. Slots marked <span style="color:var(--accent)">*</span> are required &mdash;
-      a face cannot render without them. Bloodline and gender are fixed at character creation.
-      A saved change only reaches a client that has no cached picture of this pilot yet.
+      Options are limited to what <b>{{.Char.BloodlineName}} / {{.Char.GenderName}}</b> can wear.
+      Slots marked <span style="color:var(--accent)">*</span> are required.
+      Bloodline and gender cannot be changed. A saved change only reaches a client with no cached picture of this pilot.
     </p>
 
     <form method="POST" action="{{.Self}}">

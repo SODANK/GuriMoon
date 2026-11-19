@@ -36,7 +36,7 @@
 
 <div class="card">
   <h3>Scramble All Agent Portraits</h3>
-  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">Randomize portrait data for ALL agents. Bloodline and gender will NOT change.</p>
+  <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">Randomizes portraits for all agents. Bloodline and gender are kept.</p>
   <form method="POST" action="/agents/scramble" onsubmit="return confirm('This will randomize portrait data for ALL agents. Bloodline and gender will NOT change. Continue?');">
     <label style="font-size:12px;cursor:pointer">
       <input type="checkbox" name="randomizeMorphs"> Randomize morph data
@@ -60,10 +60,7 @@
 <div class="card">
   <h3>Scramble NPC CEO Portraits</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    Randomize portrait data for every NPC corporation CEO. CEOs are not agents &mdash; they exist only as
-    <code>corporation.ceoID</code> plus an <code>eveStaticOwners</code> row, so the bloodline comes from their
-    character typeID and the gender is derived from the ID (<code>ceoID % 2</code>), exactly the way the server
-    renders them. Both are preserved. Player CEOs and CEOs that are also agents are skipped.
+    Randomizes portraits for every NPC corporation CEO. Bloodline and gender are kept. Player CEOs and CEOs who are also agents are skipped.
   </p>
   <form method="POST" action="/agents/scramble-ceos" onsubmit="return confirm('This will randomize portrait data for ALL NPC corporation CEOs. Bloodline and gender will NOT change. Continue?');">
     <label style="font-size:12px;cursor:pointer">

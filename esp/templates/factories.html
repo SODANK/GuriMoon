@@ -27,7 +27,7 @@
   <h2>Science &amp; Industry</h2>
   <span class="asof">as of {{unixTime .O.AsOfUnix}} &middot; <a href="/industry/factories?view={{.View}}&amp;refresh=1">Refresh</a></span>
 </div>
-<p class="sx-lede">What every capsuleer on the server is building and researching. A line is busy exactly when an undelivered job points at it — nothing stores a busy flag — so every figure here is read out of <code>ramJobs</code>.</p>
+<p class="sx-lede">Every build and research job on the server, and how busy the assembly lines are.</p>
 
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
 {{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
@@ -47,9 +47,9 @@
 {{if or .Overdue .Orphaned .NoStation}}
 <div class="alert alert-error" style="margin-bottom:14px">
   <ul style="margin:0;padding-left:18px">
-    {{if .Overdue}}<li><b>{{commas .Overdue}}</b> job{{if ne .Overdue 1}}s are{{else}} is{{end}} past its end time but still flagged running — the job ticker has not swept since. They show as Ready to the client anyway (readiness is derived from the clock), but the status here will stay wrong until the tick runs.</li>{{end}}
-    {{if .Orphaned}}<li><b>{{commas .Orphaned}}</b> active job{{if ne .Orphaned 1}}s point{{else}} points{{end}} at an assembly line that no longer exists. Those can never be delivered or cancelled in-game — open the station and use <b>Release</b> to free the blueprint.</li>{{end}}
-    {{if .NoStation}}<li><b>{{commas .NoStation}}</b> line container{{if ne .NoStation 1}}s are{{else}} is{{end}} neither a station nor a POS array — no <code>staStations</code> or <code>starbaseStructures</code> row matches the <code>containerID</code>. Nobody can reach those lines, so they are dead capacity. They sort to the bottom of the station list.</li>{{end}}
+    {{if .Overdue}}<li><b>{{commas .Overdue}}</b> job{{if ne .Overdue 1}}s are{{else}} is{{end}} past its end time but still flagged running. The job ticker has not swept. Clients already see them as Ready.</li>{{end}}
+    {{if .Orphaned}}<li><b>{{commas .Orphaned}}</b> active job{{if ne .Orphaned 1}}s point{{else}} points{{end}} at an assembly line that no longer exists. They cannot be delivered or cancelled in-game. Use <b>Release</b> on the station page to free the blueprint.</li>{{end}}
+    {{if .NoStation}}<li><b>{{commas .NoStation}}</b> line container{{if ne .NoStation 1}}s are{{else}} is{{end}} neither a station nor a POS array. Nobody can reach those lines. They sort to the bottom of the station list.</li>{{end}}
   </ul>
 </div>
 {{end}}
@@ -106,7 +106,6 @@
 <div class="sx-grid">
   <div class="sx-p c7">
     <h3>By activity <span class="hint">{{commas $st.Active}} active jobs</span></h3>
-    <p class="note">Jobs holding a line, and how much of that activity's capacity is in use.</p>
     {{if .Activities}}
     <table>
       <tr><th>Activity</th><th style="width:34%">Jobs</th><th class="r">Running</th><th class="r">Ready</th><th class="r">Runs</th><th style="width:22%">Lines in use</th></tr>
@@ -127,7 +126,6 @@
 
   <div class="sx-p c5">
     <h3>Finishing in the next 24 hours <span class="hint">by hour</span></h3>
-    <p class="note">Running jobs by the hour they complete.</p>
     <div class="sx-cols">
       {{range .Hist}}<div class="sx-col" title="{{if eq .Hour 0}}within the hour{{else}}in {{.Hour}}&ndash;{{add .Hour 1}} h{{end}}: {{.Mfg}} manufacturing, {{.Sci}} science">
         {{if .Mfg}}<i class="m" style="height:{{printf "%.2f" .MfgPct}}%"></i>{{end}}{{if .Sci}}<i class="s" style="height:{{printf "%.2f" .SciPct}}%"></i>{{end}}
@@ -143,7 +141,7 @@
 
   <div class="sx-p c4">
     <h3>Last {{len .Days}} days <span class="hint">UTC</span></h3>
-    <p class="note">Faded = installed, solid = delivered (dated by end time; pickup is not stored).</p>
+    <p class="note">Faded = installed, solid = delivered.</p>
     {{if .Days}}
     <div class="sx-cols tall">
       {{range .Days}}<div class="sx-col pair {{if .Today}}today{{end}}" title="{{.Day}}: installed {{.InstMfg}} mfg + {{.InstSci}} sci · delivered {{.DelMfg}} mfg + {{.DelSci}} sci">
@@ -157,7 +155,6 @@
 
   <div class="sx-p c4">
     <h3>Top products <span class="hint">manufacturing</span></h3>
-    <p class="note">What is being built most right now.</p>
     {{if .TopProducts}}
     <table>
       <tr><th>Product</th><th class="r">Jobs</th><th class="r">Runs</th><th class="r">Builders</th></tr>
@@ -171,7 +168,6 @@
 
   <div class="sx-p c4">
     <h3>Top research targets <span class="hint">science</span></h3>
-    <p class="note">Blueprints with the most research, copy and invention jobs.</p>
     {{if .TopTargets}}
     <table>
       <tr><th>Blueprint</th><th>Activity</th><th class="r">Jobs</th><th class="r">Runs</th></tr>
@@ -186,7 +182,7 @@
 
   <div class="sx-p c4">
     <h3>Busiest regions <span class="hint">lines in use</span></h3>
-    <p class="note">POS arrays have no region and are counted in the KPI above, not here.</p>
+    <p class="note">POS arrays have no region and are not listed.</p>
     {{if .Regions}}
     <table>
       <tr><th>Region</th><th style="width:38%">Utilisation</th><th class="r">Lines</th><th class="r">Jobs</th></tr>
@@ -202,7 +198,7 @@
 
   <div class="sx-p c8">
     <h3>Busiest stations <span class="hint">top {{len .Stations}} by lines in use</span></h3>
-    <p class="note">Open one to see each line and what sits on it.</p>
+    <p class="note">Open one to see its lines.</p>
     {{if .Stations}}
     <table>
       <tr><th>Station</th><th>System</th><th>Region</th><th style="width:20%">Utilisation</th><th class="r">Lines</th><th class="r">Jobs</th></tr>
@@ -220,7 +216,6 @@
 
   <div class="sx-p c5">
     <h3>Top installers <span class="hint"><a href="/industry/factories?view=installers">all installers &rarr;</a></span></h3>
-    <p class="note">Every capsuleer with a job on a line, busiest first.</p>
     {{if .TopInstallers}}
     <table>
       <tr><th>Capsuleer</th><th>Corporation</th><th class="r" style="color:var(--mfg)">Mfg</th><th class="r" style="color:var(--sci)">Sci</th><th class="r">Runs</th><th class="r">Lines</th></tr>
@@ -237,7 +232,7 @@
 
   <div class="sx-p c4">
     <h3>Top corporations <span class="hint">by members' jobs</span></h3>
-    <p class="note">"For corp" = installed against the corporation's wallet and hangar.</p>
+    <p class="note">"For corp" = installed on the corporation's wallet.</p>
     {{if .TopCorps}}
     <table>
       <tr><th>Corporation</th><th class="r">Jobs</th><th class="r">For corp</th><th class="r">Pilots</th></tr>
@@ -253,7 +248,7 @@
 
   <div class="sx-p c3">
     <h3>Research Facility</h3>
-    <p class="note">Duplicating &amp; Reverse Engineering, in rented lab slots (own tables, not <code>ramJobs</code>).</p>
+    <p class="note">Duplicating and Reverse Engineering in rented lab slots.</p>
     {{with .Research}}
     {{if .Present}}
     <table>
@@ -290,7 +285,7 @@
 
 <div class="card">
   <h3>{{len .Stations}} factory station{{if ne (len .Stations) 1}}s{{end}}</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Line counts by activity. Open a station to edit its install costs and see what sits on each slot.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Line counts by activity. Open a station to edit its install costs.</p>
   <table class="rows">
     <tr>
       <th>Station</th><th>System</th><th>Region</th>
@@ -316,7 +311,7 @@
       <td>{{if .Ready}}<span style="color:#6ee7b7">{{.Ready}}</span>{{else}}<span style="color:#4b5563">—</span>{{end}}</td>
     </tr>
     {{else}}
-    <tr><td colspan="12" style="color:#6b7280">No stations match. If this is empty everywhere, <code>ramassemblylines</code> has not been seeded — no station in the game can host a job.</td></tr>
+    <tr><td colspan="12" style="color:#6b7280">No stations match. If empty everywhere, assembly lines have not been seeded.</td></tr>
     {{end}}
   </table>
 </div>
@@ -372,7 +367,7 @@
   <div class="fx-head" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
     <h3 style="margin:0">{{if eq .View "manufacturing"}}Manufacturing{{else if eq .View "science"}}Science{{else}}Installers{{end}}
       &mdash; {{commas .TotalJobs}} job{{if ne .TotalJobs 1}}s{{end}} in {{commas .TotalGroups}} group{{if ne .TotalGroups 1}}s{{end}}</h3>
-    <span style="font-size:12px;color:#6b7280">Open a group to see its jobs.{{if eq .View "science"}} ME/PE research, copying and invention.{{end}}</span>
+    <span style="font-size:12px;color:#6b7280">Open a group to see its jobs.</span>
     <span style="margin-left:auto"><input type="search" id="gfilter" placeholder="Search this page…" autocomplete="off" style="padding:4px 8px;font-size:12px;width:200px"></span>
   </div>
   <table class="sx-tbl rows" id="groups">
@@ -494,7 +489,7 @@
         <span style="display:block;height:100%;width:{{.ProgressPct}}%;background:{{if eq .StatusID 1}}#1a4731{{else}}var(--btn-hi){{end}}"></span>
       </span>
       <span style="font-size:11px;color:{{if eq .Status "Ready"}}#6ee7b7{{else}}#9ca3af{{end}}">{{.Status}} {{.ProgressPct}}%</span>
-      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time but still flagged running - the job ticker has not swept since">&middot; overdue</span>{{end}}
+      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time but still flagged running">&middot; overdue</span>{{end}}
     </td>
     <td>{{if .EndTimeUnix}}{{unixTime .EndTimeUnix}}
         <span class="sub" style="color:{{if lt .RemainingSec 0}}#6ee7b7{{else}}#6b7280{{end}}">{{if lt .RemainingSec 0}}done{{else}}{{secs .RemainingSec}} left{{end}}</span>

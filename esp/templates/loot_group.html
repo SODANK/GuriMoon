@@ -1,6 +1,6 @@
 {{define "content"}}
 <h2><a href="/loot">NPC Loot</a> › {{.GroupName}}</h2>
-<p style="font-size:12px;color:#6b7280;margin-bottom:16px">Group-wide drop list — every NPC in this group rolls it on death. The table is a <strong>100% budget</strong>, not a list of independent chances: a kill first rolls whether it drops anything ({{pct .ExpectedDrops}}&#37; of kills yield an item on average), then each haul slot picks <em>one</em> entry weighted by its share. Give an item more share and every other item gets less.</p>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px">Drops for every NPC in this group. Shares add to <strong>100%</strong>, and each haul slot picks <em>one</em> entry by share. {{pct .ExpectedDrops}}&#37; of kills drop an item on average.</p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
@@ -31,7 +31,7 @@
       <input type="checkbox" name="commanderOnly" value="1"> Commander only
     </label>
     <button type="submit">Add Drop</button>
-    <span style="font-size:12px;color:#6b7280">No chance field: a new item takes an <strong>equal slice</strong> of the budget and the rest shrink to pay for it. Tune it with the sliders below. A blueprint always drops as one <strong>copy</strong>, never an original; Min/Max are its runs.</span>
+    <span style="font-size:12px;color:#6b7280">A new item takes an <strong>equal share</strong> and the rest shrink. Tune with the sliders below. Blueprints drop as a <strong>copy</strong>; Min/Max are its runs.</span>
   </form>
   <span id="existingItems" hidden data-ids="{{range .Entries}}{{.ItemTypeID}},{{end}}"></span>
 
@@ -40,11 +40,11 @@
        and Delete forms live inside the rows, and HTML forbids nesting forms.
        Every slider joins it by form="shareForm" instead. */}}
   <table style="margin-top:12px">
-    <tr><th>Item</th><th>Condition</th><th>Item Group</th><th style="min-width:240px">Share of drops</th><th title="Rough odds this item is in a given kill's haul, before the ISK rate multiplier and the Max Drops cap">≈ per kill</th><th>Min</th><th>Max</th><th></th><th></th></tr>
+    <tr><th>Item</th><th>Condition</th><th>Item Group</th><th style="min-width:240px">Share of drops</th><th title="Rough chance per kill, before the loot rate and Max Drops cap">≈ per kill</th><th>Min</th><th>Max</th><th></th><th></th></tr>
     {{range .Entries}}
     <tr data-pool="{{if .RequireRole}}{{.RequireRole}}{{else}}general{{end}}">
-      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint's max runs">[BPC &middot; Min/Max = runs]</span>{{end}}</td>
-      <td>{{if eq .RequireRole "bounty"}}<span style="font-size:11px;color:#fbbf24" title="Pays in place of a kill bounty: a separate 100% budget with one guaranteed pick on every kill">Bounty (guaranteed)</span><input form="ef{{.EntryID}}" type="hidden" name="keepRole" value="bounty">{{else}}<label style="font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:5px" title="Only drops when a commander-role rat is killed — commander drops are a separate 100% budget with one guaranteed pick">
+      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="One blueprint copy. Min/Max are its runs, capped at max runs">[BPC &middot; Min/Max = runs]</span>{{end}}</td>
+      <td>{{if eq .RequireRole "bounty"}}<span style="font-size:11px;color:#fbbf24" title="Replaces the kill bounty. Separate pool, one guaranteed pick per kill">Bounty (guaranteed)</span><input form="ef{{.EntryID}}" type="hidden" name="keepRole" value="bounty">{{else}}<label style="font-size:11px;color:#fbbf24;display:flex;align-items:center;gap:5px" title="Drops only from a commander-role rat. Separate pool, one guaranteed pick">
         <input form="ef{{.EntryID}}" type="checkbox" name="commanderOnly" value="1" {{if .RequireRole}}checked{{end}}> commander only
       </label>{{end}}</td>
       <td>{{.ItemGroupName}}</td>
@@ -92,7 +92,7 @@
 
 <div class="card">
   <h3>Copy Loot from Another Group</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Clones another group's drop list onto this one, chances and quantities included. By default it merges — items already listed above keep their current values. Tick <em>replace</em> for an exact mirror.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Clones another group's drop list onto this one. Merges by default, keeping existing values. Tick <em>replace</em> for an exact mirror.</p>
   <form method="POST" action="/loot/group/{{.GroupID}}" class="inline-form" id="copyForm" style="margin-bottom:0">
     <input type="hidden" name="action" value="copyfrom">
     <input type="hidden" name="sourceGroupID" id="sourceGroupID">
@@ -122,7 +122,7 @@
 
 <div class="card">
   <h3>NPC Types in this Group ({{len .Types}})</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Click one to give it extra type-specific drops (its group loot above still applies).</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Click one to give it extra type-specific drops. Group loot still applies.</p>
   {{if .Types}}
   <table>
     <tr><th>NPC</th><th>Type ID</th><th>Specific Entries</th><th></th></tr>

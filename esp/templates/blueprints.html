@@ -1,6 +1,6 @@
 {{define "content"}}
 <h2>Blueprints</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Every <code>invBlueprintTypes</code> row in the game. Open one to edit what it builds, how long it takes, what it consumes, and the ME/PE of the individual copies players hold.</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Every blueprint type. Open one to edit its product, times and materials.</p>
 
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
 {{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
@@ -51,7 +51,7 @@
 <div class="card">
   {{if .Missing}}
   <h3>Blueprint items with no blueprint data ({{len .Rows}})</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">These are category-9 item types with no <code>invBlueprintTypes</code> row. Seeding one gives it placeholder values (1 hour production, waste 10, max 10 runs) — set the real product and times on the detail page afterwards.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Blueprint items with no blueprint data. Seeding one adds placeholder values (1 hour build, waste 10, max 10 runs). Set the real values on its page.</p>
   <table class="compact">
     <tr><th>Type</th><th style="width:90px">ID</th><th>Group</th><th style="width:90px">Published</th><th style="width:300px">Seed blueprint data</th></tr>
     {{range .Rows}}

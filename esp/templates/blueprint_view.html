@@ -38,7 +38,7 @@
 <!-- ── Type fields ─────────────────────────────────────────────── -->
 <div class="card">
   <h3>Blueprint type</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 10px">These are the <code>invBlueprintTypes</code> columns. They apply to every copy of this blueprint in the game. A job already running keeps the end time it was stamped with when it was installed — the change lands on the next install.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 10px">These apply to every copy of this blueprint. Running jobs keep their end time. Changes apply from the next install.</p>
   <form method="POST">
     <input type="hidden" name="action" value="saveType">
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px">
@@ -86,7 +86,7 @@
 <div class="card">
   <h3>{{.ActivityName}} requirements</h3>
   {{if eq .ActivityID 1}}
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Manufacturing consumes these once per run, after ME waste and the assembly line's material multiplier. A row with <b>damage &lt; 1</b> must be present but survives the job; <b>recycle</b> rows are what the item gives back when reprocessed, never consumed. Skill rows (category 16) are shown separately — the client renders them under Required Skills and nothing eats them.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Consumed once per run, after ME waste. <b>damage &lt; 1</b> means the item is required but survives the job. <b>recycle</b> rows are reprocessing output and are never consumed. Skills are listed separately.</p>
   {{end}}
   <table class="compact">
     <tr><th style="width:44%">Material</th><th>Group</th><th style="width:100px">Quantity</th><th style="width:100px">Damage/job</th><th style="width:70px">Recycle</th><th style="width:140px"></th></tr>
@@ -160,13 +160,13 @@
 <!-- ── Instances ───────────────────────────────────────────────── -->
 <div class="card">
   <h3>Copies in the game ({{len .Instances}})</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">One row per item. ME and PE live in <code>invBlueprints</code>; a blueprint with no row there behaves as ME 0 / PE 0 original. A blueprint locked inside a running job cannot be edited — cancel the job first, otherwise delivery would hand back something different from what was installed. Edits reach the owner's client on their next session refresh.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">One row per item. A blueprint with no ME/PE data counts as an ME 0 / PE 0 original. Blueprints inside a running job cannot be edited. Cancel the job first.</p>
   <table class="compact">
     <tr><th style="width:140px">Item</th><th>Owner</th><th>Location</th><th style="width:70px">ME</th><th style="width:70px">PE</th><th style="width:60px">Copy</th><th style="width:90px">Runs left</th><th style="width:90px"></th></tr>
     {{range .Instances}}
     <tr>
-      <td style="color:#9ca3af;font-size:12px">{{.BlueprintID}}{{if not .HasRow}} <span style="color:#fbbf24" title="no invBlueprints row — behaves as ME 0 / PE 0 original">⚠</span>{{end}}
-        {{if gt .Quantity 1}}<br><span style="color:#fbbf24" title="a packaged stack — these values apply to every unit in it">stack ×{{.Quantity}}</span>{{end}}</td>
+      <td style="color:#9ca3af;font-size:12px">{{.BlueprintID}}{{if not .HasRow}} <span style="color:#fbbf24" title="No ME/PE data. Counts as ME 0 / PE 0 original.">⚠</span>{{end}}
+        {{if gt .Quantity 1}}<br><span style="color:#fbbf24" title="Packaged stack. These values apply to every unit.">stack ×{{.Quantity}}</span>{{end}}</td>
       <td>{{if .OwnerName}}{{.OwnerName}}{{else}}<span style="color:#6b7280">owner {{.OwnerID}}</span>{{end}}</td>
       <td style="font-size:12px;color:#9ca3af">{{if .LocationName}}{{.LocationName}}{{else}}location {{.LocationID}}{{end}}
         {{if .InProduction}}<br><span style="color:#fbbf24">in job {{.JobID}}</span>{{end}}</td>

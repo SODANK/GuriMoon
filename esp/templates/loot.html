@@ -13,7 +13,7 @@
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
 <div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
   <h3>Jump to a Specific NPC</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Search any NPC by name (officers, named rats) to author loot just for that one type.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Find an NPC type to give it its own loot.</p>
   <div style="position:relative;max-width:480px">
     <input type="text" id="npcSearch" placeholder="Search NPC types... (e.g. Gist Seraphim, Angel Warlord)" autocomplete="off" style="width:100%">
     <div id="npcResults" class="ac-results"></div>
@@ -22,7 +22,7 @@
 
 <div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
   <h3 id="bulkTitle">Add an Item to ALL Groups</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Inserts one group-wide entry. Tag groups in the table below to target only those; <strong>with nothing tagged it hits every NPC group</strong>. Groups that already drop the item are skipped. Each drop table is a 100% budget, so the new item takes an <em>equal slice</em> of every table it lands on and the entries already there shrink to pay for it — set its real weight on the group page afterwards.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Adds one entry to each tagged group. <strong>With nothing tagged it hits every NPC group.</strong> Groups that already drop the item are skipped. The item takes an equal share of each table, so existing entries shrink. Set its real weight on the group page.</p>
   <form method="POST" action="/loot" id="bulkForm">
     <input type="hidden" name="action" value="addall">
     <input type="hidden" name="itemTypeID" id="itemTypeID">
@@ -67,8 +67,8 @@
       <span style="font-size:12px;color:#6b7280">Tag rows below, then apply. 0 = uncapped.</span>
     </div>
     <p style="font-size:12px;color:#6b7280;margin:8px 0 0">
-      Caps how many entries actually drop per kill — when more roll than this, a random subset of this size survives.
-      Tags survive filter reloads and also target the item-add tool above.
+      Max drops caps how many entries drop per kill, chosen at random.
+      Tags also target the add-item tool above.
       <a href="#" id="tagAllShown">tag all {{len .Groups}} shown</a> · <a href="#" id="untagAll">clear tags</a>
     </p>
   </div>
@@ -105,17 +105,17 @@
     {{end}}
   </table>
   {{else}}
-  <p style="color:#6b7280">None yet — use the NPC search above to declare drops for a specific rat (its group loot still applies on top).</p>
+  <p style="color:#6b7280">None yet. Use the NPC search above. Group loot still applies on top.</p>
   {{end}}
 </div>
 
 <div class="card">
   <h3>Rebalance Every Drop Table</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    <code>dropChance</code> is a <strong>relative weight</strong>, not an independent chance — a kill picks one entry per haul slot with probability <code>weight ÷ pool total</code>. Twenty entries authored at "10%" are 5% each; a "50%" entry beside them takes 21%, not half. Rescaling a whole pool by one factor changes nothing about what drops, it just makes the number on each row mean what it says.
+    <code>dropChance</code> is a <strong>relative weight</strong>, not an independent chance. Each haul slot picks one entry with probability <code>weight ÷ pool total</code>.
   </p>
   <p style="font-size:12px;color:#6b7280;margin-bottom:8px">
-    This sweeps <strong>every</strong> NPC group and type override in the game and puts each role pool on a 100% budget. Commander-only entries are budgeted separately (they get one guaranteed pick on a commander kill). Nothing else changes — no entry is added, removed, or reordered, and every item keeps its exact share of its pool.
+    Rescales <strong>every</strong> NPC group and type override so each pool adds to 100%. Commander-only entries are budgeted separately. Drop odds do not change.
   </p>
   {{if .OffBudget}}
   <p style="font-size:12px;color:#fbbf24;margin-bottom:8px">
@@ -125,7 +125,7 @@
   <p style="font-size:12px;color:#6ee7b7;margin-bottom:8px">Every drop table already reads as a 100% budget.</p>
   {{end}}
   <form method="POST" action="/loot" id="normalizeAllForm" style="margin:0"
-        onsubmit="return confirm('Rescale every NPC drop table in the game to a 100% budget?\n\nThis rewrites the stored percentages but NOT the odds — each item keeps the same share of its pool, so no rat drops anything more or less often than it does now.');">
+        onsubmit="return confirm('Rescale every NPC drop table in the game to a 100% budget?\n\nThis rewrites the stored percentages, not the odds.');">
     <input type="hidden" name="action" value="normalizeall">
     <button type="submit">Rebalance All Drop Tables to 100%</button>
   </form>

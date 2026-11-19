@@ -61,10 +61,11 @@
 <div class="sx-top"><h2>Content Packages</h2></div>
 <details class="cp-help">
   <summary>How packages work</summary>
-  <p>A package is one <b>.gmpkg</b> file holding dungeons (rooms, objects, object loot and Dungeon Logic), mission templates, open-site spawners and the <b>custom NPC types</b> they use with those NPCs' loot. Picking a mission adds its dungeon and the rest of its chain; picking a spawner adds its dungeon.
-  On install every row gets a new ID on this server, so a package never overwrites existing content. A package must match the format exactly: an unknown file, column or value, a raw database ID, a number out of range or an install.sql that differs from the data rejects the whole file. Base game data (item types, factions, stations, regions) is referred to by ID and checked against this server before anything is written.
-  <b>Check package</b> runs the whole install and rolls it back, so its report is exactly what <b>Install</b> will do. Installing a package that is already installed (same package ID) upgrades it in place: rows keep their IDs and enabled state, new rows are added and rows the new version dropped are removed.
-  To publish an update of an installed package, pick it under <b>Package</b> when exporting. Uninstall removes exactly the rows the package installed; it is refused while players are in one of its dungeons.</p>
+  <p>A package is a <b>.gmpkg</b> file holding dungeons, mission templates, open-site spawners and the custom NPC types they use. Picking a mission adds its dungeon and chain. Picking a spawner adds its dungeon.
+  Install gives every row a new ID, so existing content is never overwritten. Unknown or malformed content rejects the whole file.
+  <b>Check package</b> runs the install and rolls it back, so its report is what <b>Install</b> will do.
+  Installing a package with the same package ID upgrades it in place. To publish an update, pick the installed package under <b>Package</b> when exporting.
+  Uninstall removes what the package installed. It is refused while players are in its dungeons.</p>
 </details>
 
 {{if .Result}}<div class="alert {{if .ResultErr}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
@@ -155,7 +156,7 @@
     <input type="hidden" name="token" value="{{$.ImportToken}}">
     {{if $.ImportDisabled}}<input type="hidden" name="disabled" value="1">{{end}}
     <button type="submit">{{if $.ImportReport.Upgrade}}Upgrade{{else}}Install{{end}}</button>
-    <span class="hint">{{if $.ImportDisabled}}New missions and spawners install disabled; enable them on the Missions and Dungeon Spawners pages.{{else}}New missions and spawners go live at once.{{end}}</span>
+    <span class="hint">{{if $.ImportDisabled}}New missions and spawners install disabled. Enable them on the Missions and Dungeon Spawners pages.{{else}}New missions and spawners go live at once.{{end}}</span>
   </form>
 </div>
 {{end}}

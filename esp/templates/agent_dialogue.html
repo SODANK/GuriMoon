@@ -2,14 +2,9 @@
 <h2>Agent Dialogue</h2>
 
 <p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
-  Everything an agent says outside a mission template, and the captions on the player's own
-  choices &mdash; the conversation shell (greeting, refusals, the mission-cap turn-away), the
-  service pitches, and the locator mails. Mission briefings and their accept/decline texts stay
-  on the <a href="/missions">mission template</a> pages; this is everything else.
-  <strong>Scope</strong>: &ldquo;All agents&rdquo; edits the global voice; picking a division
-  overrides line by line and inherits the rest &mdash; so Legal can greet like a law office
-  while everyone else keeps the stock words. Saving a line identical to what the scope would
-  inherit anyway clears the override.
+  Agent greetings, refusals, service pitches and locator mails, plus the captions on the player's choices.
+  Mission texts are on the <a href="/missions">mission template</a> pages.
+  <strong>Scope</strong>: &ldquo;All agents&rdquo; edits the default. A division overrides line by line and inherits the rest.
 </p>
 
 {{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}

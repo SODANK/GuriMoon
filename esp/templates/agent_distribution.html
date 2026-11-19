@@ -2,13 +2,8 @@
 <h2>Mission Distribution</h2>
 
 <p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
-  One weighted roll over the agent's division (<code>RollMissionType</code>), then a random
-  enabled template of that type at the agent's level. Weights are <strong>relative</strong>,
-  not percentages &mdash; <em>Roll</em> is each type's share of its division's total.
-  <em>Effective</em> is what pilots get: a rolled type with no usable template at that level
-  falls back to <strong>kill</strong>, and if kill is empty too the agent answers
-  &ldquo;no missions available&rdquo;. Template <code>allowedFactions</code> filtering is not
-  modelled and can only narrow coverage further.
+  Which mission types each division's agents offer. <em>Roll</em> is a type's share of its division's weights.
+  <em>Effective</em> is what pilots get: a type with no usable template falls back to kill, then to &ldquo;no missions available&rdquo;.
 </p>
 
 {{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
@@ -59,8 +54,7 @@
 <div class="card">
   <h3 style="margin-bottom:8px">Server-wide mix</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
-    Effective share across all {{.Summary.Agents}} mission agents, weighted by division headcount
-    (R&amp;D and non-agents excluded).
+    Effective share across {{.Summary.Agents}} mission agents. R&amp;D agents excluded.
   </p>
   <div class="mixbar" style="height:18px;width:100%">
     {{range .Summary.Cells}}<span class="mix-{{.Type}}" style="width:{{printf "%.3f" .EffPct}}%" title="{{.Type}} {{printf "%.1f" .EffPct}}%"></span>{{end}}
@@ -89,11 +83,8 @@
     <button type="submit">Save</button>
   </form>
   <p style="font-size:11px;color:#6b7280;margin-top:6px">
-    Per pilot per agent, counted on <em>accepted</em> missions in a rolling window &mdash;
-    declines do not count, and the agent info window shows &ldquo;Available Again&rdquo;
-    while the cap is hit. The refusal line is authorable per division on
-    <a href="/agents/dialogue">Dialogue</a> (<code>shell.cooldown</code>). 0 disables the cap.
-    Storyline agents are exempt (the invite is their gate).
+    Accepted missions per pilot per agent in a rolling window. Declines do not count.
+    0 disables the cap. Storyline agents are exempt. Refusal text is on <a href="/agents/dialogue">Dialogue</a>.
   </p>
 
   <h3 style="margin:14px 0 8px">Free declines</h3>
@@ -106,18 +97,15 @@
     <button type="submit">Save</button>
   </form>
   <p style="font-size:11px;color:#6b7280;margin-top:6px">
-    Per pilot per agent: the first decline in the window is free; another decline with the same
-    agent inside it costs the template&rsquo;s standing loss. 0 makes every decline cost standing.
-    The agent&rsquo;s lines are authorable on <a href="/agents/dialogue">Dialogue</a>
-    (<code>shell.decline.free</code>, <code>shell.decline.penalty</code>).
+    The first decline per pilot per agent in the window is free. Later ones cost the template&rsquo;s standing loss.
+    0 makes every decline cost standing. Agent lines are on <a href="/agents/dialogue">Dialogue</a>.
   </p>
 </div>
 
 <div class="card">
   <h3 style="margin-bottom:8px">Template inventory</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
-    Enabled templates the offer path can actually hand out, per agent level. A kill template
-    with no <code>dungeonVID</code>, or a dungeon with no rooms, is rejected at offer time.
+    Enabled templates agents can actually offer, per level. Kill templates with no dungeon, or a dungeon with no rooms, are subtracted.
   </p>
   <table class="compact">
     <tr><th>Level</th><th style="text-align:right">Kill</th><th style="text-align:right">Courier</th>
@@ -142,16 +130,10 @@
 <div class="card">
   <h3>Storyline deck</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:10px;max-width:1000px">
-    Storyline agents run the same offer pipeline, on an exclusive deck: they draw only
-    templates flagged <strong>storyline</strong> on the
-    <a href="/missions">mission template</a> page, nobody else draws those, and they have
-    nothing at all for a pilot who has not been invited. An invite is earned by completing
-    <strong>consecutive missions for agents of one faction</strong> &mdash; switching
-    faction restarts the count &mdash; at which point a storyline agent of that faction
-    mails the pilot and waits for them. The run is only spent when an agent is actually
-    found, so a faction with no storyline agent holds the count rather than wasting it.
-    These agents are excluded from the division coverage above, because they no longer
-    answer an ordinary mission request.
+    Storyline agents offer only templates flagged <strong>storyline</strong> on the
+    <a href="/missions">mission template</a> page, and only to invited pilots.
+    A pilot is invited after the set number of consecutive missions for one faction.
+    Switching faction restarts the count.
   </p>
   <div class="sl-grid">
     <div>
@@ -190,8 +172,7 @@
     </div>
     <div>
       <p style="font-size:12px;color:#6b7280;margin-bottom:6px">
-        Who can pay out a run. A faction missing from this list can never issue an invite,
-        so its pilots run forever and hear nothing.
+        Factions that can send invites. A faction not listed never invites.
       </p>
       <div class="sl-fac">
         <table class="compact">
@@ -214,10 +195,8 @@
     <button type="button" id="warnToggle" class="warnchip" style="margin-left:auto">Expand all warnings</button>
   </div>
   <p style="font-size:12px;color:#6b7280;margin-bottom:10px">
-    Edit the numbers and Save &mdash; percentages update as you type, only Save writes the row,
-    and a division with no row is stored on first save. Agent counts are a hover tooltip for the
-    per-level breakdown; the <span class="warnchip">&#9888;</span> chip opens that division's
-    coverage warnings.
+    Edit the weights and Save per row. Hover an agent count for the per-level split.
+    The <span class="warnchip">&#9888;</span> chip opens that division's coverage warnings.
   </p>
   <table class="compact">
     <tr>
@@ -233,7 +212,7 @@
         <td>{{.DivisionID}}</td>
         <td style="white-space:nowrap">
           {{.DivisionName}}
-          {{if not .HasRow}}<span style="font-size:11px;color:#e0a35b" title="No agtDivisionMissionWeights row — GetDivisionWeights falls back to 50/50 kill/courier. Saving creates it.">&nbsp;(no row)</span>{{end}}
+          {{if not .HasRow}}<span style="font-size:11px;color:#e0a35b" title="No saved weights. Defaults to 50/50 kill/courier until you save.">&nbsp;(no row)</span>{{end}}
         </td>
         <td style="text-align:right;font-size:12px;color:#9ca3af"
             title="{{range .Levels}}L{{.Level}}&times;{{.Agents}} {{end}}">

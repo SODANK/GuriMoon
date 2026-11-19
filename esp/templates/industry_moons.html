@@ -1,6 +1,6 @@
 {{define "content"}}
 <h2>Moons</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">What each moon gives a Moon Harvesting Array. Every moon in the galaxy is rolled from one world seed, in the classic layout: most moons hold gas or nothing; <b style="color:{{moonClassColor 1}}">R8</b> metals follow the race of the space (the racial carbide chain); <b style="color:{{moonClassColor 2}}">R16</b> clusters by constellation; <b style="color:{{moonClassColor 3}}">R32</b> follows the region's rat faction (Technetium in Guristas space); <b style="color:{{moonClassColor 4}}">R64</b> is rare everywhere. Each class is about half as common as the one below it. Highsec moons hold <b style="color:{{moonClassColor 0}}">R4</b> only, since a harvester cannot anchor above 0.4. A quantity is <b>batches per cycle</b> (100 units each), which the harvester caps at its quality (Array I = 1).</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">What each moon gives a Moon Harvesting Array. <b style="color:{{moonClassColor 1}}">R8</b> follows the race of the space, <b style="color:{{moonClassColor 2}}">R16</b> the constellation, <b style="color:{{moonClassColor 3}}">R32</b> the region's rat faction, and <b style="color:{{moonClassColor 4}}">R64</b> is rare. Highsec holds <b style="color:{{moonClassColor 0}}">R4</b> only. A quantity is <b>batches per cycle</b> (100 units each).</p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
@@ -38,9 +38,9 @@
 
 <div class="card">
   <h3>Rescramble every moon</h3>
-  <p style="font-size:13px;color:#6b7280;margin:-4px 0 12px">Re-rolls the whole galaxy under a new world seed. <b>Moons under towers are re-rolled too</b>: a harvester set to a material its moon no longer holds yields nothing until its owner picks another. The profile and seed are saved before the run starts.</p>
+  <p style="font-size:13px;color:#6b7280;margin:-4px 0 12px">Re-rolls the whole galaxy under a new world seed. <b>Moons under towers are re-rolled too</b>: a harvester set to a material its moon no longer holds yields nothing until its owner picks another.</p>
   {{with $.Profile}}
-  <p style="font-size:12px;color:#6b7280;margin:-4px 0 12px">Current profile <b>{{.Name}}</b>: empty high/low/null/deep {{printf "%.0f" (index .EmptyPct 0)}}/{{printf "%.0f" (index .EmptyPct 1)}}/{{printf "%.0f" (index .EmptyPct 2)}}/{{printf "%.0f" (index .EmptyPct 3)}}% · R8 chance low/null/deep {{printf "%.0f" (index .R8Pct 1)}}/{{printf "%.0f" (index .R8Pct 2)}}/{{printf "%.0f" (index .R8Pct 3)}}% (halving per class) · 2/3-batch lines {{printf "%.0f" .Abundance2Pct}}/{{printf "%.0f" .Abundance3Pct}}%. <b>classic</b> is the sparse 2005 layout; <b>generous</b> fills every low/null moon, makes rares about three times as common, and adds 2- and 3-batch lines for Harvesting Array II/III.</p>
+  <p style="font-size:12px;color:#6b7280;margin:-4px 0 12px">Current profile <b>{{.Name}}</b>: empty high/low/null/deep {{printf "%.0f" (index .EmptyPct 0)}}/{{printf "%.0f" (index .EmptyPct 1)}}/{{printf "%.0f" (index .EmptyPct 2)}}/{{printf "%.0f" (index .EmptyPct 3)}}% · R8 chance low/null/deep {{printf "%.0f" (index .R8Pct 1)}}/{{printf "%.0f" (index .R8Pct 2)}}/{{printf "%.0f" (index .R8Pct 3)}}% · 2/3-batch lines {{printf "%.0f" .Abundance2Pct}}/{{printf "%.0f" .Abundance3Pct}}%. <b>classic</b> is sparse. <b>generous</b> fills every low/null moon, makes rares about 3x as common, and adds 2- and 3-batch lines for Array II/III.</p>
   {{end}}
   <form method="POST" action="/industry/moons" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
     <label style="display:block;font-size:12px;color:#6b7280">Profile<br>
@@ -84,7 +84,7 @@
     <a href="/industry/moons?view=regions" {{if eq .View "regions"}}style="font-weight:600"{{end}}>Regions</a>
   </div>
   {{if eq .View "regions"}}
-  <p style="font-size:12px;color:#6b7280;margin:0 0 8px">Moons holding each class, per region, with the leading material of each class: R8 shows the racial lean, R32 the rat faction's.</p>
+  <p style="font-size:12px;color:#6b7280;margin:0 0 8px">Moons per class and region, with the leading material.</p>
   <table>
     <tr><th>Region</th><th>Sec</th><th>Rats</th><th style="text-align:right">Moons</th><th style="text-align:right">Empty</th>
       <th style="text-align:right;color:{{moonClassColor 1}}">R8</th><th style="text-align:right;color:{{moonClassColor 2}}">R16</th>

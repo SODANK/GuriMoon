@@ -35,7 +35,7 @@
     <tr>
       {{if $.HasPortraits}}<td style="width:40px"><img src="/portrait/{{.CharacterID}}?size=64" width="36" height="36" style="vertical-align:middle;border-radius:4px;background:var(--bg)" onerror="this.style.display='none'"></td>{{end}}
       <td>{{.CharacterID}}</td>
-      <td><a href="/character/{{.CharacterID}}">{{.CharacterName}}</a>{{if .IsBotAccount}} <span style="font-size:10px;color:#6b7280;background:#1f2937;padding:1px 4px;border-radius:3px">BOT</span>{{else if .IsBot}} <span title="Main-roster pilot currently driven by the rolebots sim" style="font-size:10px;color:#9acd6a;background:#1f2937;padding:1px 4px;border-radius:3px">BOT-RUN</span>{{end}}</td>
+      <td><a href="/character/{{.CharacterID}}">{{.CharacterName}}</a>{{if .IsBotAccount}} <span style="font-size:10px;color:#6b7280;background:#1f2937;padding:1px 4px;border-radius:3px">BOT</span>{{else if .IsBot}} <span title="Main-roster pilot currently driven by a bot" style="font-size:10px;color:#9acd6a;background:#1f2937;padding:1px 4px;border-radius:3px">BOT-RUN</span>{{end}}</td>
       <td>{{if .CorporationID}}<a href="/corporation/{{.CorporationID}}">{{.CorpName}}</a>{{else}}-{{end}}</td>
       <td>{{formatISK .Balance}}</td>
       <td>{{.StationName}}</td>

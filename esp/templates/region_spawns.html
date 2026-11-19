@@ -1,6 +1,6 @@
 {{define "content"}}
 <h2>Region Spawns</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Belt spawning, loot-table style: each region has a flat list of NPC types that can appear at its belts. A listing's <b>max sec</b> is the highest security it shows up in — it spawns there and everywhere below. How many spawn per belt comes from <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Which NPCs spawn at each region's belts. Ship counts are set on <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
 
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
 
@@ -20,13 +20,13 @@
     {{end}}
   </table>
   {{else}}
-  <p style="color:#f87171;font-size:13px">No region has spawn listings — belts are empty everywhere. Pick a region below to start.</p>
+  <p style="color:#f87171;font-size:13px">No region has spawn listings, so belts are empty everywhere. Pick a region below to start.</p>
   {{end}}
 </div>
 
 <div class="card">
   <details>
-    <summary style="cursor:pointer;color:#9ca3af;font-size:13px">Regions without spawns ({{len .Empty}}) — belts there are empty until you add listings (or copy another region's list over)</summary>
+    <summary style="cursor:pointer;color:#9ca3af;font-size:13px">Regions without spawns ({{len .Empty}}). Their belts are empty.</summary>
     <table style="margin-top:12px">
       <tr><th>Region</th><th>Systems</th><th></th></tr>
       {{range .Empty}}
@@ -43,7 +43,7 @@
 <!-- Global belt settings -->
 <div class="card">
   <h3>Global Belt Settings</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Timing and placement for every belt in every system, replacing the built-in security-scaled defaults. How many ships a wave holds lives on <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Timing and placement for every belt. Replaces the security-scaled defaults.</p>
 
   {{if .Global}}
   <form class="inline-form" method="POST" action="/region-spawns">
@@ -69,10 +69,10 @@
     <input type="hidden" name="action" value="delete_global">
     <button type="submit" onclick="return confirm('Remove global belt settings and return to security-scaled defaults?')" style="background:#4a1a1a;border-color:#6b2a2a">Remove — use security scaling</button>
   </form>
-  <p style="font-size:11px;color:#6b7280;margin-top:8px">Reseed cooldown is measured seed-to-seed: a belt waits this long between waves, so clearing one leaves it quiet for the remainder. Killed ships are never replaced one at a time — a belt keeps whatever survives until its next wave.</p>
+  <p style="font-size:11px;color:#6b7280;margin-top:8px">Reseed cooldown is the wait between waves at a belt. Killed ships are not replaced until the next wave.</p>
   {{else}}
 
-  <p style="font-size:13px;color:#9ca3af;margin-bottom:12px">Currently using built-in security scaling:</p>
+  <p style="font-size:13px;color:#9ca3af;margin-bottom:12px">Using security-scaled defaults:</p>
   <table style="max-width:480px;margin-bottom:12px">
     <tr><th>Security</th><th>Reseed cooldown</th><th>Scatter</th></tr>
     <tr><td>0.9+</td><td>{{.WaveTimerSec}}s</td><td>15 km</td></tr>
@@ -95,12 +95,7 @@
 <!-- Rarity: commanders and officers -->
 <div class="card">
   <h3>Commander &amp; Officer Rarity</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
-    Global dials over the per-tier chances on <a href="/spawner-rules#tiers">Squad Tiers</a>. Those author the texture; these scale it all at once and hold the hard limits.
-    The two <b>%</b> multipliers are relative to what each tier says — 100 means "as authored", 200 doubles every tier's chance.
-  </p>
-  <p style="font-size:12px;color:#9ca3af;margin-bottom:12px">
-    The chances only decide how often the game <em>asks</em> for an officer. The <b style="color:#e0e4ec">ledger</b> below decides whether it gets one: at most <b style="color:#e0e4ec">max alive</b> in a region at a time, and nothing at all in that region for the <b style="color:#e0e4ec">cool-down</b> after each kill. Wind the chance to its ceiling and the ledger still holds the line.
+  </p> decide how often the game <em>asks</em> for an officer. The <b style="color:#e0e4ec">ledger</b> below decides whether it gets one: at most <b style="color:#e0e4ec">max alive</b> in a region at a time, and nothing at all in that region for the <b style="color:#e0e4ec">cool-down</b> after each kill. Wind the chance to its ceiling and the ledger still holds the line.
   </p>
 
   <form class="inline-form" method="POST" action="/region-spawns">
@@ -146,15 +141,15 @@
       <button type="submit">Save</button>
     </div>
   </form>
-  <p style="font-size:11px;color:#f0a868;margin-top:8px">⚠ These are read once at boot, like the squad tiers. A save here does not affect a running server until it is restarted.</p>
+  <p style="font-size:11px;color:#f0a868;margin-top:8px">&#9888; Read at boot. Restart the server for a save to take effect.</p>
 </div>
 
 <!-- Officer ledger -->
 <div class="card">
   <h3>Officer Ledger</h3>
   <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
-    Which regions are holding an officer, and which are cooling down. This is the answer to "why have I not seen an officer in a week".
-    Current limits: <b style="color:#e0e4ec">{{.Rarity.OfficerMaxAlivePerRegion}}</b> alive per region, <b style="color:#e0e4ec">{{printf "%.1f" .CooldownHours}}h</b> quiet after each kill.
+    Regions holding an officer or cooling down after a kill.
+    Limits: <b style="color:#e0e4ec">{{.Rarity.OfficerMaxAlivePerRegion}}</b> alive per region, <b style="color:#e0e4ec">{{printf "%.1f" .CooldownHours}}h</b> quiet after each kill.
   </p>
   {{if .OfficerLedger}}
   <table>
@@ -170,15 +165,12 @@
     </tr>
     {{end}}
   </table>
-  <p style="font-size:11px;color:#6b7280;margin-top:8px">
-    Live count is the persisted mirror — the running server keeps its own in-memory count, and that is the one a spawn is actually gated on. They agree unless a write failed.
-  </p>
   <form method="POST" action="/region-spawns" style="display:inline;margin-top:8px">
     <input type="hidden" name="action" value="clear_officer_ledger">
-    <button type="submit" onclick="return confirm('Clear the whole officer ledger? Every region loses its live count and its kill cool-down. The running server keeps its in-memory counts until restarted.')" style="background:#4a1a1a;border-color:#6b2a2a">Clear ledger</button>
+    <button type="submit" onclick="return confirm('Clear the whole officer ledger? Every region loses its live count and kill cool-down. A running server keeps its counts until restarted.')" style="background:#4a1a1a;border-color:#6b2a2a">Clear ledger</button>
   </form>
   {{else}}
-  <p style="font-size:13px;color:#9ca3af">No region has held an officer yet. The ledger fills in as they spawn.</p>
+  <p style="font-size:13px;color:#9ca3af">No region has held an officer yet.</p>
   {{end}}
 </div>
 {{end}}

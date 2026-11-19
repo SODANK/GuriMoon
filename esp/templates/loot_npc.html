@@ -1,6 +1,6 @@
 {{define "content"}}
 <h2><a href="/loot">NPC Loot</a> › <a href="/loot/group/{{.Info.GroupID}}">{{.Info.GroupName}}</a> › {{.Info.TypeName}}</h2>
-<p style="font-size:12px;color:#6b7280;margin-bottom:16px">Type-specific drops for this NPC only (typeID {{.Info.TypeID}}). Any-kill entries here stack onto the group loot below as one flat table: an entry at an even share of this list weighs the same as an entry at an even share of the group list, so 20 entries here beside 140 group entries take 20 of every 160 picks. A commander, officer or bounty pool defined here replaces the group's pool of that role. The ≈ per kill column shows the merged odds.</p>
+<p style="font-size:12px;color:#6b7280;margin-bottom:16px">Drops for this NPC only (typeID {{.Info.TypeID}}). They stack onto the group loot below as one table. A commander, officer or bounty pool defined here replaces the group's pool of that role. ≈ per kill shows the merged odds.</p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
 {{if .Err}}<div class="alert alert-error">{{.Err}}</div>{{end}}
@@ -28,16 +28,16 @@
     <label style="font-size:12px;color:#6b7280">Min <input type="number" name="minQty" value="1" min="1" style="width:64px"></label>
     <label style="font-size:12px;color:#6b7280">Max <input type="number" name="maxQty" value="1" min="1" style="width:64px"></label>
     <button type="submit">Add Drop</button>
-    <span style="font-size:12px;color:#6b7280">No chance field: a new item takes an <strong>equal slice</strong> of this list's budget and the rest shrink to pay for it. A blueprint always drops as one <strong>copy</strong>, never an original; Min/Max are its runs.</span>
+    <span style="font-size:12px;color:#6b7280">A new item takes an <strong>equal share</strong> of this list and the rest shrink. Blueprints drop as a <strong>copy</strong>; Min/Max are its runs.</span>
   </form>
   <span id="existingItems" hidden data-ids="{{range .Entries}}{{.ItemTypeID}},{{end}}"></span>
 
   {{if .Entries}}
   <table style="margin-top:12px">
-    <tr><th>Item</th><th>Item Group</th><th style="min-width:240px">Share of drops</th><th title="Rough odds this item is in a given kill's haul from this NPC's merged table (this list plus the group loot below), before the loot rate and the max-drops cap">≈ per kill</th><th>Min</th><th>Max</th><th></th><th></th></tr>
+    <tr><th>Item</th><th>Item Group</th><th style="min-width:240px">Share of drops</th><th title="Rough chance per kill from this NPC's merged table, before the loot rate and max-drops cap">≈ per kill</th><th>Min</th><th>Max</th><th></th><th></th></tr>
     {{range .Entries}}
     <tr data-pool="{{if .RequireRole}}{{.RequireRole}}{{else}}general{{end}}">
-      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="Drops as ONE blueprint copy; Min/Max are its runs, capped at the blueprint's max runs">[BPC &middot; Min/Max = runs]</span>{{end}}{{if eq .RequireRole "bounty"}} <span style="font-size:11px;color:#fbbf24" title="Pays in place of a kill bounty: a separate 100% budget with one guaranteed pick on every kill">Bounty (guaranteed)</span><input form="ef{{.EntryID}}" type="hidden" name="keepRole" value="bounty">{{end}}</td>
+      <td>{{if .Icon}}<img src="{{iconPath .Icon}}" width="24" height="24" style="vertical-align:middle;margin-right:6px">{{end}}{{.ItemName}} <span style="color:#4b5563;font-size:11px">({{.ItemTypeID}})</span>{{if .IsBlueprint}} <span style="color:#fdc593;font-size:11px" title="One blueprint copy. Min/Max are its runs, capped at max runs">[BPC &middot; Min/Max = runs]</span>{{end}}{{if eq .RequireRole "bounty"}} <span style="font-size:11px;color:#fbbf24" title="Replaces the kill bounty. Separate pool, one guaranteed pick per kill">Bounty (guaranteed)</span><input form="ef{{.EntryID}}" type="hidden" name="keepRole" value="bounty">{{end}}</td>
       <td>{{.ItemGroupName}}</td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">
@@ -96,7 +96,7 @@
 
 <div class="card">
   <h3>Inherited Group Loot — {{.Info.GroupName}} ({{len .GroupEntries}})</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">These also roll for this NPC. Edit them on the <a href="/loot/group/{{.Info.GroupID}}">group page</a>. An item listed above replaces the group entry for that item — it never rolls twice — and a role pool defined above replaces the group's pool of that role.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Also rolled for this NPC. Edit on the <a href="/loot/group/{{.Info.GroupID}}">group page</a>. Items and role pools defined above replace these.</p>
   {{if .GroupEntries}}
   <table>
     <tr><th>Item</th><th>Condition</th><th>Item Group</th><th>Share of group budget</th><th title="Rough odds for this NPC, from its merged table">≈ per kill here</th><th>Min</th><th>Max</th></tr>

@@ -2,12 +2,8 @@
 <h2>Agent Services</h2>
 
 <p style="font-size:12px;color:#6b7280;margin-bottom:12px;max-width:1000px">
-  The non-mission services an agent offers: locating pilots, repairing negative security status,
-  and the gifts/rumours stubs. Distribution is <strong>by division</strong> &mdash; a ticked cell
-  grants the service to every agent of that division at or above the minimum level &mdash; with
-  per-agent overrides on top. The info window's Agent Info tab and the conversation choices are
-  built entirely from this page's data; the dialogue table below is every line the player can
-  read, with the choices that lead in and out of each.
+  Non-mission agent services: locating pilots, repairing security status, gifts and rumours.
+  Grant them by division, then override per agent.
 </p>
 
 {{if .Result}}<div class="alert {{if contains .Result "Error"}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
@@ -52,10 +48,8 @@
     Locator fee is base &times; level&sup2;:
     L1 {{commas (index .LocatorFees 0)}} &middot; L2 {{commas (index .LocatorFees 1)}} &middot;
     L3 {{commas (index .LocatorFees 2)}} &middot; L4 {{commas (index .LocatorFees 3)}} ISK.
-    Range by level: solar system &rarr; constellation &rarr; region &rarr; galaxy.
-    Security repair only mends a <em>negative</em> status back to 0.0 &mdash; it never buffs a clean record.
-    Locator results arrive by EVE-mail after <b>{{.LocatorDelay}} min</b>
-    (<code>agents.locatorDelayMinutes</code> in config.json).
+    Results arrive by EVE-mail after <b>{{.LocatorDelay}} min</b>.
+    Security repair only raises negative status, up to 0.0.
   </p>
 </div>
 
@@ -110,9 +104,7 @@
 <div class="card">
   <h3 style="margin-bottom:8px">Distribution by division</h3>
   <p class="svc-note" style="margin-bottom:8px">
-    Tick = agents of this division offer the service from the chosen minimum level up.
-    The whole grid saves at once; unticking removes the grant. Effective agent counts fold the
-    per-agent overrides in.
+    Tick a service to grant it to agents of that division from the chosen minimum level up. The whole grid saves at once.
   </p>
   <form method="post">
     <input type="hidden" name="action" value="distribution">
@@ -155,9 +147,7 @@
 <div class="card">
   <h3 style="margin-bottom:8px">Dialogue &amp; window text</h3>
   <p class="svc-note">
-    Everything an agent says outside a mission template — greetings, refusals, service pitches,
-    the player's choice captions, and the locator mails — is edited on
-    <a href="/agents/dialogue">Agents &rarr; Dialogue</a>, per division or for every agent at once.
+    Agent lines and choice captions are edited on <a href="/agents/dialogue">Agents &rarr; Dialogue</a>.
   </p>
 </div>
 

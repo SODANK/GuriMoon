@@ -2,9 +2,8 @@
 <h2>Forum &mdash; Intergalactic Summit</h2>
 
 <p style="color:#9ca3af;font-size:12px;margin-bottom:12px">
-  The Summit is Galnet's open board (<code>/summit/</code> on the news server, read in the in-game browser).
-  Anyone reads it; a pilot speaks after presenting a key the Summit mails them. Nothing here deletes a row:
-  hidden topics and responses can be restored, and a hidden response drops out of its topic's reply count.
+  Galnet's open board. Anyone can read it. Pilots need a key to post.
+  Hiding a topic or response is reversible.
 </p>
 
 {{if .Msg}}<div class="alert {{if .MsgBad}}alert-error{{else}}alert-success{{end}}">{{.Msg}}</div>{{end}}
@@ -119,7 +118,7 @@
 {{if eq .View "posters"}}
 <div class="card">
   <h3>Speakers &amp; keys</h3>
-  <p style="color:#9ca3af;font-size:12px">Every pilot who has asked for a key or been barred. Voiding a key ends the pilot's sessions; they may ask for a new one. Barring survives a new key.</p>
+  <p style="color:#9ca3af;font-size:12px">Pilots who have asked for a key or been barred. Voiding a key ends their sessions. Barring survives a new key.</p>
   <form method="POST" action="/forum" class="inline-form" style="margin-bottom:10px">
     <input type="hidden" name="back" value="{{.Back}}">
     <input type="number" name="id" placeholder="characterID" required style="width:140px">

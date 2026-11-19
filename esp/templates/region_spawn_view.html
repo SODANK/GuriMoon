@@ -13,20 +13,16 @@
 </style>
 
 <h2>Region Spawns: {{.RegionName}}</h2>
-<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">Every NPC listed here can appear at this region's belts, in systems at or below its <b>max sec</b>. How many spawn comes from <a href="/spawner-rules">NPC Spawner Rules</a>, and how hard a given belt is from <a href="/spawner-rules#tiers">Squad Tiers</a>. <b>Weight</b> sets how often a listing is picked relative to the others in <em>its own pool</em>. Faction &amp; corp own each spawned ball.</p>
+<p style="font-size:13px;color:#6b7280;margin:-8px 0 16px">NPCs that can appear at this region's belts, in systems at or below each listing's <b>max sec</b>. Wave size and difficulty are set on <a href="/spawner-rules">NPC Spawner Rules</a>.</p>
 
 <div class="card" style="max-width:1180px;background:#0a1017">
-  <p style="font-size:12px;color:#9ca3af;margin:0">
-    <b style="color:#e0e4ec">Role decides the pool</b>, and that is new. An ordinary wave draws only from the <b style="color:#6ee7b7">base</b> pool — the normal and hauler listings. A <b style="color:#f0a868">commander</b> is a separate roll that replaces one slot; an <b style="color:#f87171">officer</b> is a separate roll again, appends an extra ball, and is capped at one alive per region with a cool-down after each kill. Role still tags the ball for role-gated <a href="/loot">loot</a>, but it is no longer <em>only</em> a label: a listing's role now decides whether it can appear in an ordinary belt at all.
-  </p>
-  <p style="font-size:12px;color:#9ca3af;margin:8px 0 0">
-    <b style="color:#e0e4ec">Ship class</b> is no longer decoration either — a squad tier's hull bias multiplies the weight of its favoured classes, so a mislabelled hull gets the wrong nudge.
+  </p> decoration either — a squad tier's hull bias multiplies the weight of its favoured classes, so a mislabelled hull gets the wrong nudge.
   </p>
 </div>
 
 {{if .BadOfficers}}
 <div class="alert alert-error">
-  ⚠ <b>{{.BadOfficers}}</b> officer listing(s) here are eligible above 0.0 security. Officers are meant to be a null-sec event — above 0.0 they can turn up in empire space.
+  ⚠ <b>{{.BadOfficers}}</b> officer listing(s) here spawn above 0.0 security. Officers should be null-sec only.
   <form method="POST" action="/region-spawns/{{.RegionID}}" style="display:inline;margin-left:8px">
     <input type="hidden" name="action" value="fix_officer_maxsec">
     <button type="submit" onclick="return confirm('Set every officer-group listing in this region to max sec 0.0, role officer, battleship class?')">Fix them</button>
@@ -34,7 +30,7 @@
 </div>
 {{end}}
 {{if .BadCommander}}
-<div class="alert alert-error">⚠ <b>{{.BadCommander}}</b> commander listing(s) here are eligible above 0.8 security. No shipped commander goes that high; a 0.9+ belt is meant to hold nothing but ordinary rats.</div>
+<div class="alert alert-error">⚠ <b>{{.BadCommander}}</b> commander listing(s) here spawn above 0.8 security. 0.9+ belts should hold only ordinary ships.</div>
 {{end}}
 
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
@@ -206,7 +202,7 @@
     <button type="submit" name="saveAll" value="1" class="save-all" id="saveAllBottom">Save all changes</button>
   </div>
   </form>
-  <p class="owner-hint" style="margin-top:6px">Edit as many rows as you like, then <b>Save all changes</b> — every edited row is written in one transaction. Row <b>Save</b> writes just that row. Corp choices narrow to the picked faction. "(auto from faction)" lets the server use that faction's primary NPC corp at spawn time. Weight is relative <em>within a pool</em>: a rare ordinary rat wants a low weight against the other base listings, while genuine rarity for a commander or officer comes from its tier chance and, for officers, the region ledger.</p>
+  <p class="owner-hint" style="margin-top:6px">Edit any rows, then <b>Save all changes</b>. A row's <b>Save</b> writes only that row. "(auto from faction)" uses the faction's main NPC corp.</p>
 
   <!-- Pool sizes per band. Commanders no longer draw from the base pool, so
        "commander is 30% of this region's weight" no longer means anything —
@@ -224,7 +220,7 @@
       </tr>
       {{end}}
     </table>
-    <p class="owner-hint" style="margin-top:6px">An empty base pool means belts in that band spawn nothing at all, whatever else is listed. An empty commander or officer pool just means that escalation never lands there — which for officers above 0.0 is exactly right.</p>
+    <p class="owner-hint" style="margin-top:6px">An empty base pool means belts in that band spawn nothing.</p>
   </div>
   {{else}}
   <p style="color:#f87171;font-size:13px;margin-top:8px">No listings — belts in this region are empty.</p>

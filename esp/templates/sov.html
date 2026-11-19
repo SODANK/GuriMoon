@@ -14,7 +14,7 @@
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
 <div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
   <h3>Jump to a Solar System</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Search any system by name to open its region and set sov for just that system.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Search a system by name to set its sov.</p>
   <div style="position:relative;max-width:480px">
     <input type="text" id="sysSearch" placeholder="Search solar systems... (e.g. Todaki, EC-P8R)" autocomplete="off" style="width:100%">
     <div id="sysResults" class="ac-results"></div>
@@ -23,7 +23,7 @@
 
 <div class="card" style="flex:1;min-width:380px;margin-bottom:16px">
   <h3 id="bulkTitle">Set Sov for ALL Regions</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag regions in the table below to target only those; <strong>with nothing tagged it repaints every region in the universe</strong>.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Tag regions below to target only those. <strong>With nothing tagged, every region is changed.</strong></p>
   <form method="POST" action="/sov" id="bulkForm" class="inline-form" style="margin-bottom:0">
     <input type="hidden" name="action" value="bulkregion">
     <input type="hidden" name="regionIDs" id="bulkRegionIDs">
@@ -46,7 +46,7 @@
 
 <div class="card">
   <h3>Regions</h3>
-  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Broadstroke: pick an owner and Apply to repaint <strong>every system</strong> in that region. NPC factions paint region + constellations + systems; alliances write player sov claims (same data as <code>/claim</code>). Open a region to edit single systems.</p>
+  <p style="font-size:12px;color:#6b7280;margin-bottom:8px">Pick an owner and Apply to set every system in that region. NPC factions set empire space. Alliances set player sov claims. Open a region to edit single systems.</p>
   <form class="search-form" method="GET" action="/sov">
     <input type="text" name="q" placeholder="Filter regions... (e.g. Forge, Curse)" value="{{.Query}}" style="width:320px">
     <button type="submit">Filter</button>

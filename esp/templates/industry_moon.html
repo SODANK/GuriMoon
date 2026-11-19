@@ -21,7 +21,7 @@
     · R32 <b style="color:{{moonClassColor 3}}">{{if .RatR32}}{{.RatR32}}{{else}}none{{end}}</b>
   </div>
   <div style="font-size:12px;color:#6b7280;margin-top:6px">
-    {{if .Surveyed}}Rolled by generator v{{.GenVersion}}, profile {{.Profile}}, seed {{.WorldSeed}}{{if $.GenAge}}, {{$.GenAge}} ago{{end}}{{if .Rerolls}}, re-rolled {{.Rerolls}}×{{end}}.{{if .Edited}} <span style="color:#fbbf24">Hand-edited — a rescramble that keeps edits leaves it alone.</span>{{end}}{{else}}Not rolled yet.{{end}}
+    {{if .Surveyed}}Rolled by generator v{{.GenVersion}}, profile {{.Profile}}, seed {{.WorldSeed}}{{if $.GenAge}}, {{$.GenAge}} ago{{end}}{{if .Rerolls}}, re-rolled {{.Rerolls}}×{{end}}.{{if .Edited}} <span style="color:#fbbf24">Hand-edited. A rescramble that keeps edits skips it.</span>{{end}}{{else}}Not rolled yet.{{end}}
   </div>
 </div>
 
@@ -51,7 +51,7 @@
     {{end}}
   </table>
   {{else}}
-  <p style="color:#6b7280">This moon is empty — a harvester here yields nothing.</p>
+  <p style="color:#6b7280">Empty moon. A harvester here yields nothing.</p>
   {{end}}
 
   <form method="POST" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:12px">
@@ -67,7 +67,7 @@
     <button type="submit" name="action" value="reroll">&#9851; Re-roll this moon</button>
     <button type="submit" name="action" value="restore">Restore generated</button>
   </form>
-  <p style="font-size:12px;color:#6b7280;margin:8px 0 0">A harvester takes min(its quality, batches) × 100 units per cycle; Moon Harvesting Array I has quality 1. Any edit or re-roll marks the moon hand-edited. Restore puts back what the current world seed generates and clears the mark.</p>
+  <p style="font-size:12px;color:#6b7280;margin:8px 0 0">Units per cycle = min(harvester quality, batches) × 100. Edits and re-rolls mark the moon hand-edited. Restore returns the generated materials and clears the mark.</p>
 </div>
 
 {{if .TowerID}}

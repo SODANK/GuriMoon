@@ -17,17 +17,14 @@
 
 {{if eq .Field.BlueprintCount 0}}
 <div class="card" style="border-left:3px solid #dc2626">
-  <p style="font-size:12px;margin:0"><b>This field has no patents.</b> Nobody researching it can ever win one:
-  the draw gives its entrants no tickets, because there is nothing to award. Their research points still accrue
-  and are still wiped at the end of each round. Add blueprints below to make the field pay out.</p>
+  <p style="font-size:12px;margin:0"><b>This field has no patents.</b> Its researchers cannot win anything. Add blueprints below.</p>
 </div>
 {{end}}
 
 <div class="card" style="padding:8px 12px">
   <h3>Patent Pool &mdash; Tech II Blueprints</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    The prize is drawn uniformly from this list when a collaborator in this field wins a round. Removing a
-    blueprint does not touch patents already won &mdash; the prize was drawn at the time.
+    A round winner in this field gets one of these at random. Removing one does not affect patents already won.
   </p>
   {{if .Blueprints}}
   <table style="font-size:12px">
@@ -54,9 +51,7 @@
     {{end}}
   </table>
   {{else}}
-  <p style="color:#6b7280;font-size:12px">No blueprints mapped to this field. The pools were derived from the
-  modern SDE's invention chains, which cannot see RMR-era Tech II items removed from the later game &mdash;
-  add those by hand here.</p>
+  <p style="color:#6b7280;font-size:12px">No blueprints mapped to this field. Add them by hand.</p>
   {{end}}
 
   <form method="POST" action="/rnd" style="margin-top:8px">
@@ -98,10 +93,7 @@
 <div class="card" style="padding:8px 12px">
   <h3>Patent Lottery</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    Each R&amp;D agent runs its own allocation round. Every active project with that agent is an entry and its
-    current RP is the ticket count; one winner takes a Tech II BPO from <b>their own field's</b> pool, collected
-    in person at the agent's station. The whole agent's RP is then wiped and the next round opens &mdash; a round
-    is a race, not a savings account.
+    Each R&amp;D agent runs its own round. Active projects are entries and current RP is the ticket count. One winner gets a Tech II BPO from their own field's pool, collected at the agent's station. Then all RP at that agent is wiped.
   </p>
   <form method="POST" action="/rnd">
     <input type="hidden" name="action" value="settings">
@@ -121,10 +113,7 @@
       <button type="submit">Save</button>
     </p>
     <p style="font-size:11px;color:#6b7280;margin:4px 0 0">
-      Synthetic pilots (rolebots) enter the same draw with their RP scaled by the weight above &mdash; a roster of
-      a few thousand would otherwise take nearly every patent in the game. At 0% they hold no tickets but are
-      still entrants, and their RP is still wiped: the round ended for the agent, not for the people in it.
-      Changing the round length affects the next round each agent opens, not the ones already running.
+      Synthetic pilots (rolebots) enter the draw with RP scaled by the weight. Round length applies from the next round.
     </p>
   </form>
 </div>
@@ -132,8 +121,7 @@
 <div class="card" style="padding:8px 12px">
   <h3>Open Rounds</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    A round row exists only for agents somebody has actually enrolled with, and is closed again by a draw that
-    finds nobody. Entrants and tickets are the live figures the next draw would use.
+    Agents with at least one enrolled project. Entrants and tickets are what the next draw would use.
   </p>
   {{if .Rounds}}
   <table style="font-size:12px">
@@ -174,8 +162,7 @@
   <p style="color:#6b7280;font-size:12px">No agent has a collaborator, so no round is running.</p>
   {{end}}
   {{if not .HooksLive}}
-  <p style="font-size:11px;color:#dc2626;margin:6px 0 0">The game server has not wired the lottery hook &mdash;
-  forced draws are unavailable. The scheduled sweep is unaffected.</p>
+  <p style="font-size:11px;color:#dc2626;margin:6px 0 0">Lottery hook not connected. Draw now is unavailable.</p>
   {{end}}
 </div>
 
@@ -226,7 +213,7 @@
 <div class="card" style="padding:8px 12px">
   <h3>Recent Draws</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    The <b>bot</b> column is how the synthetic weight gets tuned from evidence rather than from guesswork.
+    The <b>bot</b> column marks draws won by a synthetic pilot. Use it to tune the weight.
   </p>
   {{if .Draws}}
   <table style="font-size:12px">
@@ -266,10 +253,7 @@
 <div class="card" style="padding:8px 12px">
   <h3>Research Fields</h3>
   <p style="font-size:12px;color:#9ca3af;margin:4px 0 8px">
-    Fields offered by the 248 R&amp;D agents (division 18). RP/day formula:
-    researchPoints rate &times; (1 + quality/100) &times; (agent level + player field skill)&sup2;.
-    The patent pool is the set of Tech II blueprints a field's research points compete for &mdash; a field with
-    an empty pool can never pay out.
+    Fields offered by R&amp;D agents. A field with no patent pool cannot pay out.
   </p>
   <table style="font-size:12px">
     <tr>

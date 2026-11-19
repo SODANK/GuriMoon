@@ -1,9 +1,7 @@
 {{define "content"}}
 <h2>Alliances</h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  The client's <code>allianceRegistry</code> answers three read calls and <code>None</code> to
-  everything else &mdash; there are no applications, executor votes, relationships or bills on
-  the wire yet. Alliances are therefore formed and run from here.
+  Every alliance. Create and manage them here.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
@@ -12,9 +10,7 @@
 <div class="card" style="border-left:3px solid var(--accent)">
   <h3>Name registration</h3>
   <p style="font-size:12px;color:#9ca3af;max-width:900px">
-    The client resolves an alliance ticker through <code>GetMultiAllianceShortNamesEx</code>,
-    which reads the <code>entity</code> table &mdash; a row <code>db.CreateAlliance</code> never
-    wrote. These alliances are missing rows the client looks in:
+    These alliances are missing the name rows the client uses to show their ticker:
   </p>
   <ul style="font-size:12px;color:#fca5a5">{{range .Issues}}<li>{{.}}</li>{{end}}</ul>
   <form method="POST" action="/alliances">
@@ -35,7 +31,7 @@
       <td>{{.AllianceID}}</td>
       <td><a href="/alliance/{{.AllianceID}}">{{.AllianceName}}</a>
           {{if .Dictatorial}}<span style="font-size:10px;color:#6b7280"> dictatorial</span>{{end}}
-          {{if .LowID}}<span style="font-size:10px;color:#fca5a5" title="Below the client's player-entity range — cfg.IsAlliance rejects it"> ID too low</span>{{end}}</td>
+          {{if .LowID}}<span style="font-size:10px;color:#fca5a5" title="ID below 100000000. The client does not recognise it as an alliance."> ID too low</span>{{end}}</td>
       <td>{{.ShortName}}</td>
       <td>{{if .ExecutorCorpID}}<a href="/corporation/{{.ExecutorCorpID}}">{{.ExecutorName}}</a>{{else}}<span style="color:#fca5a5">none</span>{{end}}</td>
       <td style="text-align:right">{{.MemberCorps}}</td>
@@ -55,14 +51,8 @@
 <div class="card">
   <h3>Create alliance</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    <b>The ID is the logo.</b> The client draws an alliance logo from a hardcoded table of 70
-    allianceIDs (<code>uix.GetAllianceLogo</code>); any other ID falls back to tile 01_01, and
-    nothing the server sends changes that. Picking a slot below creates the alliance <em>at</em>
-    that ID, which is the only way to give it a logo the game itself draws. It can be changed
-    later on the alliance's own page &mdash; that renumbers the alliance and everything pointing
-    at it, so picking here is the cheaper choice. A logo image uploaded on the alliance page is
-    used by this panel, the in-game browser and killmail pages &mdash; not by the game client's
-    own UI.
+    <b>The ID is the logo.</b> The game client draws a logo only for 70 fixed alliance IDs.
+    Pick a slot below to create the alliance at that ID. Changing it later renumbers the alliance.
   </p>
   <form method="POST" action="/alliances">
     <input type="hidden" name="action" value="create">
@@ -124,8 +114,7 @@
 <div class="card">
   <h3>Bulk logo upload</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Hand over a folder of <code>&lt;allianceID&gt;.png</code> images at once. PNG and JPEG only;
-    the magic bytes decide, so a mislabelled file is skipped rather than stored.
+    Upload several <code>&lt;allianceID&gt;.png</code> images at once. PNG and JPEG only.
   </p>
   <form method="POST" action="/alliancelogo/ingest" enctype="multipart/form-data">
     <input type="hidden" name="redirect" value="/alliances">

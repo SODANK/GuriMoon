@@ -10,7 +10,7 @@
 {{if .Result}}<div class="alert alert-success">{{.Result}}</div>{{end}}
 {{if .ResultErr}}<div class="alert alert-error">{{.ResultErr}}</div>{{end}}
 {{if not .Station.Known}}
-<div class="alert alert-error">No <code>staStations</code> row matches this container ID — nobody can dock here, so these lines can never be used. The lines are real rows in <code>ramassemblylines</code>; the station they point at is missing.</div>
+<div class="alert alert-error">No station matches this container ID. Nobody can dock here, so these lines cannot be used.</div>
 {{end}}
 
 <div class="stats">
@@ -21,7 +21,7 @@
 
 <div class="card">
   <h3>Assembly lines</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Install cost is charged once when the job is installed; cost per hour is billed against the job's full duration. The time and material multipliers come from the line's type and are what makes one factory faster than another — they are static reference data, not editable here.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Install cost is charged once per job. Cost per hour is billed over the job's duration. Multipliers come from the line type and are read-only.</p>
   <table>
     <tr>
       <th>Line</th><th>Type</th><th>Activity</th><th>Owner</th>
@@ -56,7 +56,7 @@
       </td>
     </tr>
     {{else}}
-    <tr><td colspan="10" style="color:#6b7280">This station has no assembly lines — nothing can be installed here.</td></tr>
+    <tr><td colspan="10" style="color:#6b7280">No assembly lines at this station.</td></tr>
     {{end}}
   </table>
 </div>
@@ -64,7 +64,7 @@
 {{if .Lines}}
 <div class="card">
   <h3>Set costs across the station</h3>
-  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Overwrites both cost columns on every matching line at this station in one write.</p>
+  <p style="font-size:12px;color:#6b7280;margin:2px 0 8px">Overwrites both costs on every matching line at this station.</p>
   <form method="POST" class="inline-form" style="margin-bottom:0">
     <input type="hidden" name="action" value="stationCosts">
     <input type="hidden" name="stationID" value="{{.Station.StationID}}">

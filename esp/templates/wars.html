@@ -1,12 +1,8 @@
 {{define "content"}}
 <h2>Wars &amp; Bills</h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  A war becomes shootable <b>24 hours after timeDeclared</b> and stays hot for 24 hours after a
-  retraction &mdash; both delays are client arithmetic on the row's own timestamps
-  (<code>IsWarInHostileState</code>), so the only lever that skips the arming delay is
-  backdating the declaration. CONCORD collects the declaration fee and a weekly continuation
-  bill from the aggressor; an unpaid war bill past its due date ends the war. CONCORD mails
-  every member of both sides on declaration and conclusion.
+  Wars and the bills CONCORD collects. A war is shootable 24 hours after it is declared and stays hot 24 hours after a retraction.
+  An unpaid war bill past its due date ends the war.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
@@ -24,11 +20,8 @@
 <div class="card">
   <h3>Declare war</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Runs the full path an in-game declaration runs: validity checks, the fee out of the
-    declarer's wallet (the executor corp's, for an alliance) <b>to CONCORD</b> with refType-49
-    journal rows in both wallets, the war row, the OnWarChanged push, and CONCORD's letter to
-    every member of both sides. A corporation inside an alliance cannot be a party — the war
-    belongs to the alliance.
+    Works like an in-game declaration: the fee goes from the declarer's wallet to CONCORD and both sides are mailed.
+    A corporation inside an alliance cannot be a party. The alliance is.
   </p>
   <form method="POST" action="/wars">
     <input type="hidden" name="action" value="declare">
@@ -51,7 +44,7 @@
           </td></tr>
       <tr><td style="color:#6b7280">Hostile immediately</td>
           <td><input type="checkbox" name="backdate" value="1">
-              <span style="font-size:11px;color:#6b7280">backdates timeDeclared past the client's 24h arming delay</span></td></tr>
+              <span style="font-size:11px;color:#6b7280">skips the 24h arming delay</span></td></tr>
     </table>
     <button type="submit" style="margin-top:10px">Declare war</button>
   </form>
@@ -96,10 +89,8 @@
 <div class="card">
   <h3>Open bills ({{len .Bills}})</h3>
   <p style="font-size:12px;color:#6b7280;max-width:900px">
-    Who is owed follows the bill type: <b>war</b> and <b>alliance maintenance</b> bills are
-    CONCORD's; <b>rental</b> bills belong to the station-owning corporation. Paying moves real
-    ISK debtor&nbsp;&rarr;&nbsp;creditor with a journal row in each wallet; writing off voids
-    the claim without moving anything.
+    War and alliance maintenance bills are owed to CONCORD. Rental bills are owed to the station-owning corporation.
+    Paying moves ISK between wallets. Writing off cancels the bill without moving anything.
   </p>
   {{if .Bills}}
   <table>
@@ -153,9 +144,7 @@
     <button type="submit">Save</button>
   </form>
   <p style="font-size:11px;color:#6b7280;margin-top:8px">
-    No fee constant ships in this database (eveConstants has refWarFee and voteWar but no
-    amount), so these are server settings. Alliance maintenance is fixed at
-    const.allianceMembershipCost = 2,000,000 ISK per member corporation per week, to CONCORD.
+    Alliance maintenance is fixed at 2,000,000 ISK per member corporation per week, paid to CONCORD.
   </p>
 </div>
 {{end}}

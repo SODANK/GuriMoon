@@ -1,10 +1,7 @@
 {{define "content"}}
 <h2>Corporations</h2>
 <p style="margin-bottom:12px;font-size:13px;color:#9ca3af">
-  Every corporation in the game. <b>Pilots</b> is the live count of player members
-  (<code>accountID &gt; 0</code>) &mdash; NPC agents live in <code>character_</code> and carry a
-  corporationID too, so an unfiltered count reads the agent roster instead. <b>Stored</b> is
-  <code>corporation.memberCount</code>, which nothing in the server maintains.
+  Every corporation. <b>Pilots</b> counts player members. <b>Stored</b> is the saved member count, which the server does not keep up to date.
 </p>
 
 {{if .Msg}}<div class="alert alert-success">{{.Msg}}</div>{{end}}
@@ -25,7 +22,7 @@
       {{end}}
     </select>
     <button type="submit">Filter</button>
-    {{if or .Q .Kind .AllianceID}}<a href="/corps?q=&amp;kind=&amp;alliance=0" style="font-size:12px;color:#9ca3af;margin-left:6px" title="Show every corporation and forget the saved filters">Clear</a>{{end}}
+    {{if or .Q .Kind .AllianceID}}<a href="/corps?q=&amp;kind=&amp;alliance=0" style="font-size:12px;color:#9ca3af;margin-left:6px" title="Show every corporation and reset the filters">Clear</a>{{end}}
     <span style="font-size:11px;color:#6b7280;margin-left:6px">filters are remembered</span>
   </form>
 </div>

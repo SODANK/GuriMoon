@@ -80,13 +80,12 @@
   <div class="nf-panel" data-panel="start">
     <h3>Start from a hull class</h3>
     <p class="intro">
-      Pick the class closest to what you want. It fills movement, defence, weapons, sensors, behaviour and bounty with
-      values that suit that class. Name, group, race and model are left alone. Then adjust any tab.
+      Pick the closest class to fill in movement, defence, weapons, sensors, behaviour and bounty. Name, group, race and model are kept.
       Nothing is saved until you press <b>{{if .IsNew}}Create NPC{{else}}Save NPC{{end}}</b>.
     </p>
     {{if $s.CloneFromTypeID}}
     <div class="nf-note">Cloned from <a href="/npc/{{$s.CloneFromTypeID}}">{{if .CloneName}}{{.CloneName}}{{else}}type {{$s.CloneFromTypeID}}{{end}}</a> ({{$s.CloneFromTypeID}}).
-      Every value below came from it. Attributes this menu has no field for are copied across too when you create.</div>
+      Every value below came from it. Attributes without a field here are copied too.</div>
     {{end}}
     <div class="nf-arch" style="margin-top:12px">
       {{range .Archetypes}}
@@ -115,13 +114,12 @@
           <option value="{{.GroupID}}" {{if eq .GroupID $s.GroupID}}selected{{end}}>{{.GroupName}} ({{.GroupID}})</option>
           {{end}}
         </select>
-        <div class="h">The group sets the turret size the client draws, the loot table the NPC inherits, radio chatter,
-          and whether a 0-speed NPC counts as a structure.</div>
+        <div class="h">Sets the turret size, inherited loot table, radio chatter, and whether a 0-speed NPC is a structure.</div>
         <div class="nf-note" id="nfLoot">
           {{$gl := index .GroupLoot $s.GroupID}}
           {{if $gl.Entries}}<b>Loot:</b> inherits {{$gl.Entries}} loot entries from this group{{if $gl.Cap}}, at most {{$gl.Cap}} drops per kill{{end}}.
             <a href="/loot/group/{{$s.GroupID}}">Edit group loot</a>
-          {{else if $s.GroupID}}<b>Loot:</b> this group has no loot table, so the NPC drops nothing unless it gets its own.
+          {{else if $s.GroupID}}<b>Loot:</b> this group has no loot table, so the NPC drops nothing.
             <a href="/loot/group/{{$s.GroupID}}">Set up group loot</a>
           {{else}}<b>Loot</b> comes from the group's loot table. Pick a group to see it.{{end}}
         </div>
@@ -154,7 +152,7 @@
   <!-- 3. Model -->
   <div class="nf-panel" data-panel="model">
     <h3>Model</h3>
-    <p class="intro">The 3D hull the client draws. Without one the NPC is invisible, so a model is required.</p>
+    <p class="intro">The 3D hull the client draws. Required, or the NPC is invisible.</p>
     <input type="hidden" name="graphicID" id="graphicID" value="{{$s.GraphicID}}">
     <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
       <div style="min-width:280px;flex:1">
@@ -176,9 +174,6 @@
           {{end}}
         </div>
         <button type="button" onclick="openModelPicker()" style="margin-top:10px">Choose model…</button>
-        <div class="h" style="font-size:11px;color:#6b7280;margin-top:6px">
-          Model → <code>eveGraphics.url3D</code>, the <code>.blue</code> file the client loads from its own resources.
-        </div>
       </div>
       {{if and .HasModels .Graphic}}{{if .Graphic.HasModel}}
       <div style="flex:1;min-width:300px">
@@ -252,7 +247,7 @@
         <div class="h">Time to refill an empty shield. Blank uses 100 s.</div>
       </div>
     </div>
-    <h4>Resists <span style="text-transform:none;letter-spacing:0;color:#6b7280;font-weight:400">percent of damage blocked: 0 = takes full damage, 75 = takes a quarter. Under 100.</span></h4>
+    <h4>Resists <span style="text-transform:none;letter-spacing:0;color:#6b7280;font-weight:400">percent blocked: 0 = full damage, 75 = a quarter. Under 100.</span></h4>
     <table class="nf-res" style="width:auto">
       <tr><th></th><th>EM</th><th>Explosive</th><th>Kinetic</th><th>Thermal</th></tr>
       <tr>
@@ -394,8 +389,7 @@
   <!-- 7. Electronic warfare -->
   <div class="nf-panel" data-panel="ewar">
     <h3>Electronic warfare</h3>
-    <p class="intro">Tick what the NPC can use. Each cycle it rolls the chance against its current target when that target is in range.
-      Falloff lowers the chance past range. An NPC with any of these counts as armed even without guns.</p>
+    <p class="intro">Tick what the NPC can use. Each cycle it rolls the chance against its target in range. Any of these makes it count as armed.</p>
     {{range $i, $k := .EwarKinds}}
     {{$e := index $s.Ewar $i}}
     <div class="nf-ewar">
@@ -518,11 +512,10 @@
     </div>
     <h4>Where it spawns</h4>
     <div class="nf-note">
-      Faction, owner corporation and role (normal, commander, officer) are set where the NPC is placed, not here.
-      The faction decides who it fights alongside and whose standing drops when it dies; the role picks commander and officer loot.
+      Faction, owner corporation and role are set where the NPC is placed, not here.
       <ul style="margin:8px 0 0 18px">
         <li><b>Asteroid belts:</b> add it to a region on <a href="/region-spawns">Region Spawns</a> with a faction and role.</li>
-        <li><b>Dungeons and sites:</b> place it in a room in the <a href="/dungeons">dungeon editor</a>; the dungeon sets the faction.</li>
+        <li><b>Dungeons and sites:</b> place it in a room in the <a href="/dungeons">dungeon editor</a>.</li>
         <li><b>Testing:</b> in space, type <code>/spawn {{if $s.TypeID}}{{$s.TypeID}}{{else}}&lt;typeID&gt;{{end}}</code>. It spawns with no faction, so it fights everyone.</li>
       </ul>
     </div>
@@ -543,7 +536,7 @@
   <!-- 11. Review -->
   <div class="nf-panel" data-panel="review">
     <h3>Review</h3>
-    <p class="intro">A summary of what you entered, updated as you type. Problems the server would refuse are also checked when you save.</p>
+    <p class="intro">A summary of what you entered. Problems are also checked on save.</p>
     <div class="nf-sum" id="nfSummary"></div>
     <h4>Check before saving</h4>
     <ul class="nf-warn" id="nfWarnings" style="padding-left:18px"></ul>
@@ -571,7 +564,7 @@
         <option value="all">All models</option>
       </select>
       <input type="text" id="modelQuery" placeholder="Search name / class / path…" style="width:260px" oninput="modelSearchDebounced()">
-      <button type="button" onclick="rescanModels()" title="Re-index the converted .glb directories on disk">Rescan models</button>
+      <button type="button" onclick="rescanModels()" title="Re-index the model directories">Rescan models</button>
       <button type="button" onclick="closeModelPicker()">Close</button>
     </div>
     <div id="modelStatus" style="font-size:11px;color:#6b7280;margin-bottom:8px"></div>
@@ -707,7 +700,7 @@ var NPC_STRUCTURE_GROUPS = {{.StructureGroups}};
     if (l && l.Entries > 0) {
       el.appendChild(document.createTextNode('inherits ' + l.Entries + ' loot entries from this group' + (l.Cap ? ', at most ' + l.Cap + ' drops per kill' : '') + '. '));
     } else {
-      el.appendChild(document.createTextNode('this group has no loot table, so the NPC drops nothing unless it gets its own. '));
+      el.appendChild(document.createTextNode('this group has no loot table, so the NPC drops nothing. '));
     }
     var a = document.createElement('a'); a.href = '/loot/group/' + id; a.textContent = (l && l.Entries > 0) ? 'Edit group loot' : 'Set up group loot';
     el.appendChild(a);
@@ -882,7 +875,7 @@ function setModelStatus(text) {
 }
 
 function loadModelStatus() {
-  if (!HAS_MODELS) { setModelStatus('No model directories configured (esp.modelsDirs in config.json) — thumbnails and 3D previews are unavailable.'); return; }
+  if (!HAS_MODELS) { setModelStatus('No model directories configured (esp.modelsDirs in config.json). Thumbnails and 3D previews are unavailable.'); return; }
   fetch('/api/models/status')
     .then(function (r) { return r.json(); })
     .then(function (st) {
@@ -1176,7 +1169,7 @@ input[type=range].share-slider { accent-color:#b91c1c; height:18px; width:100%; 
       const label = name === 'general' ? 'any kill' : name;
       parts.push(label + ': ' + sum.toFixed(1) + '% of ' + rows.length + ' items');
     }
-    status.textContent = parts.join(' · ') + ' — sliders trade against each other; nothing is saved until you press the button.';
+    status.textContent = parts.join(' · ') + ' · sliders trade against each other. Nothing is saved until you press the button.';
   }
 
   // One drag = one baseline. Redistributing against the siblings' values at
@@ -1252,7 +1245,7 @@ input[type=range].share-slider { accent-color:#b91c1c; height:18px; width:100%; 
         <div style="height:100%;width:{{.ProgressPct}}%;background:{{if ge .StatusID 101}}#4b5563{{else if eq .StatusID 1}}#1a4731{{else}}var(--btn-hi){{end}}"></div>
       </div>
       <span style="font-size:11px;color:{{if eq .Status "Ready"}}#6ee7b7{{else if eq .Status "Aborted"}}#f87171{{else}}#9ca3af{{end}}">{{.Status}} {{.ProgressPct}}%</span>
-      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time but still flagged running - the job ticker has not swept since">&middot; overdue</span>{{end}}
+      {{if .Overdue}}<span style="color:#fbbf24;font-size:11px" title="Past its end time. The job ticker has not swept yet.">&middot; overdue</span>{{end}}
     </td>
     <td>
       {{if .EndTimeUnix}}{{unixTime .EndTimeUnix}}
@@ -1265,12 +1258,12 @@ input[type=range].share-slider { accent-color:#b91c1c; height:18px; width:100%; 
       <form method="POST">
         <input type="hidden" name="jobID" value="{{.JobID}}">
         {{if eq .StatusID 0}}
-        <button type="submit" name="action" value="rush" title="Pull the end time to now so the installer can collect it in-game">Rush</button>
+        <button type="submit" name="action" value="rush" title="Finish the job now so the installer can collect it">Rush</button>
         {{end}}
         <button type="submit" name="action" value="cancel" style="background:#3a1414;border-color:#5f1e1e"
                 onclick="return confirm('Abort job {{.JobID}}? The blueprint goes back to the hangar; consumed materials are not refunded.')">Cancel</button>
         <button type="submit" name="action" value="release" style="background:#3a1414;border-color:#5f1e1e"
-                title="Delete the job row and free its blueprint - for jobs whose line or station no longer exists"
+                title="Delete the job and free its blueprint. For jobs whose line or station is gone."
                 onclick="return confirm('Delete job {{.JobID}} outright and free its blueprint? No output is produced.')">Release</button>
       </form>
       {{if eq .StatusID 0}}

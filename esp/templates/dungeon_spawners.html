@@ -145,10 +145,11 @@
 </div>
 <details class="ds-help">
   <summary>How spawners work</summary>
-  <p>Each spawner keeps <b>target</b> sites of one dungeon alive across the systems that match its filters, never more than <b>max / system</b> in one system.
-  A site is a beacon on every overview in its system that any pilot can warp to — or, with <b>Beacon on overview</b> unticked, a hidden cosmic signature that shows on no overview, no directional scan and no DED report, found only by analyzing scanner probes for <b>Cosmic Signature</b> (warp needs full probe coverage). The beacon setting is copied onto each site when it spawns, so changing it affects new sites only. Everyone who warps in shares one copy of the site. Each spawner places its sites either <b>in orbit of a planet</b>, at the distance that system's belts keep from theirs, or out in <b>deadspace</b>, open space between the planets' orbits at least a quarter AU from every celestial.
-  A site despawns after its whole complex is cleared: every NPC in every room, plus any wave a trigger released. A site nobody clears stays.
-  No regions picked means every region except Jove space and rogue-drone space; pick a drone region explicitly to spawn there. Security is the value the client displays.</p>
+  <p>Each spawner keeps <b>target</b> sites of one dungeon alive in systems matching its filters, up to <b>max / system</b> in any one system.
+  Sites appear on the overview. With <b>Beacon on overview</b> unticked they are hidden cosmic signatures, found only with scanner probes. This applies to new sites only.
+  Sites go <b>in orbit of a planet</b> or in <b>deadspace</b>, away from celestials.
+  A site despawns after every NPC and released wave is cleared. A site nobody clears stays.
+  No regions picked means every region except Jove and rogue-drone space. Pick a drone region to spawn there.</p>
 </details>
 
 {{if .Result}}<div class="alert {{if .ResultErr}}alert-error{{else}}alert-success{{end}}">{{.Result}}</div>{{end}}
@@ -256,13 +257,13 @@
           data-beacon="{{if .BeaconVisible}}1{{else}}0{{end}}" data-enabled="{{if .Enabled}}1{{else}}0{{end}}"
           data-regions="{{.RegionCSV}}" data-regionnames="{{.RegionNames}}" data-live="{{.Live}}"
           data-under="{{if .Under}}1{{else}}0{{end}}" data-warn="{{.Warn}}">
-        <td data-v="{{if .Enabled}}1{{else}}0{{end}}"><button type="button" class="ds-sw{{if .Enabled}} on{{end}}" data-act="toggle" title="{{if .Enabled}}Enabled. Click to disable: no new sites, live sites stay until cleared{{else}}Disabled. Click to enable{{end}}"><i></i></button></td>
+        <td data-v="{{if .Enabled}}1{{else}}0{{end}}"><button type="button" class="ds-sw{{if .Enabled}} on{{end}}" data-act="toggle" title="{{if .Enabled}}Enabled. Click to disable. Live sites stay until cleared.{{else}}Disabled. Click to enable{{end}}"><i></i></button></td>
         <td class="num sub">{{.SpawnerID}}</td>
         <td class="flex">{{if .Warn}}<span class="ds-warn" title="{{.Warn}}">!</span>{{end}}<a href="#" class="ds-name" data-act="edit" title="Edit {{.Name}}">{{.Name}}</a></td>
         <td class="flex" title="{{.DungeonName}}">{{if .DungeonName}}{{.DungeonName}}{{else}}<span class="ds-bad">missing dungeon {{.DungeonVID}}</span>{{end}}</td>
         <td data-v="{{printf "%.1f" .SecMin}}">{{template "dsSec" .SecMin}} <span class="sub">to</span> {{template "dsSec" .SecMax}}</td>
         <td>{{if .IsDeadspace}}Deadspace{{else}}Planet{{end}}</td>
-        <td>{{if .BeaconVisible}}Overview{{else}}<span class="ds-sig" title="New sites are hidden cosmic signatures, found only by scanner probes">Signature</span>{{end}}</td>
+        <td>{{if .BeaconVisible}}Overview{{else}}<span class="ds-sig" title="Hidden signature, found only with scanner probes">Signature</span>{{end}}</td>
         <td title="{{.RegionNames}}">{{if .RegionFirst}}{{.RegionFirst}}{{if .RegionMore}} <span class="sub">+{{.RegionMore}}</span>{{end}}{{else}}<span class="sub">All</span>{{end}}</td>
         <td data-v="{{.Live}}"><a href="#" class="ds-live" data-act="sites" title="Show this spawner's live sites"><span class="ds-fill{{if .Under}} low{{end}}"><i style="width:{{.FillPct}}%"></i></span><b>{{.Live}}</b> / {{.TargetActive}}</a></td>
         <td class="num">{{.MaxPerSystem}}</td>
@@ -334,7 +335,7 @@
       <select id="dsSiSize"><option>50</option><option selected>100</option><option>250</option><option>1000</option></select>
     </span>
   </div>
-  <p class="ds-note">"NPCs dead" counts every NPC of the site, rooms nobody has entered and every wave group included. A wave nobody has released yet never spawned, so it does not hold the site open. A site's NPCs exist in space only after someone warps in. Kill progress is kept in memory, so a site half-cleared before a restart comes back at full strength.</p>
+  <p class="ds-note">"NPCs dead" counts every NPC in the site, including unvisited rooms and waves. Unreleased waves do not hold the site open. Kill progress is lost on server restart.</p>
   {{else}}
   <p class="ds-empty">No live sites.</p>
   {{end}}
@@ -365,8 +366,8 @@
         </div>
         <div class="ds-f ds-ask"><span>Spawn the site where?</span>
           <div class="ds-place">
-            <label title="Open space between the planets' orbits, a quarter AU or more from every celestial"><input type="radio" name="placement" value="deadspace" required> In deadspace</label>
-            <label title="Beside a random planet, at the distance that system's belts keep from theirs"><input type="radio" name="placement" value="planet" required> In orbit of a planet</label>
+            <label title="Open space between the planets, a quarter AU or more from every celestial"><input type="radio" name="placement" value="deadspace" required> In deadspace</label>
+            <label title="Beside a random planet"><input type="radio" name="placement" value="planet" required> In orbit of a planet</label>
           </div>
         </div>
         <label class="ds-f"><span>Target</span><input type="number" name="targetActive" value="5" min="0" class="ds-n"></label>
@@ -374,8 +375,8 @@
         <label class="ds-f"><span>Respawn (min)</span><input type="number" name="respawnDelayMinutes" value="30" min="0" class="ds-n"></label>
       </div>
       <div class="ds-row">
-        <label class="ds-on" title="Unticked: new sites are hidden cosmic signatures, found only by scanner probes"><input type="checkbox" name="beaconVisible" value="1" checked> Beacon on overview</label>
-        <label class="ds-on" title="Unticked: no new sites; live sites stay until cleared"><input type="checkbox" name="enabled" value="1" checked> Enabled</label>
+        <label class="ds-on" title="Unticked: new sites are hidden signatures found only with scanner probes"><input type="checkbox" name="beaconVisible" value="1" checked> Beacon on overview</label>
+        <label class="ds-on" title="Unticked: no new sites. Live sites stay until cleared."><input type="checkbox" name="enabled" value="1" checked> Enabled</label>
       </div>
       {{template "dsRegionPicker" .NewPick}}
     </div>
@@ -599,7 +600,7 @@
     var npcs = '<span class="sub">&mdash;</span>';
     if (s.known) {
       npcs = s.dead + ' / ' + s.total;
-      if (s.waves) npcs += ' <span class="sub" title="NPCs in waves no trigger has released; they do not hold the site open">' + s.waves + ' in unreleased waves</span>';
+      if (s.waves) npcs += ' <span class="sub" title="Waves not yet released. They do not hold the site open.">' + s.waves + ' in unreleased waves</span>';
       if (s.inSpace) npcs += ' <span class="sub">' + s.inSpace + ' in space</span>';
     }
     var state = '<span class="ds-st waiting">Waiting</span>';
