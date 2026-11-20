@@ -7948,12 +7948,25 @@ func buildGetInfoEntry(itemID int64, er *evedb.EntityRow, attrs map[int64]float6
 	return buildGetInfoEntryWithEffects(itemID, er, attrs, nil)
 }
 
+// attrSkillLevel is dogma attribute 280 (skillLevel).
+const attrSkillLevel = 280
+
+// attrValueRep marshals a dogma attribute value. skillLevel goes out as an int: the
+// client prints the raw value, so a float shows "LEVEL 1.0" in the skill window and
+// "Train to level 2.0" in its menu.
+func attrValueRep(attrID int64, val float64) marshal.PyRep {
+	if attrID == attrSkillLevel && val >= 0 && val == math.Trunc(val) {
+		return marshal.PyInt{Value: uint64(val)}
+	}
+	return marshal.PyReal{Value: val}
+}
+
 func buildGetInfoEntryWithEffects(itemID int64, er *evedb.EntityRow, attrs map[int64]float64, effects []marshal.DictEntry) marshal.PyRep {
 	attrItems := make([]marshal.DictEntry, 0, len(attrs))
 	for attrID, val := range attrs {
 		attrItems = append(attrItems, marshal.DictEntry{
 			Key:   marshal.PyInt{Value: uint64(attrID)},
-			Value: marshal.PyReal{Value: val},
+			Value: attrValueRep(attrID, val),
 		})
 	}
 	effectsDict := marshal.PyDict{}
@@ -19014,8 +19027,8 @@ func sendModuleAttributeChange(c *evenet.Conn, accountID, charID, itemID, attrib
 		marshal.PyInt{Value: uint64(itemID)},
 		marshal.PyInt{Value: uint64(attributeID)},
 		server.Win32TimeNowRep(),
-		marshal.PyReal{Value: newValue},
-		marshal.PyReal{Value: oldValue},
+		attrValueRep(attributeID, newValue),
+		attrValueRep(attributeID, oldValue),
 	}}
 	if err := server.SendNotification(c, accountID, "OnModuleAttributeChange", "charid", args); err != nil {
 		log.Printf("sendModuleAttributeChange: %v", err)
