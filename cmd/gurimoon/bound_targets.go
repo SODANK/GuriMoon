@@ -54,8 +54,7 @@ func boundAddTarget(cc *callCtx) error {
 			}
 			if te.IsCloaked() {
 				// The client's own message for a lock on a ship that is not there.
-				return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-					"DeniedTargetingTargetCloaked", nil))
+				return refuseLock(cc, "DeniedTargetingTargetCloaked", nil)
 			}
 		}
 	}
