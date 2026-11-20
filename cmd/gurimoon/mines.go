@@ -196,7 +196,10 @@ func buildLiveMine(ctx context.Context, sqldb *sql.DB, row evedb.SpaceMine) *liv
 			ItemID:     row.MineID,
 			TypeID:     row.TypeID,
 			GroupID:    evedb.GroupMine,
-			CategoryID: 8,
+			// Celestial, not Charge: the client's bracketMgr.DoBallsAdded skips
+			// categoryCharge, so a charge slim gets no bracket. The model class is
+			// picked by group (spaceObject.Mine), so this does not touch the model.
+			CategoryID: 2,
 			OwnerID:    row.OwnerCharID,
 			CorpID:     row.OwnerCorpID,
 			AllianceID: row.OwnerAllianceID,

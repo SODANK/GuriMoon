@@ -603,7 +603,8 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		}
 
 		// Dungeon entrance beacons and open sites load their room on arrival.
-		if f, site := beaconWarpArrival(c, addr, accountID, sqldb, ds, sessReg, npcMgr, warpType, targetID); site {
+		if f, site := beaconWarpArrival(c, addr, accountID, sqldb, ds, sessReg, npcMgr, warpType, targetID,
+			destiny.Vec3{X: destX, Y: destY, Z: destZ}); site {
 			onWarpArrive = f
 			deadspaceLanding = true
 		}
@@ -620,7 +621,12 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		if landingBuffer == 0 && targetIsStation && !deadspaceLanding {
 			landingBuffer = destiny.DockClearanceSettings().WarpInM
 		}
-		if landingBuffer == 0 || deadspaceLanding {
+		// A dungeon beacon or deadspace bookmark honours the range the pilot asked for; only a warp
+		// with no range (or zero) falls back to the fixed deadspace buffer. Acceleration gates are the
+		// exception and never reach here: their landing is exact (ActivateAccelerationGate).
+		if deadspaceLanding {
+			landingBuffer = siteLandingBuffer(minRange, minRangeSet)
+		} else if landingBuffer == 0 {
 			landingBuffer = deadspaceLandingBuffer
 		}
 

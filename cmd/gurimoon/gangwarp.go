@@ -47,10 +47,11 @@ type gangWarpReq struct {
 
 // beaconWarpArrival is the arrival hook for a warp to a shared site (a
 // custom-seeded dungeon entrance beacon or a spawner-placed open site): load a
-// room on arrival and land on the beacon (site=true, deadspaceLandingBuffer).
+// room on arrival and land at the pilot's requested range from the beacon (site=true).
 // Shared by WarpToStuff and the gang warp.
 func beaconWarpArrival(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB, ds *destinyConn,
-	sessReg *esp.SessionRegistry, npcMgr *npc.NPCManager, warpType string, targetID int64) (onArrive func(), site bool) {
+	sessReg *esp.SessionRegistry, npcMgr *npc.NPCManager, warpType string, targetID int64,
+	beaconPos destiny.Vec3) (onArrive func(), site bool) {
 	if warpType != "item" && warpType != "scan" {
 		return nil, false
 	}
@@ -88,11 +89,16 @@ func beaconWarpArrival(c *evenet.Conn, addr string, accountID int64, sqldb *sql.
 				roomID := roomIDs[roomIdx-1]
 				onArrive = func() {
 					// Stale gate travel from a previous dungeon must not
-					// shift this room's anchor.
+					// shift this room's anchor. The room's beacon stands on the entrance
+					// beacon, so the pilot arrives at the range they asked for:
+					// dunPendingAnchor is the pre-lane landing point and the shift is the
+					// gap from it to the beacon.
 					ds.dunSpawnShift = destiny.Vec3{}
-					if sErr := spawnDungeonRoom(c, addr, accountID, sqldb, ds, roomID, sessReg, npcMgr); sErr != nil {
-						log.Printf("[%s] WarpToStuff: spawnDungeonRoom %d for beacon %d: %v", addr, roomID, targetID, sErr)
+					if ds.dunPendingAnchor != nil {
+						ds.dunSpawnShift = beaconPos.Sub(*ds.dunPendingAnchor)
 					}
+					if sErr := spawnDungeonRoom(c, addr, accountID, sqldb, ds, roomID, sessReg, npcMgr); sErr != nil {
+						log.Printf("[%s] WarpToStuff: spawnDungeonRoom %d for beacon %d: %v", addr, roomID, targetID, sErr)					}
 				}
 				// Same rule as a mission deadspace bookmark: the beacon is
 				// the site anchor, so land on it.
@@ -237,11 +243,9 @@ func runGangWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB, ds
 	}
 	breakGateCloak(ds)
 
+	// The leader's resolved buffer already carries the site range they asked for.
 	landingBuffer := req.landingBuffer
-	onArrive, siteLanding := beaconWarpArrival(c, addr, accountID, sqldb, ds, sessReg, npcMgr, req.warpType, req.targetID)
-	if siteLanding {
-		landingBuffer = deadspaceLandingBuffer
-	}
+	onArrive, _ := beaconWarpArrival(c, addr, accountID, sqldb, ds, sessReg, npcMgr, req.warpType, req.targetID, req.celestial)
 	log.Printf("[%s] gang warp: following leader %d to %s %d", addr, req.leaderCharID, req.warpType, req.targetID)
 	startPlayerWarp(c, addr, accountID, sqldb, ds, dm, req.celestial, req.targetRadius, landingBuffer, req.landing, onArrive)
 }

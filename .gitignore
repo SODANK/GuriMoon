@@ -16,3 +16,4 @@ config.json
 # images, portraits. Keep data/strings.txt, the server needs it.
 data/*
 !data/strings.txt
+gurimoon.exe~

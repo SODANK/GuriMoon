@@ -7536,9 +7536,9 @@ func runAgentWarpToLocation(c *evenet.Conn, addr string, accountID, charID, agen
 
 	buffer := warpRange
 	if hasCoords {
-		// Deadspace coordinates are the site beacon: land on it with the acceleration
-		// gate buffer, not the client's generic 15 km warp-to range.
-		buffer = deadspaceLandingBuffer
+		// Deadspace coordinates are the site beacon: land at the range the pilot asked for,
+		// or the deadspace buffer when none came with the call.
+		buffer = siteLandingBuffer(warpRange, warpRange > 0)
 	}
 	if buffer < deadspaceLandingBuffer {
 		buffer = deadspaceLandingBuffer
@@ -11102,7 +11102,11 @@ func runActivateGate(c *evenet.Conn, addr string, accountID int64, gateID uint32
 	ds.dunSpawnShift = dir.Scale(deadspaceLandingBuffer)
 	gateMissionID := ds.dunMissionID
 	gateOpenSiteID := ds.dunOpenSiteID
-	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, landing, 0, deadspaceLandingBuffer, nil, func() {
+	// Gate landing is exact: the ship stops deadspaceLandingBuffer short of the next room's beacon
+	// along the gate's own direction, whatever angle it entered the warp at. The room anchor is that
+	// point, and dunSpawnShift carries the beacon the same distance ahead.
+	gateLanding := landing.Sub(dir.Scale(deadspaceLandingBuffer))
+	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, landing, 0, deadspaceLandingBuffer, &gateLanding, func() {
 		ds.dunPendingOpenSite = gateOpenSiteID
 		if err := spawnDungeonRoom(c, addr, accountID, sqldb, ds, nextRoomID, sessReg, npcMgr, gateMissionID); err != nil {
 			log.Printf("[%s] ActivateAccelerationGate: spawnDungeonRoom %d: %v", addr, nextRoomID, err)
@@ -18756,6 +18760,16 @@ func findCelestialByID(celestials []evedb.CelestialEntity, itemID int64) *evedb.
 // enough that the beacon is what you arrive at, far enough to be outside its model.
 // Acceleration gates and deadspace bookmarks use it in place of the generic warp-to range.
 const deadspaceLandingBuffer = 2500.0
+
+// siteLandingBuffer is how far short of a dungeon beacon or deadspace bookmark a warp stops.
+// The pilot's requested warp-to range wins; no range (autopilot, journal) or zero falls back to
+// deadspaceLandingBuffer. Acceleration gates do not use this: their landing is fixed.
+func siteLandingBuffer(requested float64, requestedSet bool) float64 {
+	if requestedSet && requested > 0 {
+		return requested
+	}
+	return deadspaceLandingBuffer
+}
 
 // defaultWarpToRange is the landing range of an item warp sent with no minRange, as the
 // autopilot sends for gates; the client's own menu default is also 15 km.
