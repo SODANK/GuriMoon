@@ -281,11 +281,15 @@ func boundMultiAdd(cc *callCtx) error {
 					cargoCap, _ := evedb.GetShipCargoCapacityFitted(ctx, sqldb, shipER.TypeID, shipID)
 					usedVol, _ := evedb.GetCargoUsedVolume(ctx, sqldb, charID, shipID)
 					itemVol := evedb.ItemVolume(ctx, sqldb, oldER.ItemID, oldER.TypeID)
-					if itemVol*float64(moveQty) > cargoCap-usedVol {
+					if itemVol*float64(moveQty)+loadedChargeVolume(ctx, sqldb, oldER) > cargoCap-usedVol {
 						log.Printf("[%s] bound.MultiAdd(cargo): cargo full for item %d", addr, maItemID)
 						continue
 					}
 				}
+				// Fitting window drag to cargo: unload the charge and stop the online
+				// effect (as bound.Add does), or the client keeps a ghost fit and the
+				// charge is stranded in the emptied slot.
+				prepFittedModuleForCargo(ctx, c, addr, accountID, charID, shipID, oldER, sqldb)
 				oldOwnerID := oldER.OwnerID
 				newOwnerID := takeOwnerFor(maSrc, charID, oldOwnerID)
 				if _, err := sqldb.ExecContext(ctx,
@@ -839,41 +843,16 @@ func boundAdd(cc *callCtx) error {
 				if moveQty <= 0 || moveQty > oldER.Quantity {
 					moveQty = oldER.Quantity
 				}
-				// Unfitting a module into cargo: unload its charge, send the online-stop
-				// effect and drop the isOnline row so the client's godma stops treating it as online.
-				srcIsFittedModule := oldFlag >= 11 && oldFlag <= 34 && oldER.CategoryID != 8
-				if srcIsFittedModule {
-					if loaded, _ := evedb.GetLoadedCharge(ctx, sqldb, oldLocID, oldFlag); loaded != nil {
-						chargeER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID)
-						if chargeER != nil {
-							chOldLoc := chargeER.LocationID
-							chOldFlag := chargeER.Flag
-							_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, shipID, 5)
-							if newChER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID); newChER != nil {
-								chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-									{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(chOldLoc)}},
-									{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(chOldFlag)}},
-								}}
-								_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-									evedb.BuildEntityRow(newChER), chgChange,
-								}})
-							}
-							log.Printf("[%s] bound.Add: auto-unloaded charge %d from slot %d before cargo move", addr, loaded.ItemID, oldFlag)
-						}
-					}
-					onIDs, _ := evedb.GetOnlineModuleIDs(ctx, sqldb, shipID)
-					if onIDs[addItemID] {
-						sendGodmaShipEffect(c, accountID, addItemID, oldER.TypeID, shipID, charID, 0, "online", false, 0, 0)
-						sendModuleAttributeChange(c, accountID, charID, addItemID, dogma.AttrIsOnline, 0, 1)
-					}
-					_ = evedb.ClearModuleOnlineState(ctx, sqldb, addItemID)
-				}
+				srcIsFittedModule := isFittedModule(oldER)
+				// Space check runs before anything changes, so a refused unfit leaves the
+				// module online with its charge loaded. A fitted module's charge lands in
+				// cargo too.
 				shipER, _ := evedb.GetEntityRow(ctx, sqldb, shipID)
 				if shipER != nil {
 					cargoCap, _ := evedb.GetShipCargoCapacityFitted(ctx, sqldb, shipER.TypeID, shipID)
 					usedVol, _ := evedb.GetCargoUsedVolume(ctx, sqldb, charID, shipID)
 					itemVol := evedb.ItemVolume(ctx, sqldb, oldER.ItemID, oldER.TypeID)
-					totalNeeded := itemVol * float64(moveQty)
+					totalNeeded := itemVol*float64(moveQty) + loadedChargeVolume(ctx, sqldb, oldER)
 					freeSpace := cargoCap - usedVol
 					if totalNeeded > freeSpace {
 						log.Printf("[%s] bound.Add: cargo full (used %.1f + needed %.1f > cap %.1f)", addr, usedVol, totalNeeded, cargoCap)
@@ -883,6 +862,11 @@ func boundAdd(cc *callCtx) error {
 								"available": marshal.PyReal{Value: freeSpace},
 							}))
 					}
+				}
+				// Unfitting a module into cargo: unload its charge and stop its online
+				// effect, or the client keeps a ghost fit in the slot.
+				if srcIsFittedModule {
+					prepFittedModuleForCargo(ctx, c, addr, accountID, charID, shipID, oldER, sqldb)
 				}
 				oldLocID := oldER.LocationID
 				oldFlag := oldER.Flag
