@@ -27,27 +27,20 @@ func boundAddTarget(cc *callCtx) error {
 	tid := uint32(targetIDVal.Value)
 
 	if ds.entity != nil && tid == ds.entity.ID {
+		// A (0, targetList) reply here would be "already locked": OnTargetAdded on our own ship.
 		log.Printf("[%s] bound.AddTarget: cannot target self (%d)", addr, tid)
-		targetList := make([]marshal.PyRep, len(ds.targets))
-		for i, t := range ds.targets {
-			targetList[i] = marshal.PyInt{Value: uint64(t)}
-		}
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyTuple{Items: []marshal.PyRep{
-			marshal.PyInt{Value: 0},
-			marshal.PyList{Items: targetList},
-		}})
+		return refuseLock(cc, "DeniedTargetSelf", nil)
 	}
 
 	// A cloaked pilot cannot lock, except under a GM cloak (a camera tool that must pick a subject).
 	if ds.entity != nil && ds.entity.IsCloaked() && !ds.entity.IsGMCloak() {
-		return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-			"DeniedTargetingCloaked", nil))
+		return refuseLock(cc, "DeniedTargetingCloaked", nil)
 	}
 
 	// cloakingTargetingDelay: no lock for a while after a cloaking device stops.
 	if ds.cloakRecalibrating() {
 		log.Printf("[%s] bound.AddTarget: refused — sensors recalibrating after a cloak", addr)
-		return clientMsgErr(c, pkt, accountID, "DeniedTargetAfterCloak", nil)
+		return refuseLock(cc, "DeniedTargetAfterCloak", nil)
 	}
 	// A cloaked or GM-mode target answers with a UserError, not None.
 	// See docs/main-s5-notes.md#target-locks.
@@ -55,10 +48,9 @@ func boundAddTarget(cc *callCtx) error {
 		if te := ds.solarSystem.GetEntity(tid); te != nil {
 			if te.IsGMMode() {
 				log.Printf("[%s] bound.AddTarget: %d is in GM mode, lock refused", addr, tid)
-				return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-					"CustomInfo", map[string]marshal.PyRep{
-						"info": marshal.PyString{Value: "That pilot cannot be targeted."},
-					}))
+				return refuseLock(cc, "CustomInfo", map[string]marshal.PyRep{
+					"info": marshal.PyString{Value: "That pilot cannot be targeted."},
+				})
 			}
 			if te.IsCloaked() {
 				// The client's own message for a lock on a ship that is not there.
@@ -73,10 +65,9 @@ func boundAddTarget(cc *callCtx) error {
 	lockPos, lockable := resolveLockTarget(ds, sqldb, tid)
 	if !lockable {
 		log.Printf("[%s] bound.AddTarget: %d is not a lockable object", addr, tid)
-		return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-			"CustomInfo", map[string]marshal.PyRep{
-				"info": marshal.PyString{Value: "You cannot lock that object."},
-			}))
+		return refuseLock(cc, "CustomInfo", map[string]marshal.PyRep{
+			"info": marshal.PyString{Value: "You cannot lock that object."},
+		})
 	}
 
 	// ECM jam: no new locks while jammed.
@@ -88,32 +79,18 @@ func boundAddTarget(cc *callCtx) error {
 		jamCtx, jamCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_, jamName := lockTargetLabel(jamCtx, sqldb, ds, tid)
 		jamCancel()
-		return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-			"TargetingSystemsBeingJammed", map[string]marshal.PyRep{
-				"targetname": marshal.PyString{Value: jamName},
-			}))
+		return refuseLock(cc, "TargetingSystemsBeingJammed", map[string]marshal.PyRep{
+			"targetname": marshal.PyString{Value: jamName},
+		})
 	}
 
 	// Read per lock, so a ship swap or a finished skill applies at once.
 	capCtx, capCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	maxT, _ := lockedTargetLimits(capCtx, sqldb, charID, ds.shipTypeID)
+	maxT, charMax := lockedTargetLimits(capCtx, sqldb, charID, ds.shipTypeID)
 	capCancel()
 	ds.targetMu.Lock()
 	if ds.lockingTargets == nil {
 		ds.lockingTargets = make(map[uint32]context.CancelFunc)
-	}
-	totalLocking := len(ds.targets) + len(ds.lockingTargets)
-	if totalLocking >= maxT {
-		ds.targetMu.Unlock()
-		log.Printf("[%s] bound.AddTarget: max targets reached (%d)", addr, maxT)
-		targetList := make([]marshal.PyRep, len(ds.targets))
-		for i, t := range ds.targets {
-			targetList[i] = marshal.PyInt{Value: uint64(t)}
-		}
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyTuple{Items: []marshal.PyRep{
-			marshal.PyInt{Value: 1},
-			marshal.PyList{Items: targetList},
-		}})
 	}
 	for _, existing := range ds.targets {
 		if existing == tid {
@@ -143,9 +120,26 @@ func boundAddTarget(cc *callCtx) error {
 			marshal.PyList{Items: targetList},
 		}})
 	}
+	// Over the cap the lock is refused with the client's own message. A (1, targetList) reply
+	// here would tell TryLockTarget the lock had started, and with no OnTarget ever following,
+	// the client would hold a timerless "locking" bracket until relog. Checked after the
+	// duplicate cases above so re-locking a held target is not refused at the cap.
+	if totalLocking := len(ds.targets) + len(ds.lockingTargets); totalLocking >= maxT {
+		ds.targetMu.Unlock()
+		log.Printf("[%s] bound.AddTarget: max targets reached (%d/%d), lock on %d refused", addr, totalLocking, maxT, tid)
+		key := "TargetingAptitudeAlreadyFullyUtilized" // the pilot's skills are the limit
+		if maxT < charMax {
+			key = "TargetingSystemsAlreadyFullyUtilized" // the hull is the limit
+		}
+		return refuseLock(cc, key, map[string]marshal.PyRep{
+			"limit": marshal.PyInt{Value: uint64(maxT)},
+		})
+	}
 
 	// Compute lock time from scan resolution and target signature radius.
 	lockDuration := 2 * time.Second
+	// The range the lock was allowed at, re-checked when the timer ends. 0 = range not enforced.
+	var lockMaxRange float64
 	if sqldb != nil && ds.shipTypeID != 0 {
 		lockCtx, lockCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer lockCancel()
@@ -192,13 +186,13 @@ func boundAddTarget(cc *callCtx) error {
 					ds.targetMu.Unlock()
 					log.Printf("[%s] bound.AddTarget: target %d out of range (dist=%.0f max=%.0f)", addr, tid, dist, maxRange)
 					group, _ := lockTargetLabel(lockCtx, sqldb, ds, tid)
-					return server.SendCallException(c, pkt, accountID, server.BuildUserError(
-						"TargetNotWithinRange", map[string]marshal.PyRep{
-							"targetGroupName": marshal.PyString{Value: group},
-							"desiredRange":    marshal.PyReal{Value: maxRange},
-							"actualDistance":  marshal.PyReal{Value: dist},
-						}))
+					return refuseLock(cc, "TargetNotWithinRange", map[string]marshal.PyRep{
+						"targetGroupName": marshal.PyString{Value: group},
+						"desiredRange":    marshal.PyReal{Value: maxRange},
+						"actualDistance":  marshal.PyReal{Value: dist},
+					})
 				}
+				lockMaxRange = maxRange
 			}
 		}
 
@@ -260,35 +254,73 @@ func boundAddTarget(cc *callCtx) error {
 
 	log.Printf("[%s] → bound.AddTarget targetID=%d lockTime=%v", addr, tid, lockDuration)
 
+	// The reply is held until the lock resolves, as targetMgr.LockTarget expects: it keeps the
+	// target in its "targeting" list (the locking bracket) until AddTarget returns or raises,
+	// and an OnTarget "lost" never takes it out. Answering at once and cancelling later left
+	// that bracket stuck until relog. Every cancel path (RemoveTarget, jam, warp, the target
+	// leaving) cancels lockCtxBg, and the goroutine answers that with a refusal.
+	req := *pkt
 	go func() {
 		defer safego.Recover("handleBoundCall")
+		fail := func(why, key string, dict map[string]marshal.PyRep) {
+			log.Printf("[%s] → bound.AddTarget CANCELLED targetID=%d (%s)", addr, tid, why)
+			if key != "" {
+				pushRemoteMessage(c, accountID, key, dict)
+			}
+			_ = clientMsgErr(c, &req, accountID, lockRefusedSilentKey, nil)
+		}
 		select {
 		case <-lockCtxBg.Done():
-			// Lock was cancelled (target removed or cleared).
+			fail("lock cancelled", "", nil)
 			return
 		case <-time.After(lockDuration):
 		}
 		// Re-validate the target before completing the lock: one destroyed during the timer
 		// would leave a ghost entry in the target list. Same resolver as the up-front check.
+		dropPending := func() {
+			ds.targetMu.Lock()
+			if lockCtxBg.Err() == nil { // a cancelled lock's entry may already be a newer lock's
+				delete(ds.lockingTargets, tid)
+			}
+			ds.targetMu.Unlock()
+			lockCancelBg()
+		}
 		if ds.solarSystem == nil || ds.entity == nil {
+			dropPending()
+			fail("ship left space", "", nil)
 			return
 		}
 		targetEnt := ds.solarSystem.GetEntity(tid)
-		if _, stillLockable := resolveLockTarget(ds, sqldb, tid); !stillLockable {
-			ds.targetMu.Lock()
-			delete(ds.lockingTargets, tid)
-			ds.targetMu.Unlock()
-			lostArgs := marshal.PyTuple{Items: []marshal.PyRep{
-				marshal.PyString{Value: "lost"},
-				marshal.PyInt{Value: uint64(tid)},
-				marshal.PyNone{},
-			}}
-			_ = server.SendNotification(c, accountID, "OnTarget", "charid", lostArgs)
-			log.Printf("[%s] → bound.AddTarget CANCELLED targetID=%d (destroyed during lock)", addr, tid)
+		tpos, stillLockable := resolveLockTarget(ds, sqldb, tid)
+		if !stillLockable {
+			dropPending()
+			fail("target gone", "", nil)
 			return
 		}
+		// A target that moved out of range during the timer is not locked.
+		if lockMaxRange > 0 {
+			if dist := tpos.Sub(ds.entity.Pos()).Len(); dist > lockMaxRange {
+				dropPending()
+				nameCtx, nameCancel := context.WithTimeout(context.Background(), 3*time.Second)
+				group, _ := lockTargetLabel(nameCtx, sqldb, ds, tid)
+				nameCancel()
+				fail("out of range at lock time", "TargetNotWithinRange", map[string]marshal.PyRep{
+					"targetGroupName": marshal.PyString{Value: group},
+					"desiredRange":    marshal.PyReal{Value: lockMaxRange},
+					"actualDistance":  marshal.PyReal{Value: dist},
+				})
+				return
+			}
+		}
 		ds.targetMu.Lock()
+		if lockCtxBg.Err() != nil {
+			// Cancelled between the timer firing and here.
+			ds.targetMu.Unlock()
+			fail("lock cancelled", "", nil)
+			return
+		}
 		delete(ds.lockingTargets, tid)
+		lockCancelBg()
 		alreadyLocked := false
 		for _, existing := range ds.targets {
 			if existing == tid {
@@ -299,12 +331,16 @@ func boundAddTarget(cc *callCtx) error {
 		if !alreadyLocked {
 			ds.targets = append(ds.targets, tid)
 		}
+		nowLocked := ballIDList(ds.targets)
 		ds.targetMu.Unlock()
 		if alreadyLocked {
 			log.Printf("[%s] → bound.AddTarget SKIPPED duplicate targetID=%d", addr, tid)
+			_ = server.SendCallRsp(c, &req, accountID, marshal.PyTuple{Items: []marshal.PyRep{
+				marshal.PyInt{Value: 1}, nowLocked,
+			}})
 			return
 		}
-		log.Printf("[%s] → bound.AddTarget LOCKED targetID=%d (now %d targets)", addr, tid, len(ds.targets))
+		log.Printf("[%s] → bound.AddTarget LOCKED targetID=%d (now %d targets)", addr, tid, len(nowLocked.Items))
 		// The target ball must be in the client's ballpark before the lock notification, or
 		// targetMgr.py (bp.GetInvItem) parks the lock in pendingTargets.
 		ensureBallsKnown(ds.entity, targetEnt)
@@ -315,6 +351,13 @@ func boundAddTarget(cc *callCtx) error {
 		}}
 		if err := server.SendNotification(c, accountID, "OnTarget", "charid", onTargetArgs); err != nil {
 			log.Printf("[%s] AddTarget OnTarget notification: %v", addr, err)
+		}
+		// Flag 1: the OnTarget "add" above already went out. A 0 has the client run
+		// OnTargetAdded itself as well.
+		if err := server.SendCallRsp(c, &req, accountID, marshal.PyTuple{Items: []marshal.PyRep{
+			marshal.PyInt{Value: 1}, nowLocked,
+		}}); err != nil {
+			log.Printf("[%s] AddTarget reply: %v", addr, err)
 		}
 		// Notify the target player that they are being targeted ("otheradd").
 		if targetEnt != nil && targetEnt.IsPlayer && targetEnt.Conn != nil {
@@ -332,17 +375,19 @@ func boundAddTarget(cc *callCtx) error {
 			}
 		}
 	}()
+	return nil
+}
 
-	ds.targetMu.Lock()
-	initTargetList := make([]marshal.PyRep, len(ds.targets))
-	for i, t := range ds.targets {
-		initTargetList[i] = marshal.PyInt{Value: uint64(t)}
-	}
-	ds.targetMu.Unlock()
-	return server.SendCallRsp(c, pkt, accountID, marshal.PyTuple{Items: []marshal.PyRep{
-		marshal.PyInt{Value: 1},
-		marshal.PyList{Items: initTargetList},
-	}})
+// lockRefusedSilentKey is the UserError a refused AddTarget raises. targetMgr.LockTarget drops
+// this key without a message (and TryLockTarget, used by ctrl-click and the overview, drops
+// every error), while still clearing the locking bracket. The reason goes out beforehand as
+// an OnRemoteMessage, so it shows once on every lock path.
+const lockRefusedSilentKey = "DeniedShipChanged"
+
+// refuseLock refuses an AddTarget with the client's message key and dict.
+func refuseLock(cc *callCtx, key string, dict map[string]marshal.PyRep) error {
+	pushRemoteMessage(cc.c, cc.accountID, key, dict)
+	return clientMsgErr(cc.c, cc.pkt, cc.accountID, lockRefusedSilentKey, nil)
 }
 
 // boundRemoveTarget handles the bound call "RemoveTarget".
