@@ -80,6 +80,26 @@ If you saw an error or a zero, wipe it and redo 3.1 and 3.2:
 mysql -uroot -p -e "DROP DATABASE gurimoon_rmr;"
 ```
 
+**3.4 Tune MariaDB (strongly recommended).** A stock MariaDB flushes its log to
+disk on every commit and has a buffer pool smaller than the game data, so a busy
+server, Rolebots especially, can make it write gigabytes a minute. Open MariaDB's
+`my.ini` (usually `C:\Program Files\MariaDB <version>\data\my.ini`) and add
+these lines under `[mysqld]`, then restart the MariaDB service:
+
+```
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 512M
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_neighbors = 0
+innodb_io_capacity = 1000
+skip-log-bin
+```
+
+If `my.ini` already has one of these settings, change its value instead of adding a
+second line. With `innodb_flush_log_at_trx_commit = 2` a Windows crash or power cut can
+lose up to about a second of game data; a MariaDB or server crash loses nothing.
+`docker/mariadb/gurimoon.cnf` explains each line.
+
 ---
 
 ## 4. Settings file
@@ -233,6 +253,14 @@ Fedora, RHEL, Arch, openSUSE:
 
 ```bash
 printf '[mysqld]\nlower_case_table_names = 1\n' | sudo tee /etc/my.cnf.d/99-gurimoon.cnf
+```
+
+Then add the write tuning from step 3.4 to the same file (see
+`docker/mariadb/gurimoon.cnf`), or copy that file over yours:
+
+```bash
+sudo cp docker/mariadb/gurimoon.cnf /etc/mysql/mariadb.conf.d/99-gurimoon.cnf   # Debian family
+sudo cp docker/mariadb/gurimoon.cnf /etc/my.cnf.d/99-gurimoon.cnf               # Fedora family
 ```
 
 Restart MariaDB and check. It must print `1`:
@@ -394,8 +422,9 @@ The first start takes several minutes. Then carry on from step 6.
   `docker compose exec mariadb mariadb -ugurimoon -pgurimoon gurimoon_rmr -e "UPDATE account SET role = role | 56 WHERE accountName = 'yourname';"`
 - For friends, remove the `127.0.0.1:` prefix from the `26000` and `80` lines
   in `docker-compose.yml`.
-- Docker already sets MariaDB's `lower_case_table_names`, so the Linux L2 step
-  isn't needed here.
+- Docker already sets MariaDB's `lower_case_table_names` and the write tuning
+  (`docker/mariadb/gurimoon.cnf`), so the Linux L2 step and step 3.4 aren't
+  needed here. After pulling a change to that file: `docker compose restart mariadb`.
 
 Linux without Docker: see [Linux setup](#linux-setup).
 

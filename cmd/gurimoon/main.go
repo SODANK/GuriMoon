@@ -407,6 +407,12 @@ var historyRetentionRunning atomic.Bool
 // asteroidFlushRunning does the same for the belt write-back.
 var asteroidFlushRunning atomic.Bool
 
+// npcStateFlushRunning single-flights the npc-state-flush tick; npcStateFlushTicks is
+// its period in 1 s ticks. Nothing reads the rows back during play, so 10 s of lag is free.
+var npcStateFlushRunning atomic.Bool
+
+const npcStateFlushTicks = 10
+
 // sweepSkillQueues advances every character whose training is due or who is idle with a queue,
 // online or not. For a logged-in pilot it also pushes the client-facing half and re-arms the
 // completion timer. Completion times do not depend on when it runs.
@@ -791,6 +797,10 @@ func main() {
 	shutdownFlushTimeout = time.Duration(cfg.Server.ShutdownFlushSec) * time.Second
 	handshakeTimeout = time.Duration(cfg.Server.HandshakeTimeoutSec) * time.Second
 	unauthIdleKick = time.Duration(cfg.Server.UnauthIdleKickSec) * time.Second
+	if cfg.Server.MemoryLimitMB > 0 && os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(int64(cfg.Server.MemoryLimitMB) << 20)
+		log.Printf("memory: soft heap limit %d MB (server.memoryLimitMB)", cfg.Server.MemoryLimitMB)
+	}
 	evedb.SetRoleMasks(cfg.ESP.StaffRoles, cfg.Authentication.SlashRoles)
 	if cfg.Authentication.AutoAccount && (evedb.IsStaffRole(cfg.Authentication.Role) || evedb.IsSlashRole(cfg.Authentication.Role)) {
 		log.Printf("WARNING: authentication.autoaccount is on and authentication.role (%d) carries a staff bit: every new account gets GM access", cfg.Authentication.Role)
@@ -2472,26 +2482,16 @@ func main() {
 
 			}()
 		},
-		// Position persist: stores a moving NPC's live position for system reloads. Sends nothing
-		// to clients, since SetBallPosition ends their orbit. See docs/main-s1-notes.md#npc-position-persist.
+		// Position persist hook: the manager marks the NPC for the batched npc-state-flush
+		// (npc/persist.go), which writes the row. This only logs the server-scene distance to
+		// the first target, to compare with what players report.
+		// See docs/main-s1-notes.md#npc-position-persist.
 		func(npcEntity *destiny.Entity, ss *destiny.SolarSystem, targets []*destiny.Entity) {
-			pos := npcEntity.Pos()
-			// Log the server-scene distance to the first target, to compare with what players
-			// report.
 			if len(targets) > 0 {
+				pos := npcEntity.Pos()
 				tp := targets[0].Pos()
 				log.Printf("[npc-pos] npc=%d pos=(%.0f,%.0f,%.0f) dist-to-target=%.0f",
 					npcEntity.ID, pos.X, pos.Y, pos.Z, pos.Sub(tp).Len())
-			}
-			if sqldb != nil {
-				go func(eid uint32, x, y, z float64) {
-					defer safego.Recover("main")
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					defer cancel()
-					if err := evedb.UpdateLiveNPCPosition(ctx, sqldb, eid, x, y, z); err != nil {
-						log.Printf("[npc] UpdateLiveNPCPosition entityID=%d: %v", eid, err)
-					}
-				}(npcEntity.ID, pos.X, pos.Y, pos.Z)
 			}
 		},
 		// Spawn notify: deliver the new NPC to nearby players. Players without a ballpark
@@ -3001,6 +3001,32 @@ func main() {
 		return true
 	})
 
+	// Grow-only cache sweep (sweepGrowOnlyCaches), every 5 minutes.
+	tickMgr.RegisterPeriodic("cache-prune-sweep", 300, func(uint64) bool {
+		if n := sweepGrowOnlyCaches(); n > 0 {
+			log.Printf("[cache-prune] dropped %d stale cache entries", n)
+		}
+		return true
+	})
+
+	// NPC HP/position write-behind: hits and moves mark an NPC dirty (npc/persist.go) and
+	// this writes them all in one transaction, instead of one commit per hit.
+	tickMgr.RegisterPeriodic("npc-state-flush", npcStateFlushTicks, func(uint64) bool {
+		if npcMgr == nil || !npcStateFlushRunning.CompareAndSwap(false, true) {
+			return true
+		}
+		go func() {
+			defer npcStateFlushRunning.Store(false)
+			defer safego.Recover("npc-state-flush")
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if _, err := npcMgr.FlushState(ctx); err != nil {
+				log.Printf("[npc-state-flush] %v", err)
+			}
+		}()
+		return true
+	})
+
 	// Hourly: rolls synthetic losses past killboard.botRetentionDays into killboard_rollup and
 	// removes them (player losses stay). Single-flight off the tick goroutine; the first pass is large.
 	tickMgr.RegisterPeriodic("killboard-retention", 3600, func(uint64) bool {
@@ -3313,6 +3339,9 @@ func handleConn(raw gonet.Conn, sqldb *sql.DB, cacheStore *evecache.Store, lscRe
 			tcancel()
 			globalCharConns.Delete(ds.charID)
 			forgetContainerUnlocks(ds.charID)
+			// Per-character state that only matters for a live session.
+			standing2.ForgetHeldNPCStandings(ds.charID)
+			scanAnalyses.Delete(ds.charID)
 			gangsta.HandleDisconnect(ds.charID, globalGangReg, charConnLookup,
 				func(cid, gid, corp int64) { broadcastGangSysChange(sysMgr, cid, gid, corp) })
 			go broadcastOnlineStatus(sqldb, ds.charID, false)
@@ -4068,6 +4097,8 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 				// charID to connection map for cross-player notifications (gang invites).
 				if prevCharID != 0 {
 					globalCharConns.Delete(prevCharID)
+					standing2.ForgetHeldNPCStandings(prevCharID)
+					scanAnalyses.Delete(prevCharID)
 				}
 				globalCharConns.Store(*charID, charConn{conn: c, accountID: *accountID})
 				go broadcastOnlineStatus(sqldb, *charID, true)
@@ -20174,7 +20205,7 @@ func weaponCycleLoop(ctx context.Context, c *evenet.Conn, addr string, accountID
 		target := ds.solarSystem.GetEntity(targetID)
 		if target != nil {
 			sigCtx, sigCancel := context.WithTimeout(context.Background(), 3*time.Second)
-			tgtAttrs, sigErr := evedb.GetTypeAttributes(sigCtx, sqldb, int64(target.Slim.TypeID))
+			tgtAttrs, sigErr := evedb.TypeAttrs(sigCtx, sqldb, int64(target.Slim.TypeID))
 			sigCancel()
 			if sigErr == nil {
 				if s, ok := tgtAttrs[dogma.AttrSignatureRadius]; ok && s > 0 {
@@ -20186,7 +20217,7 @@ func weaponCycleLoop(ctx context.Context, c *evenet.Conn, addr string, accountID
 		// a module that only carries signatureRadius.
 		if modTypeID != 0 {
 			wpnCtx, wpnCancel := context.WithTimeout(context.Background(), 3*time.Second)
-			wpnAttrs, wpnErr := evedb.GetTypeAttributes(wpnCtx, sqldb, modTypeID)
+			wpnAttrs, wpnErr := evedb.TypeAttrs(wpnCtx, sqldb, modTypeID)
 			wpnCancel()
 			if wpnErr == nil {
 				if s, ok := wpnAttrs[dogma.AttrOptimalSigRadius]; ok && s > 0 {
@@ -20203,7 +20234,7 @@ func weaponCycleLoop(ctx context.Context, c *evenet.Conn, addr string, accountID
 	capNeed := 0.0
 	if sqldb != nil && modTypeID != 0 {
 		capCtx, capCancel := context.WithTimeout(context.Background(), 3*time.Second)
-		if wpnAttrs, err := evedb.GetTypeAttributes(capCtx, sqldb, modTypeID); err == nil {
+		if wpnAttrs, err := evedb.TypeAttrs(capCtx, sqldb, modTypeID); err == nil {
 			capNeed = wpnAttrs[dogma.AttrCapacitorNeed]
 		}
 		capCancel()
@@ -21762,9 +21793,42 @@ type hpPushState struct {
 	armed bool
 }
 
-// hpPushStates tracks the per-victim aggregator. Keyed by entity ID; the set
-// is bounded by the connected-player population, so nothing prunes it.
+// hpPushStates tracks the per-victim aggregator, keyed by entity ID. Every new hull a
+// pilot boards is a new entity ID, so sweepGrowOnlyCaches drops idle entries.
 var hpPushStates syncx.Map[uint32, *hpPushState]
+
+// sweepGrowOnlyCaches prunes the small per-entity caches whose entries were never
+// deleted: idle HP aggregators and expired mine friend-or-foe and tower-engage
+// verdicts. Each entry is small; the problem
+// was that they only ever accumulated over a long uptime.
+func sweepGrowOnlyCaches() (removed int) {
+	now := time.Now()
+	hpPushStates.Range(func(id uint32, st *hpPushState) bool {
+		st.mu.Lock()
+		idle := !st.armed && now.Sub(st.last) > 10*time.Minute
+		st.mu.Unlock()
+		if idle {
+			hpPushStates.CompareAndDelete(id, st)
+			removed++
+		}
+		return true
+	})
+	mineFoFCache.Range(func(k string, e mineFoFEntry) bool {
+		if now.Sub(e.at) >= mineFoFTTL {
+			mineFoFCache.Delete(k)
+			removed++
+		}
+		return true
+	})
+	posEngageCache.Range(func(k string, e posEngageEntry) bool {
+		if now.Sub(e.at) >= posEngageCacheTTL {
+			posEngageCache.Delete(k)
+			removed++
+		}
+		return true
+	})
+	return removed
+}
 
 // sendPlayerHPUpdate updates the victim's HUD shield/armor/structure bars.
 // The 3D hull scarring is driven by OnDamageStateChange (destiny), but the
@@ -22317,16 +22381,10 @@ func spawnLootBall(ss *destiny.SolarSystem, sqldb *sql.DB, contBall destiny.Ball
 			containerID, pos.X, pos.Y, pos.Z, p.Pos().Sub(pos).Len(), p.ID)
 	}
 
-	// Despawn timer.
-	go func() {
-		defer safego.Recover("spawnLootBall")
-		select {
-		case <-time.After(lootContainerTTL()):
-		case <-ss.Done():
-			return
-		}
-		despawnLootContainer(ss, containerID, sqldb)
-	}()
+	// No despawn timer here: startLootExpirySweep despawns it once LootSpawned (set by
+	// AddLootContainer) is older than lootContainerTTL. A goroutine per can parked for the
+	// full TTL (2 h by default) even after the can was looted, thousands of them in a busy
+	// system.
 }
 
 // npcLootDrop is one rolled loot line: a type and a quantity.

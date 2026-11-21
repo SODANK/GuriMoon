@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"log"
 	"sync"
+
+	"gurimoon/syncx"
 )
 
 // CelestialCache holds preloaded static map data (security, faction, position) and
@@ -17,6 +19,10 @@ type CelestialCache struct {
 	security      map[int64]float64           // solarSystemID → security
 	factions      map[int64]int64             // solarSystemID → sovereign factionID
 	positions     map[int64]SystemPos         // solarSystemID → galactic position (m)
+
+	// regionLoad coalesces concurrent misses on one region, which each used to load
+	// the whole region and throw all but one copy away.
+	regionLoad syncx.Flight[int64, map[int64][]CelestialEntity]
 }
 
 // SharedCelestialCache is the process's one CelestialCache, installed by main after
@@ -105,7 +111,9 @@ func (cc *CelestialCache) GetCelestials(ctx context.Context, db *sql.DB, solarSy
 	}
 	cc.mu.Unlock()
 
-	regionData, err := GetRegionCelestials(ctx, db, regionID)
+	regionData, err, _ := cc.regionLoad.Do(regionID, func() (map[int64][]CelestialEntity, error) {
+		return GetRegionCelestials(ctx, db, regionID)
+	})
 	if err != nil {
 		// Region load failed: per-system query.
 		log.Printf("[celestialcache] GetRegionCelestials regionID=%d failed: %v — falling back", regionID, err)

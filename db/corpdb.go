@@ -541,7 +541,16 @@ var allianceCols = []string{
 }
 
 // ensureAlliancesTable creates the alliances table if it does not already exist.
+// ensureAlliancesTableGuard runs ensureAlliancesTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureAlliancesTableGuard ensureGuard
+
 func ensureAlliancesTable(ctx context.Context, db *sql.DB) error {
+	return ensureAlliancesTableGuard.do(func() error { return ensureAlliancesTableDDL(ctx, db) })
+}
+
+func ensureAlliancesTableDDL(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS alliances (
 		  allianceID    INT UNSIGNED    NOT NULL,
@@ -847,7 +856,16 @@ var applicationCols = []string{
 }
 
 // ensureApplicationsTable creates chrApplications if it does not yet exist.
+// ensureApplicationsTableGuard runs ensureApplicationsTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureApplicationsTableGuard ensureGuard
+
 func ensureApplicationsTable(ctx context.Context, db *sql.DB) error {
+	return ensureApplicationsTableGuard.do(func() error { return ensureApplicationsTableDDL(ctx, db) })
+}
+
+func ensureApplicationsTableDDL(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS chrApplications (
 		  corporationID       INT UNSIGNED  NOT NULL DEFAULT 0,

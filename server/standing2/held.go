@@ -20,6 +20,12 @@ func recordHeldNPCStandings(charID int64, rowset marshal.PyRep) {
 	heldNPCStandings.Store(charID, rowsetFirstColumn(rowset))
 }
 
+// ForgetHeldNPCStandings drops a character's set when its session ends; the next session's
+// GetMyStandings records a fresh one. Without it the map kept every character ever logged in.
+func ForgetHeldNPCStandings(charID int64) {
+	heldNPCStandings.Delete(charID)
+}
+
 // ClientHoldsNPCStanding reports whether the character's client holds a standing row from
 // fromID, so that a standing push can move it.
 func ClientHoldsNPCStanding(charID, fromID int64) bool {

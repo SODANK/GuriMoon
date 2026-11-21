@@ -8,7 +8,10 @@
     "handshakeTimeoutSec": 30,
     "unauthIdleKickSec": 120,
     "shutdownWaitSec": 20,
-    "shutdownFlushSec": 60
+    "shutdownFlushSec": 60,
+    // Soft cap on the server's Go heap, in MB. The garbage collector works harder near it
+    // and hands memory back to the OS. 0 = no cap. Size it to the machine (2048 = 2 GB).
+    "memoryLimitMB": 2048
   },
   "database": {
     "host": "localhost",

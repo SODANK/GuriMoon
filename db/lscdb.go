@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 
 	"gurimoon/marshal"
 )
@@ -531,11 +532,16 @@ func EnsureChannelModsTable(ctx context.Context, db *sql.DB) error {
 	}
 
 	// Legacy dumps define mode/originalMode as UNSIGNED, which rejects block-list rows (-2).
-	if _, err := db.ExecContext(ctx, `
+	// Probed first, so a table already widened is not altered on every boot.
+	signedInt := func(ct string) bool { return strings.HasPrefix(ct, "int") && !strings.Contains(ct, "unsigned") }
+	if columnNeedsModify(ctx, db, "channelMods", "mode", false, signedInt) ||
+		columnNeedsModify(ctx, db, "channelMods", "originalMode", true, signedInt) {
+		if _, err := db.ExecContext(ctx, `
 		ALTER TABLE channelMods
 			MODIFY mode INT NOT NULL DEFAULT 0,
 			MODIFY originalMode INT NULL`); err != nil {
-		return fmt.Errorf("EnsureChannelModsTable: widen mode columns: %w", err)
+			return fmt.Errorf("EnsureChannelModsTable: widen mode columns: %w", err)
+		}
 	}
 
 	// Upserts key on (channelID, accessor); the legacy schema lacks that unique index.

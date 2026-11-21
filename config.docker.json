@@ -3,7 +3,8 @@
     "listen": ":26000",
     "logFile": "data/server.log",
     "crashLogFile": "data/server.crash.log",
-    "logAppend": true
+    "logAppend": true,
+    "memoryLimitMB": 2048
   },
   "database": {
     "host": "mariadb",

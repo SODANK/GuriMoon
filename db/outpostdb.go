@@ -57,7 +57,16 @@ type OutpostPlatform struct {
 }
 
 // ensureOutpostPlatformTable creates the platform overlay table if missing.
+// ensureOutpostPlatformTableGuard runs ensureOutpostPlatformTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureOutpostPlatformTableGuard ensureGuard
+
 func ensureOutpostPlatformTable(ctx context.Context, db DBTX) error {
+	return ensureOutpostPlatformTableGuard.do(func() error { return ensureOutpostPlatformTableDDL(ctx, db) })
+}
+
+func ensureOutpostPlatformTableDDL(ctx context.Context, db DBTX) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS outpostPlatforms (
 		  entityID        INT UNSIGNED NOT NULL,
@@ -376,7 +385,16 @@ const (
 	PlatformPasswordBuild  = 2
 )
 
+// ensureOutpostPasswordTableGuard runs ensureOutpostPasswordTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureOutpostPasswordTableGuard ensureGuard
+
 func ensureOutpostPasswordTable(ctx context.Context, db DBTX) error {
+	return ensureOutpostPasswordTableGuard.do(func() error { return ensureOutpostPasswordTableDDL(ctx, db) })
+}
+
+func ensureOutpostPasswordTableDDL(ctx context.Context, db DBTX) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS outpostPlatformPasswords (
 		  itemID         INT UNSIGNED NOT NULL,

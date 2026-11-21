@@ -28,7 +28,16 @@ type Bookmark struct {
 // ensureBookmarksTable creates the table when a fresh database is missing it
 // and makes bookmarkID auto-incrementing.  The shipped dump declares the
 // column as a plain PK, so the ALTER is what actually lets us insert.
+// ensureBookmarksTableGuard runs ensureBookmarksTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureBookmarksTableGuard ensureGuard
+
 func ensureBookmarksTable(ctx context.Context, db *sql.DB) error {
+	return ensureBookmarksTableGuard.do(func() error { return ensureBookmarksTableDDL(ctx, db) })
+}
+
+func ensureBookmarksTableDDL(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS bookmarks (
 		  bookmarkID INT UNSIGNED   NOT NULL AUTO_INCREMENT,

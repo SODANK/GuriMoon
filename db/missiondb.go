@@ -133,6 +133,9 @@ func EnsureMissionTables(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE missionTemplates ADD COLUMN failText TEXT DEFAULT NULL AFTER completeText`,
 	}
 	for _, stmt := range alterStmts {
+		if missionModifyDone(ctx, db, stmt) {
+			continue
+		}
 		db.ExecContext(ctx, stmt) // ignore errors (column may already exist)
 	}
 
@@ -1798,4 +1801,23 @@ func BuildMissionTextParams(ctx context.Context, db *sql.DB, charID, agentID int
 	}
 
 	return p
+}
+
+// missionModifyDone reports whether one of EnsureMissionTables' MODIFY statements is
+// already in force, so it is not re-issued on every boot. ADD COLUMN statements fail
+// harmlessly on an existing column and are left alone.
+func missionModifyDone(ctx context.Context, db *sql.DB, stmt string) bool {
+	const prefix = "ALTER TABLE missionTemplates MODIFY "
+	if !strings.HasPrefix(stmt, prefix) {
+		return false
+	}
+	rest := stmt[len(prefix):]
+	col := rest[:strings.IndexByte(rest, ' ')]
+	if col == "completionType" {
+		return !columnNeedsModify(ctx, db, "missionTemplates", col, true, func(ct string) bool {
+			return ct == "enum('killall','killtarget','killstructure','killitem')"
+		})
+	}
+	return !columnNeedsModify(ctx, db, "missionTemplates", col, true,
+		func(ct string) bool { return ct == "double" })
 }

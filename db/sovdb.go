@@ -20,7 +20,16 @@ var (
 
 // ensureSolarSystemSovTable creates the sovereignty table if missing and adds the pending-flip
 // columns to a table made before them (sql/solarsystemsov.sql carries them for a fresh install).
+// ensureSolarSystemSovTableGuard runs ensureSolarSystemSovTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureSolarSystemSovTableGuard ensureGuard
+
 func ensureSolarSystemSovTable(ctx context.Context, db *sql.DB) error {
+	return ensureSolarSystemSovTableGuard.do(func() error { return ensureSolarSystemSovTableDDL(ctx, db) })
+}
+
+func ensureSolarSystemSovTableDDL(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS solarSystemSov (
 		  solarSystemID     INT UNSIGNED NOT NULL,

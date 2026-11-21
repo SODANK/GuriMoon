@@ -93,8 +93,11 @@ type Server struct {
 	nebulasDir   string                    // path to converted nebula cubemap PNGs (optional)
 	nebulaDDS    map[string]string         // nebula name → client DDS cubemap path
 	nebulaCache  syncx.Map[string, []byte] // "name/face" → decoded PNG bytes
-	logoLibDDS   map[int]string            // corp logo atlas number → client DDS path
-	logoCache    syncx.Map[int64, []byte]  // shape graphicID → cropped PNG bytes
+	// nebulaGen coalesces concurrent decodes of one face: each reads and decodes the
+	// whole DDS cubemap (tens of MB), and a skybox asks for its six faces at once.
+	nebulaGen  syncx.Flight[string, []byte]
+	logoLibDDS map[int]string           // corp logo atlas number → client DDS path
+	logoCache  syncx.Map[int64, []byte] // shape graphicID → cropped PNG bytes
 
 	allianceDDS       map[int]string            // alliance logo atlas number → client DDS path
 	allianceTileCache syncx.Map[string, []byte] // "NN_T" tile name → cropped PNG bytes

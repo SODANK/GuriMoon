@@ -312,6 +312,7 @@
       <tr><td>NPCs in space</td><td class="r">{{$v.NPCsInSpace}}</td></tr>
       <tr><td>Goroutines</td><td class="r">{{$v.Goroutines}}</td></tr>
       <tr><td>Heap in use</td><td class="r">{{printf "%.1f" $v.HeapMB}} MB</td></tr>
+      <tr><td>Memory held from OS</td><td class="r">{{printf "%.0f" $v.SysMB}} MB &middot; {{printf "%.0f" $v.ReleasedMB}} MB returned</td></tr>
       <tr><td>Database connections</td><td class="r">{{$v.DBOpen}} open &middot; {{$v.DBInUse}} in use</td></tr>
       <tr><td>Connection waits</td><td class="r">{{commas $v.DBWaits}}</td></tr>
       <tr><td>Go</td><td class="r">{{$v.GoVersion}}</td></tr>

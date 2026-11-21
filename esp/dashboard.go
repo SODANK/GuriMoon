@@ -32,10 +32,13 @@ type dashVitals struct {
 	LoadedSystems, NPCsInSpace         int
 	Goroutines                         int
 	HeapMB                             float64
-	DBOpen, DBInUse                    int
-	DBWaits                            int64
-	GoVersion                          string
-	HasServer                          bool // a game server set the live-state hooks
+	// SysMB is all memory the Go runtime holds from the OS; ReleasedMB is the part of
+	// it already handed back. SysMB - ReleasedMB is close to the process RSS.
+	SysMB, ReleasedMB float64
+	DBOpen, DBInUse   int
+	DBWaits           int64
+	GoVersion         string
+	HasServer         bool // a game server set the live-state hooks
 }
 
 // dashSitesLive is the in-memory half of the open-site panel.
@@ -96,6 +99,8 @@ func (s *Server) dashVitals() dashVitals {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	v.HeapMB = float64(ms.HeapAlloc) / (1024 * 1024)
+	v.SysMB = float64(ms.Sys) / (1024 * 1024)
+	v.ReleasedMB = float64(ms.HeapReleased) / (1024 * 1024)
 	if s.db != nil {
 		st := s.db.Stats()
 		v.DBOpen, v.DBInUse, v.DBWaits = st.OpenConnections, st.InUse, st.WaitCount

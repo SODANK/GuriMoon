@@ -138,8 +138,12 @@ func EnsureAgentServiceTables(ctx context.Context, db *sql.DB) error {
 	}
 
 	// Migrate agtServiceTexts to the division-scoped key (0 = every agent). Errors mean it already ran.
-	db.ExecContext(ctx, `ALTER TABLE agtServiceTexts ADD COLUMN divisionID INT NOT NULL DEFAULT 0 FIRST`)
-	db.ExecContext(ctx, `ALTER TABLE agtServiceTexts DROP PRIMARY KEY, ADD PRIMARY KEY (divisionID, textKey)`)
+	// Probed first: the DROP/ADD PRIMARY KEY rebuilt the table on every boot.
+	if pk, err := primaryKeyColumns(ctx, db, "agtServiceTexts"); err != nil ||
+		strings.Join(pk, ",") != "divisionid,textkey" {
+		db.ExecContext(ctx, `ALTER TABLE agtServiceTexts ADD COLUMN divisionID INT NOT NULL DEFAULT 0 FIRST`)
+		db.ExecContext(ctx, `ALTER TABLE agtServiceTexts DROP PRIMARY KEY, ADD PRIMARY KEY (divisionID, textKey)`)
+	}
 
 	if _, ok, _ := GetServerSetting(ctx, db, settingServicesSeeded); !ok {
 		for _, row := range defaultServiceDivisions {

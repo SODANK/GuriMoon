@@ -4,7 +4,7 @@
 // panel (/bugs).
 //
 // Producers push onto a buffered channel and never block; events are dropped when it is full.
-// One consumer goroutine coalesces hits per signature and flushes every couple of seconds.
+// One consumer goroutine coalesces hits per signature and flushes every 30 seconds in one transaction.
 // Writer works before Init: events queue in the buffer until the consumer starts.
 package bugtrack
 
@@ -52,38 +52,88 @@ func Init(sqldb *sql.DB) {
 	safego.Forever("bugtrack.run", func() { run(sqldb) })
 }
 
-// run coalesces incoming events per signature and flushes to the database on
-// a short ticker, so a hot error loop costs one upsert per flush instead of
-// one per occurrence.
+// The flush pace. Every log line with "error", "failed" and the like becomes an
+// event, so a noisy server produces many signatures. Each flush used to upsert every
+// pending signature as its own commit every 2 s, rewriting its 2 KB sample each time;
+// on a stock MariaDB that is a steady stream of fsyncs and page writes. Now one
+// transaction every 30 s carries at most flushMaxRows signatures (the rest wait for
+// the next flush), and the sample is written once.
+const (
+	flushEvery   = 30 * time.Second
+	flushMaxRows = 200
+	// pruneEvery / pruneKeep bound the table: rows past the newest pruneKeep (by
+	// lastSeen) that nobody wrote notes on are deleted hourly.
+	pruneEvery = time.Hour
+	pruneKeep  = 5000
+)
+
+// run coalesces incoming events per signature and flushes them to the database on
+// a slow ticker, so a hot error loop costs one row per flush instead of one per
+// occurrence.
 func run(sqldb *sql.DB) {
 	pending := make(map[string]*event)
-	flush := time.NewTicker(2 * time.Second)
+	flush := time.NewTicker(flushEvery)
 	defer flush.Stop()
+	prune := time.NewTicker(pruneEvery)
+	defer prune.Stop()
 	for {
 		select {
 		case ev := <-events:
 			if p, ok := pending[ev.signature]; ok {
 				p.count += ev.count
 				p.when = ev.when
-				p.sample = ev.sample
 			} else {
 				e := ev
 				pending[ev.signature] = &e
 			}
 		case <-flush.C:
-			for sig, ev := range pending {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				err := evedb.UpsertBugReport(ctx, sqldb, sig, ev.category,
-					ev.service, ev.method, ev.sample, ev.count, ev.when)
-				cancel()
-				if err != nil {
-					// The "bugtrack:" prefix makes the interceptor skip this
-					// line, so a database outage cannot feed back into itself.
-					log.Printf("bugtrack: upsert %s: %v", sig, err)
-				}
-				delete(pending, sig)
+			flushPending(sqldb, pending)
+		case <-prune.C:
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			if n, err := evedb.PruneBugReports(ctx, sqldb, pruneKeep); err != nil {
+				log.Printf("bugtrack: prune: %v", err)
+			} else if n > 0 {
+				log.Printf("bugtrack: pruned %d old report(s)", n)
+			}
+			cancel()
+		}
+	}
+}
+
+// flushPending writes up to flushMaxRows pending signatures in one transaction and
+// removes them from pending. On error they stay pending for the next flush.
+func flushPending(sqldb *sql.DB, pending map[string]*event) {
+	if len(pending) == 0 {
+		return
+	}
+	batch := make([]evedb.BugReportHit, 0, min(len(pending), flushMaxRows))
+	for sig, ev := range pending {
+		if len(batch) >= flushMaxRows {
+			break
+		}
+		batch = append(batch, evedb.BugReportHit{
+			Signature: sig, Category: ev.category, Service: ev.service, Method: ev.method,
+			Sample: ev.sample, Count: ev.count, When: ev.when,
+		})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	err := evedb.UpsertBugReports(ctx, sqldb, batch)
+	cancel()
+	if err != nil {
+		// The "bugtrack:" prefix makes the interceptor skip this line, so a
+		// database outage cannot feed back into itself.
+		log.Printf("bugtrack: upsert %d report(s): %v", len(batch), err)
+		if len(pending) > 4*flushMaxRows {
+			// The database is down and the map would grow without end: keep the
+			// newest occurrences' counts only for what the next flush can carry.
+			for _, h := range batch {
+				delete(pending, h.Signature)
 			}
 		}
+		return
+	}
+	for _, h := range batch {
+		delete(pending, h.Signature)
 	}
 }
 
@@ -175,24 +225,79 @@ func classify(line string) string {
 	return ""
 }
 
-// normalize collapses every digit run to '#' so that timestamps, addresses,
-// entity/char IDs and coordinates all map to the same signature.
+// normalize maps the parts of a message that vary between occurrences of the same
+// bug onto placeholders, so they share one signature: every digit run becomes '#'
+// (timestamps, addresses, IDs, coordinates), a 0x hex literal or a long hex run
+// (pointers, hashes) becomes '#', and a quoted string ("..." or '...', which is
+// where %q puts names and method strings) becomes "#".
 func normalize(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
-	prevDigit := false
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			if !prevDigit {
+	prevHash := false
+	emitHash := func() {
+		if !prevHash {
+			b.WriteByte('#')
+		}
+		prevHash = true
+	}
+	for i := 0; i < len(s); {
+		c := s[i]
+		switch {
+		case c == '"' || c == '\'':
+			// A quoted span up to the matching quote on the same line.
+			if j := strings.IndexByte(s[i+1:], c); j >= 0 && !strings.ContainsRune(s[i+1:i+1+j], '\n') {
+				b.WriteByte(c)
 				b.WriteByte('#')
+				b.WriteByte(c)
+				prevHash = false
+				i += j + 2
+				continue
 			}
-			prevDigit = true
+		case c == '0' && i+2 < len(s) && (s[i+1] == 'x' || s[i+1] == 'X') && isHex(s[i+2]):
+			j := i + 2
+			for j < len(s) && isHex(s[j]) {
+				j++
+			}
+			emitHash()
+			i = j
+			continue
+		case isHex(c):
+			// A run of 8+ hex characters with at least one digit and at a word
+			// boundary is an ID or hash, not a word.
+			j := i
+			digit := false
+			for j < len(s) && isHex(s[j]) {
+				if s[j] >= '0' && s[j] <= '9' {
+					digit = true
+				}
+				j++
+			}
+			atStart := i == 0 || !isWordByte(s[i-1])
+			atEnd := j == len(s) || !isWordByte(s[j])
+			if j-i >= 8 && digit && atStart && atEnd {
+				emitHash()
+				i = j
+				continue
+			}
+		}
+		if c >= '0' && c <= '9' {
+			emitHash()
+			i++
 			continue
 		}
-		prevDigit = false
-		b.WriteRune(r)
+		prevHash = false
+		b.WriteByte(c)
+		i++
 	}
 	return b.String()
+}
+
+func isHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+func isWordByte(c byte) bool {
+	return isHex(c) || (c >= 'g' && c <= 'z') || (c >= 'G' && c <= 'Z') || c == '_'
 }
 
 // sigOf hashes a normalized key to the 16-hex-char signature used as the

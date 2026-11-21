@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"gurimoon/marshal"
+	"gurimoon/syncx"
 )
 
 // win32Epoch is the number of 100-nanosecond intervals between
@@ -36,6 +37,10 @@ type Store struct {
 	// the timer's callback takes mu, so it must not already hold it.
 	debounceMu sync.Mutex
 	debounce   map[string]*time.Timer
+
+	// gen coalesces concurrent misses for one object: a login burst right after an
+	// invalidation used to build N copies of a multi-MB object tree at once.
+	gen syncx.Flight[string, *Entry]
 }
 
 // New returns an empty Store.
@@ -54,15 +59,17 @@ func (s *Store) Get(ctx context.Context, db *sql.DB, objectID string) (*Entry, e
 		return e, nil
 	}
 
-	e, err := generate(ctx, db, objectID)
-	if err != nil {
-		return nil, err
-	}
-
-	s.mu.Lock()
-	s.entries[objectID] = e
-	s.mu.Unlock()
-	return e, nil
+	e, err, _ := s.gen.Do(objectID, func() (*Entry, error) {
+		e, err := generate(ctx, db, objectID)
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.entries[objectID] = e
+		s.mu.Unlock()
+		return e, nil
+	})
+	return e, err
 }
 
 // Invalidate drops the named entries so the next Get regenerates them from the database.

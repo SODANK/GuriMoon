@@ -158,6 +158,11 @@ type NPCManager struct {
 	ewarRefresh     EwarRefreshFunc
 	running         bool
 
+	// dirty holds NPCs whose HP or position changed since the last FlushState
+	// (persist.go), entityID -> dirtyHP|dirtyPos.
+	dirtyMu sync.Mutex
+	dirty   map[uint32]uint8
+
 	// sigCache caches signature radius (attribute 552) by typeID to avoid
 	// repeated DB lookups during hit chance calculations.
 	sigCache syncx.Map[int64, float64] // map[int64]float64
@@ -1001,37 +1006,10 @@ func (m *NPCManager) OpenSiteEntities(siteID int64) []uint32 {
 	return out
 }
 
-// SyncHPToDB persists current HP fractions to the appropriate NPC table.
-// Runs async to avoid blocking combat ticks.
+// SyncHPToDB marks the NPC's HP for the next batched write (persist.go). It used
+// to write the row on every hit, one goroutine and one commit each.
 func (m *NPCManager) SyncHPToDB(entityID uint32) {
-	if m.sqldb == nil {
-		return
-	}
-	m.mu.RLock()
-	rec, ok := m.npcs[entityID]
-	m.mu.RUnlock()
-	if !ok || rec == nil || rec.Entity == nil {
-		return
-	}
-	rec.mu.Lock()
-	dunObj := rec.DunObjectID
-	rec.mu.Unlock()
-
-	dmg := rec.Entity.DamageStateFrac()
-	go func() {
-		defer safego.Recover("SyncHPToDB")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if dunObj != 0 {
-			if err := db.UpdateDungeonNPCHP(ctx, m.sqldb, entityID, dmg.Shield, dmg.Armor, dmg.Structure); err != nil {
-				log.Printf("[npc] UpdateDungeonNPCHP entityID=%d: %v", entityID, err)
-			}
-		} else {
-			if err := db.UpdateLiveNPCHP(ctx, m.sqldb, entityID, dmg.Shield, dmg.Armor, dmg.Structure); err != nil {
-				log.Printf("[npc] UpdateLiveNPCHP entityID=%d: %v", entityID, err)
-			}
-		}
-	}()
+	m.markDirty(entityID, dirtyHP)
 }
 
 // Remove removes an NPC from the manager (e.g. after death).
@@ -1039,6 +1017,7 @@ func (m *NPCManager) Remove(entityID uint32) {
 	m.mu.Lock()
 	delete(m.npcs, entityID)
 	m.mu.Unlock()
+	m.forgetDirty(entityID)
 }
 
 // Kill runs the NPC death path: lock-lost broadcasts, the death broadcast
@@ -1843,6 +1822,9 @@ func (m *NPCManager) maybePersistPosition(rec *NPCRecord, entity *destiny.Entity
 	targetIDs := make([]uint32, len(rec.Targets))
 	copy(targetIDs, rec.Targets)
 	rec.mu.Unlock()
+
+	// The row is written by the batched flush (persist.go); posPersist only logs.
+	m.markDirty(entity.ID, dirtyPos)
 
 	var targetEntities []*destiny.Entity
 	for _, tid := range targetIDs {

@@ -124,12 +124,20 @@ func (s *Server) handleNebulaFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pngBytes, err := decodeCubemapFacePNG(ddsPath, faceIdx)
+	pngBytes, err, _ := s.nebulaGen.Do(cacheKey, func() ([]byte, error) {
+		b, err := decodeCubemapFacePNG(ddsPath, faceIdx)
+		if err != nil {
+			return nil, err
+		}
+		// Trim the encoder buffer's spare capacity: the cache keeps this forever.
+		b = bytes.Clone(b)
+		s.nebulaCache.Store(cacheKey, b)
+		return b, nil
+	})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("nebula decode failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	s.nebulaCache.Store(cacheKey, pngBytes)
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("Cache-Control", "max-age=86400")
 	w.Write(pngBytes)

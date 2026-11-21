@@ -128,9 +128,15 @@ func EnsureCorpWriteTables(ctx context.Context, db *sql.DB) error {
 		}
 	}
 	// The stock schema caps division names at VARCHAR(11); the client allows longer, so widen.
+	// Probed first: seven MODIFYs on corporation ran on every boot.
 	for i := 1; i <= 7; i++ {
+		col := fmt.Sprintf("division%d", i)
+		if !columnNeedsModify(ctx, db, "corporation", col, true,
+			func(ct string) bool { return ct == "varchar(50)" }) {
+			continue
+		}
 		if _, err := db.ExecContext(ctx, fmt.Sprintf(
-			`ALTER TABLE corporation MODIFY division%d VARCHAR(50) NULL`, i)); err != nil {
+			`ALTER TABLE corporation MODIFY %s VARCHAR(50) NULL`, col)); err != nil {
 			return fmt.Errorf("EnsureCorpWriteTables divisions: %w", err)
 		}
 	}
@@ -504,19 +510,34 @@ type TitleRow struct {
 
 // EnsureDefaultTitles seeds the eight power-of-two titles the client UI
 // assumes exist (it walks titleID 1<<0 .. 1<<7 positionally).
+// It runs on every title read (GetTitles), so a corporation already seeded in this
+// process is skipped, and the seed itself is one statement instead of eight commits.
 func EnsureDefaultTitles(ctx context.Context, db *sql.DB, corpID int64) error {
+	if _, done := defaultTitlesSeeded.Load(corpID); done {
+		return nil
+	}
 	if err := ensureCorpTitlesTable(ctx, db); err != nil {
 		return err
 	}
+	var q strings.Builder
+	q.WriteString(`INSERT IGNORE INTO crpTitles (corporationID, titleID, titleName) VALUES `)
+	args := make([]any, 0, 24)
 	for i := 0; i < 8; i++ {
-		if _, err := db.ExecContext(ctx,
-			`INSERT IGNORE INTO crpTitles (corporationID, titleID, titleName) VALUES (?, ?, ?)`,
-			corpID, 1<<i, fmt.Sprintf("Title %d", i+1)); err != nil {
-			return fmt.Errorf("EnsureDefaultTitles: %w", err)
+		if i > 0 {
+			q.WriteString(",")
 		}
+		q.WriteString("(?, ?, ?)")
+		args = append(args, corpID, 1<<i, fmt.Sprintf("Title %d", i+1))
 	}
+	if _, err := db.ExecContext(ctx, q.String(), args...); err != nil {
+		return fmt.Errorf("EnsureDefaultTitles: %w", err)
+	}
+	defaultTitlesSeeded.Store(corpID, struct{}{})
 	return nil
 }
+
+// defaultTitlesSeeded holds the corporations EnsureDefaultTitles has seeded in this process.
+var defaultTitlesSeeded sync.Map
 
 // GetTitleRow reads one title for change-dict diffing; nil if absent.
 func GetTitleRow(ctx context.Context, db *sql.DB, corpID, titleID int64) (*TitleRow, error) {

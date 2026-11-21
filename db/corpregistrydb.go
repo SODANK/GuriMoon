@@ -24,7 +24,16 @@ var corpTitleCols = []string{
 	"rolesAtOther", "grantableRolesAtOther",
 }
 
+// ensureCorpTitlesTableGuard runs ensureCorpTitlesTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureCorpTitlesTableGuard ensureGuard
+
 func ensureCorpTitlesTable(ctx context.Context, db *sql.DB) error {
+	return ensureCorpTitlesTableGuard.do(func() error { return ensureCorpTitlesTableDDL(ctx, db) })
+}
+
+func ensureCorpTitlesTableDDL(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS crpTitles (
 		  corporationID         INT UNSIGNED  NOT NULL,

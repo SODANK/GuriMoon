@@ -60,7 +60,16 @@ func GetSolarSystemSecurities(ctx context.Context, db *sql.DB) (marshal.PyRep, e
 
 // ensureSolarSystemVisitsTable creates the per-character visit log used by the
 // STARMODE_VISITED overlay.
+// ensureSolarSystemVisitsTableGuard runs ensureSolarSystemVisitsTableDDL once per process: it is called on request paths, and
+// even a no-op CREATE TABLE IF NOT EXISTS / ALTER takes a metadata lock and can
+// touch the table definition each time.
+var ensureSolarSystemVisitsTableGuard ensureGuard
+
 func ensureSolarSystemVisitsTable(ctx context.Context, db *sql.DB) error {
+	return ensureSolarSystemVisitsTableGuard.do(func() error { return ensureSolarSystemVisitsTableDDL(ctx, db) })
+}
+
+func ensureSolarSystemVisitsTableDDL(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS chrSolarSystemVisits (
 		  characterID   INT UNSIGNED NOT NULL,

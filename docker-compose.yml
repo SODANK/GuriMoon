@@ -5,7 +5,7 @@ services:
     container_name: gurimoon_rmr-db
     restart: unless-stopped
     # Dump/table names are lowercase but queries use mixed case; match the
-    # case-insensitive behavior of MariaDB on Windows.
+    # case-insensitive behavior of MariaDB on Windows. Also set in gurimoon.cnf.
     command: --lower-case-table-names=1
     environment:
       MARIADB_USER:          gurimoon
@@ -18,6 +18,9 @@ services:
       - "127.0.0.1:3307:3306"
     volumes:
       - gurimoon_rmr-db-data:/var/lib/mysql
+      # Write-volume tuning (buffer pool, redo log, flush policy). Without it a
+      # busy server makes MariaDB write gigabytes a minute. See the file.
+      - ./docker/mariadb/gurimoon.cnf:/etc/mysql/conf.d/gurimoon.cnf:ro
       # Per-table dumps, executed alphabetically on first run (empty volume only).
       # Subdirectories (sql/optional) are not loaded. A failing file aborts the
       # import and later starts skip it, so a broken first run needs

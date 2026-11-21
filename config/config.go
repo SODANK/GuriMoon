@@ -222,6 +222,12 @@ type ServerConfig struct {
 	// (default 60).
 	ShutdownWaitSec  int `json:"shutdownWaitSec"`
 	ShutdownFlushSec int `json:"shutdownFlushSec"`
+
+	// MemoryLimitMB is a soft limit on the Go heap in megabytes (debug.SetMemoryLimit).
+	// Near it the garbage collector runs harder and returns memory to the OS, so short
+	// spikes do not leave the process holding the peak forever. 0 = no limit (the Go
+	// default). A GOMEMLIMIT environment variable takes precedence.
+	MemoryLimitMB int `json:"memoryLimitMB"`
 }
 
 // DatabaseConfig holds MariaDB connection parameters.

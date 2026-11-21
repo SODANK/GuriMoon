@@ -1,0 +1,29 @@
+# MariaDB settings for a GuriMoon server. docker-compose.yml mounts this file into
+# the database container; SETUP.md has the same block for native installs.
+#
+# The server writes many small transactions (combat, NPC spawns, Rolebots). On a
+# stock MariaDB each commit forces a redo-log fsync and the 128 MB buffer pool is
+# smaller than the game's static data, so pages are flushed and re-read constantly.
+# Together that turned modest write rates into gigabytes of disk writes a minute.
+[mysqld]
+# Dump/table names are lowercase but queries use mixed case.
+lower_case_table_names = 1
+
+# Hold the working set in memory. Raise it if the machine has RAM to spare;
+# lower it (not below 512M) on a small machine.
+innodb_buffer_pool_size = 1G
+
+# A larger redo log lets InnoDB batch page flushes instead of forcing them.
+innodb_log_file_size = 512M
+
+# Write the redo log on every commit but fsync it about once a second. A MariaDB
+# or server crash loses nothing; an OS crash or power cut can lose up to ~1 s of
+# commits. Set to 1 for strict durability at a much higher write cost.
+innodb_flush_log_at_trx_commit = 2
+
+# SSD-friendly flushing.
+innodb_flush_neighbors = 0
+innodb_io_capacity = 1000
+
+# No replication, so no binary log (it would write every change a second time).
+skip-log-bin
