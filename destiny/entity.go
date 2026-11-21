@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,6 +130,9 @@ type Entity struct {
 	// not advance the simulation and are not counted. See docs/destiny-stamps.md#flush-gate.
 	stampedFlushes     int
 	lastStampedFlushAt time.Time
+	// lastWatchLead/lastWatchGap rate-limit the StampWatch log lines. Protected by mu.
+	lastWatchLead time.Time
+	lastWatchGap  time.Time
 
 	// knownBalls is the set of ball IDs this player's client holds (filled by
 	// SetState/AddBalls, pruned by RemoveBalls). Nil until the first SetState;
@@ -524,6 +528,52 @@ func (e *Entity) QueueRemoveBall(key string, ballID uint32) {
 	})
 }
 
+// UnderStampCeiling reports whether one more mint stays within the lead the
+// client absorbs without fast-forwarding (below stampLeadHardCap). Event senders
+// that would otherwise go urgent check it and queue when it is false.
+func (e *Entity) UnderStampCeiling() bool {
+	return e.StampLead() < stampLeadHardCap
+}
+
+// QueueTerminalRemove queues a death removal (TerminalExplosion, then RemoveBalls)
+// for ballID onto the next stamped flush instead of minting for it. A kill sent
+// urgent over the ceiling pushes the client's sim clock ahead, and the client
+// fast-forwards the whole grid to catch up. The ball stays known until the packet
+// leaves, as with QueueRemoveBall. A ball whose AddBalls is still queued was never
+// seen by the client: both are dropped and nothing is sent.
+func (e *Entity) QueueTerminalRemove(ballID uint32) {
+	if e.Conn == nil {
+		return
+	}
+	if e.DropPendingAdd(ballID) {
+		e.ForgetBalls(ballID)
+		return
+	}
+	idKey := strconv.FormatUint(uint64(ballID), 10)
+	id := marshal.PyInt{Value: uint64(ballID)}
+	rmKey := "rm:" + idKey
+	// A removal already queued would keep its earlier slot when re-queued under the
+	// same key and leave ahead of the explosion; take it out first.
+	e.mu.Lock()
+	kept := e.pendingActions[:0]
+	for _, pa := range e.pendingActions {
+		if pa.key != rmKey {
+			kept = append(kept, pa)
+		}
+	}
+	e.pendingActions = kept
+	e.mu.Unlock()
+	// Queued ahead of the removal under its own key, so both ride one packet in
+	// that order: TerminalExplosion arms explodeOnRemove for the RemoveBalls.
+	e.QueueActionFunc("boom:"+idKey, ballID, func(uint32) marshal.PyRep {
+		if !e.KnowsBall(ballID) {
+			return nil
+		}
+		return BuildSimpleAction("TerminalExplosion", id)
+	})
+	e.QueueRemoveBall(rmKey, ballID)
+}
+
 // QueueEgoGoto queues the pilot's own GotoDirection echo, with its speed
 // fraction, for the next headroom flush instead of minting for it. A later
 // call replaces it. The flush drops the echo when the ball no longer flies to
@@ -553,12 +603,94 @@ func (e *Entity) QueueEgoGoto(target Vec3) {
 		}
 		return BuildSimpleAction("SetSpeedFraction", id, marshal.PyReal{Value: f})
 	})
-	e.QueueActionFunc("ego:goto", e.ID, func(uint32) marshal.PyRep {
+	e.QueueActionFunc(egoNavKey, e.ID, func(uint32) marshal.PyRep {
 		if _, ok := current(); !ok {
 			return nil
 		}
 		return BuildSimpleAction("GotoDirection", id,
 			marshal.PyReal{Value: target.X}, marshal.PyReal{Value: target.Y}, marshal.PyReal{Value: target.Z})
+	})
+}
+
+// egoNavKey is the one queue key every queued ego nav echo shares, so the latest
+// command replaces an earlier one still waiting.
+const egoNavKey = "ego:nav"
+
+// queueEgoNav queues the pilot's own nav echo, name(ball, args...), for the next
+// stamped flush. valid is read at flush time under e.mu; false drops the echo,
+// because whatever changed the course queued or sent its own. withSpeed adds the
+// SetSpeedFraction the urgent path sends alongside (the client holds speed 0
+// after a Stop). For echoes that would otherwise mint over the stamp ceiling.
+func (e *Entity) queueEgoNav(name string, withSpeed bool, valid func(m *Manager) bool, args ...marshal.PyRep) {
+	if e.Conn == nil || e.Manager == nil {
+		return
+	}
+	id := marshal.PyInt{Value: uint64(e.Manager.EntityID)}
+	check := func() (float64, bool) {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		m := e.Manager
+		if m == nil || !valid(m) {
+			return 0, false
+		}
+		return m.userSpeedFraction, true
+	}
+	if withSpeed {
+		e.QueueActionFunc("ego:speed", e.ID, func(uint32) marshal.PyRep {
+			f, ok := check()
+			if !ok {
+				return nil
+			}
+			return BuildSimpleAction("SetSpeedFraction", id, marshal.PyReal{Value: f})
+		})
+	}
+	full := append([]marshal.PyRep{id}, args...)
+	e.QueueActionFunc(egoNavKey, e.ID, func(uint32) marshal.PyRep {
+		if _, ok := check(); !ok {
+			return nil
+		}
+		return BuildSimpleAction(name, full...)
+	})
+}
+
+// QueueEgoOrbit queues the pilot's Orbit echo; wire is the range the client sent.
+func (e *Entity) QueueEgoOrbit(targetID uint32, wire float64) {
+	e.queueEgoNav("Orbit", true, func(m *Manager) bool {
+		return m.nav == navOrbit && m.followID == targetID && m.followWire == wire
+	}, marshal.PyInt{Value: uint64(targetID)}, marshal.PyReal{Value: wire})
+}
+
+// QueueEgoFollow queues the pilot's FollowBall echo; wire is the range the client sent.
+func (e *Entity) QueueEgoFollow(targetID uint32, wire float64) {
+	e.queueEgoNav("FollowBall", true, func(m *Manager) bool {
+		return m.nav == navFollow && m.followID == targetID && m.followWire == wire
+	}, marshal.PyInt{Value: uint64(targetID)}, marshal.PyReal{Value: wire})
+}
+
+// QueueEgoStop queues the pilot's Stop echo.
+func (e *Entity) QueueEgoStop() {
+	e.queueEgoNav("Stop", false, func(m *Manager) bool { return m.nav == navStop })
+}
+
+// QueueEgoSpeed queues the pilot's SetSpeedFraction echo. The fraction is read
+// at flush time, so a drag on the speed bar sends only where it ended.
+func (e *Entity) QueueEgoSpeed() {
+	if e.Conn == nil || e.Manager == nil {
+		return
+	}
+	id := marshal.PyInt{Value: uint64(e.Manager.EntityID)}
+	e.QueueActionFunc("ego:speed", e.ID, func(uint32) marshal.PyRep {
+		e.mu.Lock()
+		m := e.Manager
+		var f float64
+		if m != nil {
+			f = m.userSpeedFraction
+		}
+		e.mu.Unlock()
+		if m == nil {
+			return nil
+		}
+		return BuildSimpleAction("SetSpeedFraction", id, marshal.PyReal{Value: f})
 	})
 }
 
@@ -743,6 +875,21 @@ func (e *Entity) FlushQueuedActions(nodeID uint64, force bool) bool {
 	}
 	e.lastFlushAt = time.Now()
 	if !fxOnly {
+		if StampWatch && !e.lastStampedFlushAt.IsZero() {
+			gap := e.lastFlushAt.Sub(e.lastStampedFlushAt)
+			if gap >= stampWatchGap && e.lastFlushAt.Sub(e.lastWatchGap) >= time.Second {
+				e.lastWatchGap = e.lastFlushAt
+				why := "lead<0"
+				switch {
+				case force:
+					why = "forced"
+				case e.stampLead() >= 0:
+					why = "maxPendingHold"
+				}
+				log.Printf("[stamp-watch] entity=%d grid step gap %.1fs (released by %s, lead=%+d, %d queued, oldest %.1fs)",
+					e.ID, gap.Seconds(), why, e.stampLead(), len(drained), e.lastFlushAt.Sub(e.pendingSince).Seconds())
+			}
+		}
 		// A combined flush is the only drain that mints, and therefore the only
 		// one that steps the client's simulation. See the field comment.
 		e.stampedFlushes++
@@ -2344,10 +2491,52 @@ func (e *Entity) NextStamp() uint32 {
 		e.Manager.Stamp = candidate
 	}
 	e.recordStamp(candidate, recovered)
+	if StampWatch && e.Conn != nil {
+		if lead := e.stampLead(); lead >= 2 {
+			if now := time.Now(); now.Sub(e.lastWatchLead) >= time.Second {
+				e.lastWatchLead = now
+				log.Printf("[stamp-watch] entity=%d mint %d puts lead at %+d (client fast-forwards) — caller %s; recent: %s",
+					e.ID, candidate, lead, stampCaller(), e.auditTailLocked(8))
+			}
+		}
+	}
 	if recovered {
 		e.logRecoveryLocked(floor, candidate)
 	}
 	return candidate
+}
+
+// StampWatch logs the two things a pilot sees as a ballpark skip: a mint that puts
+// the lead at +2 or more (the client fast-forwards), and a gap of stampWatchGap or
+// more between stamped flushes (the grid stalls, then catches up). Rate-limited
+// per entity; set from config at boot.
+var StampWatch = true
+
+const stampWatchGap = 2 * time.Second
+
+// auditTailLocked is StampAudit's last n entries. Caller holds e.mu.
+func (e *Entity) auditTailLocked(n uint32) string {
+	if e.stampLog == nil {
+		return ""
+	}
+	size := uint32(len(e.stampLog))
+	if n > size {
+		n = size
+	}
+	start := uint32(0)
+	if e.stampLogIdx > n {
+		start = e.stampLogIdx - n
+	}
+	now := time.Now()
+	var b strings.Builder
+	for i := start; i < e.stampLogIdx; i++ {
+		r := e.stampLog[i%size]
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		fmt.Fprintf(&b, "%d(-%dms)", r.stamp, now.Sub(r.at).Milliseconds())
+	}
+	return b.String()
 }
 
 // recoveryLogEvery bounds how often an entity reports overshoot recovery;

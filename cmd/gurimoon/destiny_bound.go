@@ -57,12 +57,17 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		if ds.entity != nil {
 			ds.entity.SetWarpPending(false)
 		}
-		ds.syncStamp()
-		log.Printf("[%s] → destiny.Stop entityID=%d", addr, dm.EntityID)
+		stopQueued := egoEchoQueued(ds, dm)
+		if !stopQueued {
+			ds.syncStamp()
+		}
+		log.Printf("[%s] → destiny.Stop entityID=%d%s", addr, dm.EntityID, queuedNote(stopQueued))
 		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
 			return err
 		}
-		if err := dm.SendStampedUrgent(func(stamp uint32) error {
+		if stopQueued {
+			ds.entity.QueueEgoStop()
+		} else if err := dm.SendStampedUrgent(func(stamp uint32) error {
 			return destiny.SendSimpleAction(c, globalNodeID, uint64(accountID), stamp,
 				"Stop", marshal.PyInt{Value: uint64(dm.EntityID)})
 		}); err != nil {
@@ -145,17 +150,22 @@ func handleDestinyBoundCall(cc *callCtx) error {
 			f = destinyExtractFloat(cs.ArgTuple.Items[0])
 		}
 		dm.SetSpeedFraction(f)
-		ds.syncStamp()
+		speedQueued := egoEchoQueued(ds, dm)
+		if !speedQueued {
+			ds.syncStamp()
+		}
 		redundant := ds.egoSpeedEchoRedundant(f)
 		repeatNote := ""
 		if redundant {
 			repeatNote = " (repeat, self echo skipped)"
 		}
-		log.Printf("[%s] → destiny.SetSpeedFraction entityID=%d f=%.2f%s", addr, dm.EntityID, f, repeatNote)
+		log.Printf("[%s] → destiny.SetSpeedFraction entityID=%d f=%.2f%s%s", addr, dm.EntityID, f, repeatNote, queuedNote(speedQueued && !redundant))
 		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
 			return err
 		}
-		if !redundant {
+		if speedQueued && !redundant {
+			ds.entity.QueueEgoSpeed()
+		} else if !redundant {
 			if err := dm.SendStampedUrgent(func(stamp uint32) error {
 				return destiny.SendSimpleAction(c, globalNodeID, uint64(accountID), stamp,
 					"SetSpeedFraction",
@@ -256,9 +266,12 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		}
 		dm.Follow(targetID, navCentreRange(ds, targetID, dist))
 		dm.SetNavWireRange(dist)
-		ds.syncStamp()
-		log.Printf("[%s] → destiny.Follow entityID=%d → targetID=%d dist=%.0f",
-			addr, dm.EntityID, targetID, dist)
+		followQueued := egoEchoQueued(ds, dm)
+		if !followQueued {
+			ds.syncStamp()
+		}
+		log.Printf("[%s] → destiny.Follow entityID=%d → targetID=%d dist=%.0f%s",
+			addr, dm.EntityID, targetID, dist, queuedNote(followQueued))
 		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
 			return err
 		}
@@ -272,12 +285,16 @@ func handleDestinyBoundCall(cc *callCtx) error {
 				marshal.PyInt{Value: uint64(targetID)},
 				marshal.PyReal{Value: dist}),
 		}
-		if err := dm.SendStampedUrgent(func(stamp uint32) error {
-			return destiny.SendActionList(c, globalNodeID, uint64(accountID), stamp, followActions...)
-		}); err != nil {
-			return err
+		if followQueued {
+			ds.entity.QueueEgoFollow(targetID, dist)
+		} else {
+			if err := dm.SendStampedUrgent(func(stamp uint32) error {
+				return destiny.SendActionList(c, globalNodeID, uint64(accountID), stamp, followActions...)
+			}); err != nil {
+				return err
+			}
+			ds.noteEgoSpeedEcho(dm.SpeedFraction())
 		}
-		ds.noteEgoSpeedEcho(dm.SpeedFraction())
 		broadcastActionList(ds, followActions...)
 		return nil
 
@@ -297,9 +314,12 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		}
 		dm.Orbit(targetID, navCentreRange(ds, targetID, dist))
 		dm.SetNavWireRange(dist)
-		ds.syncStamp()
-		log.Printf("[%s] → destiny.Orbit entityID=%d → targetID=%d dist=%.0f",
-			addr, dm.EntityID, targetID, dist)
+		orbitQueued := egoEchoQueued(ds, dm)
+		if !orbitQueued {
+			ds.syncStamp()
+		}
+		log.Printf("[%s] → destiny.Orbit entityID=%d → targetID=%d dist=%.0f%s",
+			addr, dm.EntityID, targetID, dist, queuedNote(orbitQueued))
 		if err := server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}); err != nil {
 			return err
 		}
@@ -313,12 +333,16 @@ func handleDestinyBoundCall(cc *callCtx) error {
 				marshal.PyInt{Value: uint64(targetID)},
 				marshal.PyReal{Value: dist}),
 		}
-		if err := dm.SendStampedUrgent(func(stamp uint32) error {
-			return destiny.SendActionList(c, globalNodeID, uint64(accountID), stamp, orbitActions...)
-		}); err != nil {
-			return err
+		if orbitQueued {
+			ds.entity.QueueEgoOrbit(targetID, dist)
+		} else {
+			if err := dm.SendStampedUrgent(func(stamp uint32) error {
+				return destiny.SendActionList(c, globalNodeID, uint64(accountID), stamp, orbitActions...)
+			}); err != nil {
+				return err
+			}
+			ds.noteEgoSpeedEcho(dm.SpeedFraction())
 		}
-		ds.noteEgoSpeedEcho(dm.SpeedFraction())
 		broadcastActionList(ds, orbitActions...)
 		return nil
 
@@ -885,4 +909,20 @@ func handleDestinyBoundCall(cc *callCtx) error {
 		log.Printf("[%s] → bound.%s (destiny — returning None)", addr, cs.Method)
 		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
+}
+
+// egoEchoQueued reports whether the pilot's own nav echo (Stop, Orbit, Follow, SetSpeedFraction)
+// rides the queue instead of minting. Under the stamp ceiling it goes at once as before; over it,
+// an urgent mint would run the client's sim clock ahead and it would fast-forward the grid, so the
+// echo waits for the next stamped flush (the system tick drains it, normally within a second) and
+// the latest click wins. Only for the pilot's own ship.
+func egoEchoQueued(ds *destinyConn, dm *destiny.Manager) bool {
+	return ds.entity != nil && ds.entity.Manager == dm && !ds.entity.UnderStampCeiling()
+}
+
+func queuedNote(queued bool) string {
+	if queued {
+		return " (over stamp ceiling, echo queued)"
+	}
+	return ""
 }

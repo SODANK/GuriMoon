@@ -21939,12 +21939,7 @@ func handleEntityDestroyed(ds *destinyConn, target *destiny.Entity) {
 		if p.Conn == nil || !p.KnowsBall(entityID) {
 			continue
 		}
-		// Urgent: a kill is the stamp budget's named exemption, one stamp per witness per
-		// kill, and enforcement must never drop it.
-		p.SendStampedUrgent(func(stamp uint32) error {
-			return destiny.SendTerminalRemove(p.Conn, globalNodeID, p.AccountID, stamp, entityID)
-		})
-		p.ForgetBalls(entityID)
+		sendDeathRemove(p, entityID)
 	}
 
 	if target.IsPlayer {
@@ -21958,6 +21953,22 @@ func handleEntityDestroyed(ds *destinyConn, target *destiny.Entity) {
 		mineRemoved(ds.solarSystem.ID, entityID)
 	}
 	log.Printf("[destroy] entity %d removed from system %d", entityID, ds.solarSystem.ID)
+}
+
+// sendDeathRemove tells witness p that ballID died (TerminalExplosion + RemoveBalls). A kill is
+// never dropped, but it only mints at once while the stream is under the stamp ceiling: in a
+// fight several kills land inside one second, and each urgent mint past the ceiling runs the
+// witness's sim clock ahead, so the client fast-forwards the whole grid. Over the ceiling the
+// death rides the next stamped flush (normally within a second) instead.
+func sendDeathRemove(p *destiny.Entity, ballID uint32) {
+	if p.UnderStampCeiling() {
+		p.SendStampedUrgent(func(stamp uint32) error {
+			return destiny.SendTerminalRemove(p.Conn, globalNodeID, p.AccountID, stamp, ballID)
+		})
+		p.ForgetBalls(ballID)
+		return
+	}
+	p.QueueTerminalRemove(ballID)
 }
 
 // npcDestroyEntity removes a target an NPC killed, with the explosion. Called from
@@ -21980,11 +21991,7 @@ func npcDestroyEntity(ss *destiny.SolarSystem, target *destiny.Entity, killerID 
 		if p.Conn == nil || !p.KnowsBall(entityID) {
 			continue
 		}
-		// Urgent: death class, as in handleEntityDestroyed.
-		p.SendStampedUrgent(func(stamp uint32) error {
-			return destiny.SendTerminalRemove(p.Conn, globalNodeID, p.AccountID, stamp, entityID)
-		})
-		p.ForgetBalls(entityID)
+		sendDeathRemove(p, entityID)
 	}
 	if target.IsPlayer {
 		modapi.FireEntityRemoved(ss, entityID, killerID)

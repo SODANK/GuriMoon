@@ -38,10 +38,25 @@ const typeValueTradeWindow = int64(30) * 864000000000
 
 const typeValueTTL = 60 * time.Second
 
+// typeTradeVWAPTTL is how long the 30-day trade average behind a type is reused. A minute of
+// trading barely moves a 30-day mean, and recomputing it scans every buy of the type in the
+// window: over a million index rows for a mineral on a busy server, once a minute per type.
+const typeTradeVWAPTTL = 15 * time.Minute
+
 var (
 	typeValueMu    sync.Mutex
 	typeValueCache = map[int64]typeValueEntry{}
+
+	// typeTradeVWAP caches the trades step of typeValuesUncached per type (avg 0 = no trades).
+	// Keyed by typeID, so it is bounded by the type catalogue.
+	typeTradeMu   sync.Mutex
+	typeTradeVWAP = map[int64]typeTradeEntry{}
 )
+
+type typeTradeEntry struct {
+	avg float64
+	at  time.Time
+}
 
 type typeValueEntry struct {
 	val TypeValue
@@ -54,6 +69,9 @@ func InvalidateTypeValues() {
 	typeValueMu.Lock()
 	typeValueCache = map[int64]typeValueEntry{}
 	typeValueMu.Unlock()
+	typeTradeMu.Lock()
+	typeTradeVWAP = map[int64]typeTradeEntry{}
+	typeTradeMu.Unlock()
 }
 
 // TypeValues prices a set of types in one pass: the VWAP of live sell orders wins, else the VWAP
@@ -159,31 +177,16 @@ func typeValuesUncached(ctx context.Context, db *sql.DB, typeIDs []int64) (map[i
 		return nil, fmt.Errorf("TypeValues base rows: %w", err)
 	}
 
-	// Recent buy transactions (transactionType 1), better than basePrice.
-	rows, err = db.QueryContext(ctx, `
-		SELECT typeID, SUM(price * quantity) / SUM(quantity)
-		  FROM market_transactions
-		 WHERE transactionType = 1 AND quantity > 0
-		   AND transactionDateTime >= ?
-		   AND typeID IN (`+ph+`)
-		 GROUP BY typeID`, append([]any{win32TimeNow() - uint64(typeValueTradeWindow)}, args...)...)
+	// Recent buy transactions (transactionType 1), better than basePrice. The 30-day average
+	// moves slowly, so it has its own longer-lived cache (typeTradeVWAP).
+	trades, err := tradeVWAPs(ctx, db, typeIDs)
 	if err != nil {
-		return nil, fmt.Errorf("TypeValues trades: %w", err)
+		return nil, err
 	}
-	for rows.Next() {
-		var id int64
-		var avg float64
-		if err := rows.Scan(&id, &avg); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("TypeValues trades scan: %w", err)
-		}
+	for id, avg := range trades {
 		if avg > 0 {
 			out[id] = TypeValue{TypeID: id, Value: avg, Source: TypeValueFromTrades}
 		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("TypeValues trades rows: %w", err)
 	}
 
 	// Active sell orders: the live listed price, top precedence.
@@ -212,5 +215,67 @@ func typeValuesUncached(ctx context.Context, db *sql.DB, typeIDs []int64) (map[i
 		return nil, fmt.Errorf("TypeValues orders rows: %w", err)
 	}
 
+	return out, nil
+}
+
+// tradeVWAPs is the 30-day buy VWAP per type, from typeTradeVWAP where fresh and one grouped
+// read for the rest. Every requested type gets an entry (0 = no trades in the window).
+func tradeVWAPs(ctx context.Context, db *sql.DB, typeIDs []int64) (map[int64]float64, error) {
+	out := make(map[int64]float64, len(typeIDs))
+	var missing []int64
+	now := time.Now()
+	typeTradeMu.Lock()
+	for _, id := range typeIDs {
+		if e, ok := typeTradeVWAP[id]; ok && now.Sub(e.at) < typeTradeVWAPTTL {
+			out[id] = e.avg
+			continue
+		}
+		missing = append(missing, id)
+	}
+	typeTradeMu.Unlock()
+	if len(missing) == 0 {
+		return out, nil
+	}
+
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(missing)), ",")
+	args := make([]any, 0, len(missing)+1)
+	args = append(args, win32TimeNow()-uint64(typeValueTradeWindow))
+	for _, id := range missing {
+		args = append(args, id)
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT typeID, SUM(price * quantity) / SUM(quantity)
+		  FROM market_transactions
+		 WHERE transactionType = 1 AND quantity > 0
+		   AND transactionDateTime >= ?
+		   AND typeID IN (`+ph+`)
+		 GROUP BY typeID`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("TypeValues trades: %w", err)
+	}
+	fresh := make(map[int64]float64, len(missing))
+	for _, id := range missing {
+		fresh[id] = 0
+	}
+	for rows.Next() {
+		var id int64
+		var avg sql.NullFloat64
+		if err := rows.Scan(&id, &avg); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("TypeValues trades scan: %w", err)
+		}
+		fresh[id] = avg.Float64
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("TypeValues trades rows: %w", err)
+	}
+
+	typeTradeMu.Lock()
+	for id, avg := range fresh {
+		typeTradeVWAP[id] = typeTradeEntry{avg: avg, at: now}
+		out[id] = avg
+	}
+	typeTradeMu.Unlock()
 	return out, nil
 }

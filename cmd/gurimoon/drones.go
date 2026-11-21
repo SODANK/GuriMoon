@@ -150,12 +150,8 @@ func initDroneManager(sqldb *sql.DB, npcMgr *npc.NPCManager) *drone.Manager {
 				if p.Conn == nil || !p.KnowsBall(entityID) {
 					continue
 				}
-				// Urgent: same death class as the NPC path. The explosion is the removal,
-				// and a deferred one detonates somewhere else.
-				p.SendStampedUrgent(func(stamp uint32) error {
-					return destiny.SendTerminalRemove(p.Conn, globalNodeID, p.AccountID, stamp, entityID)
-				})
-				p.ForgetBalls(entityID)
+				// Same death path as NPCs: immediate under the stamp ceiling, else queued.
+				sendDeathRemove(p, entityID)
 			}
 			if sqldb != nil {
 				go func() {

@@ -5,7 +5,8 @@
 // The server works without them. Patches: bountyportraits (a docked client renders Most
 // Wanted faces, server/charmgr/portraitjobs.go), researchfacility (lobby button,
 // cmd/gurimoon/researchslots.go), asteroidlock (keeps svc.bracket's asteroid bracket
-// during a lock), jukebox (adds tracks inflight.m3u omits). Each file is
+// during a lock), jukebox (adds tracks inflight.m3u omits), contextmenu (market and corp
+// entries in info-window arrows that otherwise open empty). Each file is
 // script/gurimoon_<name>.py, run from a marker block in my_autoexec.py (backed up once
 // to .pre-gurimoon); -uninstall removes both, and any pre-rename eveclassic leftovers (legacy*).
 package main

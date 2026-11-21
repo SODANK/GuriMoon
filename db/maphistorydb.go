@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,6 +52,53 @@ func RecordMapEvent(ctx context.Context, db *sql.DB, solarSystemID int64, statTy
 		ON DUPLICATE KEY UPDATE count = count + VALUES(count)`,
 		solarSystemID, statType, bucket, count)
 	return err
+}
+
+// MapEventCount is one pre-aggregated mapHistory cell for RecordMapEvents.
+type MapEventCount struct {
+	SolarSystemID int64
+	StatType      int
+	HourBucket    int64 // unix seconds / 3600
+	Count         int
+}
+
+// RecordMapEvents adds a batch of pre-aggregated counts in multi-row upserts, for callers that
+// fold many events between writes (the rolebots traffic write-behind) instead of paying one
+// autocommitted statement per event.
+func RecordMapEvents(ctx context.Context, db *sql.DB, evs []MapEventCount) error {
+	if len(evs) == 0 {
+		return nil
+	}
+	if err := ensureMapHistoryTable(ctx, db); err != nil {
+		return err
+	}
+	const chunk = 500
+	for start := 0; start < len(evs); start += chunk {
+		end := min(start+chunk, len(evs))
+		var b strings.Builder
+		b.WriteString(`INSERT INTO mapHistory (solarSystemID, statType, hourBucket, count) VALUES `)
+		args := make([]any, 0, (end-start)*4)
+		n := 0
+		for _, e := range evs[start:end] {
+			if e.SolarSystemID == 0 || e.Count == 0 {
+				continue
+			}
+			if n > 0 {
+				b.WriteByte(',')
+			}
+			b.WriteString("(?,?,?,?)")
+			args = append(args, e.SolarSystemID, e.StatType, e.HourBucket, e.Count)
+			n++
+		}
+		if n == 0 {
+			continue
+		}
+		b.WriteString(` ON DUPLICATE KEY UPDATE count = count + VALUES(count)`)
+		if _, err := db.ExecContext(ctx, b.String(), args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // GetKillHistory returns a util.Rowset of (solarSystemID, value1, value2, value3) over the
