@@ -3850,6 +3850,10 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 						case pkt.Dest.Service == "ship" && mth == "Scoop":
 							scoopFromCall(ds, addr, *charID, argsTuple, sqldb)
 							inlineResult = marshal.PyNone{}
+						case pkt.Dest.Service == "ship" && mth == "Jettison":
+							// Cargo menu: ship.Jettison(itemIDs), inlined on a fresh moniker (#19).
+							jettisonFromArgs(c, addr, *accountID, *charID, argsTuple, sqldb, ds)
+							inlineResult = marshal.PyNone{}
 						}
 					}
 				}
@@ -9029,7 +9033,7 @@ func inlineHandledPostBind(svc, method string) bool {
 	switch svc {
 	case "ship":
 		switch method {
-		case "Undock", "Board", "Drop", "ScoopDrone", "Scoop", "AssembleShip", "Eject", "Evacuate",
+		case "Undock", "Board", "Drop", "ScoopDrone", "Scoop", "Jettison", "AssembleShip", "Eject", "Evacuate",
 			"StoreVessel", "BoardStoredShip", "LaunchFromContainer", "ScoopToSMA":
 			return true
 		}

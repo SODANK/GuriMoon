@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"math"
@@ -13,6 +14,7 @@ import (
 	"gurimoon/dogma"
 	"gurimoon/marshal"
 	_ "gurimoon/modules"
+	evenet "gurimoon/net"
 	"gurimoon/server"
 )
 
@@ -1019,67 +1021,75 @@ func boundRemoveCharges(cc *callCtx) error {
 	return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 }
 
-// boundJettison handles the bound call "Jettison".
+// boundJettison handles the bound call "Jettison". The client's cargo menu calls
+// ship.Jettison(itemIDs) with a list and no quantity (menusvc); the older
+// InventoryBound.Jettison(itemID, quantity) shape is still accepted.
 func boundJettison(cc *callCtx) error {
 	c, addr, cs, pkt, accountID, charID, sqldb, ds := cc.c, cc.addr, cc.cs, cc.pkt, cc.accountID, cc.charID, cc.sqldb, cc.ds
-	// InventoryBound.Jettison(itemID, quantity): eject cargo into a new cargo
-	// container in space, broadcast its ball and arm its despawn timer.
-	if charID == 0 || sqldb == nil || ds == nil || ds.solarSystem == nil || ds.entity == nil {
-		log.Printf("[%s] bound.Jettison: not in space or missing state", addr)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
-	}
 	if len(cs.ArgTuple.Items) < 1 {
 		log.Printf("[%s] bound.Jettison: missing args", addr)
 		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
-	jetItemID, ok := cs.ArgTuple.Items[0].(marshal.PyInt)
-	if !ok {
-		log.Printf("[%s] bound.Jettison: arg[0] not int", addr)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	jettisonFromArgs(c, addr, accountID, charID, cs.ArgTuple, sqldb, ds)
+	return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+}
+
+// jettisonFromArgs parses a Jettison call's arguments, (itemIDs) or (itemID, quantity),
+// and ejects the items. Shared by the bound call and the inline ship bind.
+func jettisonFromArgs(c *evenet.Conn, addr string, accountID, charID int64, args marshal.PyTuple, sqldb *sql.DB, ds *destinyConn) {
+	if len(args.Items) < 1 {
+		return
 	}
-	var jetQty int64
-	if len(cs.ArgTuple.Items) >= 2 {
-		if qi, ok := cs.ArgTuple.Items[1].(marshal.PyInt); ok {
-			jetQty = int64(qi.Value)
+	ids := parseDroneIDs(args.Items[0])
+	var qty int64
+	if _, single := args.Items[0].(marshal.PyInt); single && len(args.Items) >= 2 {
+		if qi, ok := args.Items[1].(marshal.PyInt); ok {
+			qty = int64(qi.Value)
 		}
+	}
+	jettisonItems(c, addr, accountID, charID, ids, qty, sqldb, ds)
+}
+
+// jettisonItems ejects cargo items into one new cargo container in space,
+// broadcasts its ball and arms its despawn timer. qty > 0 splits that much off
+// a single item; otherwise each item moves whole. Items that are not the
+// pilot's, not in the active ship's cargo hold, or missing are skipped.
+func jettisonItems(c *evenet.Conn, addr string, accountID, charID int64, ids []int64, qty int64, sqldb *sql.DB, ds *destinyConn) {
+	if charID == 0 || sqldb == nil || ds == nil || ds.solarSystem == nil || ds.entity == nil {
+		log.Printf("[%s] Jettison: not in space or missing state", addr)
+		return
+	}
+	if len(ids) == 0 {
+		log.Printf("[%s] Jettison: no itemIDs", addr)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	er, err := evedb.GetEntityRow(ctx, sqldb, int64(jetItemID.Value))
-	if err != nil || er == nil {
-		log.Printf("[%s] bound.Jettison: GetEntityRow(%d): %v", addr, jetItemID.Value, err)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	// Validate first, so a batch with nothing jettisonable leaves no empty can.
+	type jetItem struct {
+		er *evedb.EntityRow
 	}
-	if er.OwnerID != charID {
-		log.Printf("[%s] bound.Jettison: item %d not owned by charID=%d (owner=%d)", addr, jetItemID.Value, charID, er.OwnerID)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
-	}
-	if er.Flag != dogma.FlagCargo {
-		log.Printf("[%s] bound.Jettison: item %d not in cargo (flag=%d)", addr, jetItemID.Value, er.Flag)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
-	}
-
-	moveItemID := int64(jetItemID.Value)
-	if jetQty > 0 && jetQty < er.Quantity {
-		splitID, splitErr := evedb.SplitStackN(ctx, sqldb, moveItemID, jetQty)
-		if splitErr != nil {
-			log.Printf("[%s] bound.Jettison: SplitStackN: %v", addr, splitErr)
-			return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	var items []jetItem
+	for _, id := range ids {
+		er, err := evedb.GetEntityRow(ctx, sqldb, id)
+		if err != nil || er == nil {
+			log.Printf("[%s] Jettison: GetEntityRow(%d): %v", addr, id, err)
+			continue
 		}
-		if splitID != moveItemID {
-			updatedER, _ := evedb.GetEntityRow(ctx, sqldb, moveItemID)
-			if updatedER != nil {
-				_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-					evedb.BuildEntityRow(updatedER),
-					marshal.PyDict{Items: []marshal.DictEntry{
-						{Key: marshal.PyInt{Value: 7}, Value: marshal.PyInt{Value: uint64(er.Quantity)}}, // old quantity
-					}},
-				}})
-			}
-			moveItemID = splitID
+		if er.OwnerID != charID {
+			log.Printf("[%s] Jettison: item %d not owned by charID=%d (owner=%d)", addr, id, charID, er.OwnerID)
+			continue
 		}
+		if er.LocationID != ds.shipID || er.Flag != dogma.FlagCargo {
+			log.Printf("[%s] Jettison: item %d not in active ship %d cargo (loc=%d flag=%d)", addr, id, ds.shipID, er.LocationID, er.Flag)
+			continue
+		}
+		items = append(items, jetItem{er: er})
+	}
+	if len(items) == 0 {
+		return
 	}
 
 	// Offset the container 2500 m from the ship.
@@ -1089,29 +1099,60 @@ func boundJettison(cc *callCtx) error {
 	containerID, err := evedb.CreateLootContainer(ctx, sqldb, charID, ds.sysID,
 		containerPos.X, containerPos.Y, containerPos.Z)
 	if err != nil {
-		log.Printf("[%s] bound.Jettison: CreateLootContainer: %v", addr, err)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+		log.Printf("[%s] Jettison: CreateLootContainer: %v", addr, err)
+		return
 	}
 
-	// Snapshot the item before the move for the deletion notification.
-	preER, _ := evedb.GetEntityRow(ctx, sqldb, moveItemID)
-	if preER == nil {
-		preER = er
+	moved := 0
+	types := make(map[int64]struct{})
+	for _, it := range items {
+		er := it.er
+		moveItemID := er.ItemID
+		if qty > 0 && len(items) == 1 && qty < er.Quantity {
+			splitID, splitErr := evedb.SplitStackN(ctx, sqldb, moveItemID, qty)
+			if splitErr != nil {
+				log.Printf("[%s] Jettison: SplitStackN: %v", addr, splitErr)
+				continue
+			}
+			if splitID != moveItemID {
+				if updatedER, _ := evedb.GetEntityRow(ctx, sqldb, moveItemID); updatedER != nil {
+					_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
+						evedb.BuildEntityRow(updatedER),
+						marshal.PyDict{Items: []marshal.DictEntry{
+							{Key: marshal.PyInt{Value: 7}, Value: marshal.PyInt{Value: uint64(er.Quantity)}}, // old quantity
+						}},
+					}})
+				}
+				moveItemID = splitID
+			}
+		}
+
+		// Snapshot the item before the move for the deletion notification.
+		preER, _ := evedb.GetEntityRow(ctx, sqldb, moveItemID)
+		if preER == nil {
+			preER = er
+		}
+		if err := evedb.MoveItemIntoContainer(ctx, sqldb, moveItemID, containerID); err != nil {
+			log.Printf("[%s] Jettison: MoveItemIntoContainer(%d): %v", addr, moveItemID, err)
+			continue
+		}
+		_ = server.SendNotification(c, accountID, "OnItemChange", "charid", itemDeletedNotifArgs(preER))
+		types[preER.TypeID] = struct{}{}
+		moved++
 	}
 
-	if err := evedb.MoveItemIntoContainer(ctx, sqldb, moveItemID, containerID); err != nil {
-		log.Printf("[%s] bound.Jettison: MoveItemIntoContainer: %v", addr, err)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	if moved == 0 {
+		// Every move failed: drop the empty container row rather than spawn an empty can.
+		_ = evedb.DeleteLootContainer(ctx, sqldb, containerID)
+		return
 	}
-
-	_ = server.SendNotification(c, accountID, "OnItemChange", "charid", itemDeletedNotifArgs(preER))
 
 	spawnLootContainerBall(ds.solarSystem, sqldb, containerID, containerPos, charID)
-	customsNoteJettison(ds.solarSystem, charID, containerID, preER.TypeID, containerPos)
+	for typeID := range types {
+		customsNoteJettison(ds.solarSystem, charID, containerID, typeID, containerPos)
+	}
 
-	log.Printf("[%s] bound.Jettison: charID=%d jettisoned item %d (qty=%d) → container %d",
-		addr, charID, moveItemID, jetQty, containerID)
-	return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	log.Printf("[%s] Jettison: charID=%d jettisoned %d item(s) → container %d", addr, charID, moved, containerID)
 }
 
 // boundReplaceCharges handles the bound call "ReplaceCharges".
