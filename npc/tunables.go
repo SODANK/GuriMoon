@@ -28,6 +28,13 @@ func npcLeashMult() float64 {
 	return db.CachedSettingFloat("npc.leashMult", 1.5, 1, 20)
 }
 
+// leashForget is how long an NPC that gave up a target at its leash ignores it
+// (npc.leashForgetSec, default 25). Without it the kiter's threat pulled the rat
+// straight back out and it rocked on the leash edge, still locked.
+func leashForget() time.Duration {
+	return db.CachedSettingDuration("npc.leashForgetSec", time.Second, 25, 0, 600)
+}
+
 // fleeAlignDelay is how long a fleeing unarmed hauler aligns before it warps
 // off, the player's kill window (npc.fleeAlignSec, default 12).
 func fleeAlignDelay() time.Duration {

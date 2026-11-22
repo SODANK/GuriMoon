@@ -88,6 +88,7 @@ type NPCRecord struct {
 	ewarNextTry    map[string]time.Time  // next roll allowed, by kind
 	Targets        []uint32             // locked targets (max 3)
 	ewarReadyAt    map[uint32]time.Time // per locked target: no EWAR before this (the post-lock delay)
+	disengaged     map[uint32]time.Time // targets given up at the leash: ignored until this time
 	LockingTarget  uint32               // currently locking (0 = none)
 	LockEndTime    time.Time            // when lock completes
 	JamUntil       time.Time            // ECM jam: locks broken, no re-lock until then
@@ -768,7 +769,7 @@ func (m *NPCManager) shareGroupAggro(sourceID uint32, spawnerID, celestialID int
 	m.mu.RUnlock()
 	for _, rec := range mates {
 		rec.mu.Lock()
-		if !rec.Dead && !rec.threat.Has(targetID) {
+		if !rec.Dead && !rec.threat.Has(targetID) && !rec.isDisengaged(targetID, time.Now()) {
 			rec.threat.Record(targetID, 1.0)
 			rec.NextCombatTime = time.Now() // wake brain immediately
 		}
@@ -798,7 +799,7 @@ func (m *NPCManager) shareFactionAggro(sourceID uint32, factionID int64, bubbleI
 	m.mu.RUnlock()
 	for _, rec := range mates {
 		rec.mu.Lock()
-		if !rec.Dead && !rec.threat.Has(targetID) {
+		if !rec.Dead && !rec.threat.Has(targetID) && !rec.isDisengaged(targetID, time.Now()) {
 			rec.threat.Record(targetID, 1.0)
 			rec.NextCombatTime = time.Now() // wake brain immediately
 		}
@@ -1571,6 +1572,9 @@ drainLoop:
 		rec.pendingCombat = rec.pendingCombat[1:]
 		switch cmd.Type {
 		case CmdLockTarget:
+			if rec.isDisengaged(cmd.TargetID, now) {
+				continue // given up at the leash; a lock queued before that is stale
+			}
 			if now.Before(rec.JamUntil) {
 				break drainLoop // sensors jammed: no new locks
 			}
@@ -1600,7 +1604,32 @@ drainLoop:
 				}
 			}
 			rec.mu.Lock()
+		case CmdDisengage:
+			if ttl := leashForget(); ttl > 0 {
+				if rec.disengaged == nil {
+					rec.disengaged = make(map[uint32]time.Time)
+				}
+				rec.disengaged[cmd.TargetID] = now.Add(ttl)
+			}
+			rec.threat.Clear(cmd.TargetID)
+			shouldBroadcast := m.lockBroadcast != nil && rec.hasTarget(cmd.TargetID)
+			rec.removeTarget(cmd.TargetID)
+			if rec.LockingTarget == cmd.TargetID {
+				rec.LockingTarget = 0
+			}
+			log.Printf("[npc] entityID=%d disengaged targetID=%d at leash", entity.ID, cmd.TargetID)
+			rec.mu.Unlock()
+			m.clearEwarOnTarget(rec, cmd.TargetID)
+			if shouldBroadcast {
+				if te := ss.GetEntity(cmd.TargetID); te != nil {
+					m.lockBroadcast(entity, ss, te, "lost")
+				}
+			}
+			rec.mu.Lock()
 		case CmdFireWeapons:
+			if rec.isDisengaged(cmd.TargetID, now) {
+				continue
+			}
 			m.fireWeapons(rec, cmd.TargetID, ss, now)
 		}
 	}
@@ -1634,8 +1663,18 @@ drainLoop:
 
 	selfFactionID := rec.FactionID
 
+	for id, until := range rec.disengaged {
+		if !now.Before(until) {
+			delete(rec.disengaged, id)
+		}
+	}
 	nearby := make([]EntityState, 0, len(mates))
 	for _, mate := range mates {
+		// A target given up at the leash is out of the brain's sight until the window ends,
+		// so neither threat nor nearest-hostile picks it and the NPC turns to someone else.
+		if rec.isDisengaged(mate.ID, now) {
+			continue
+		}
 		// Skip entities in warp or in landing grace: NPCs must not target, approach
 		// or attack them until they have landed.
 		if mate.IsInWarp() || mate.IsUntargetable() {
@@ -1804,7 +1843,7 @@ drainLoop:
 					rec.NextCombatTime = time.Now().Add(jitter)
 				}
 			}
-			rec.pendingCombat = append(rec.pendingCombat, result.Combat...)
+			rec.pendingCombat = queueCombat(rec.pendingCombat, result.Combat)
 			rec.mu.Unlock()
 		}
 		// Electronic modules run on the combat cadence, against whatever the
@@ -2122,6 +2161,43 @@ func (rec *NPCRecord) hasTarget(id uint32) bool {
 		}
 	}
 	return false
+}
+
+// isDisengaged reports whether id was given up at the leash and is still ignored. Caller holds rec.mu.
+func (rec *NPCRecord) isDisengaged(id uint32, now time.Time) bool {
+	until, ok := rec.disengaged[id]
+	return ok && now.Before(until)
+}
+
+// queueCombat appends a brain's commands to the pending queue. Disengages jump the queue and
+// take any lock or fire still queued for the same target with them, since the drain loop stops
+// after a lock and would otherwise start one on a target being given up.
+func queueCombat(pending, cmds []CombatCmd) []CombatCmd {
+	var drop map[uint32]bool
+	var front, back []CombatCmd
+	for _, c := range cmds {
+		if c.Type == CmdDisengage {
+			if drop == nil {
+				drop = make(map[uint32]bool)
+			}
+			drop[c.TargetID] = true
+			front = append(front, c)
+		} else {
+			back = append(back, c)
+		}
+	}
+	if drop == nil {
+		return append(pending, cmds...)
+	}
+	out := make([]CombatCmd, 0, len(front)+len(pending)+len(back))
+	out = append(out, front...)
+	for _, c := range append(pending, back...) {
+		if (c.Type == CmdLockTarget || c.Type == CmdFireWeapons) && drop[c.TargetID] {
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
 
 func (rec *NPCRecord) removeTarget(id uint32) {

@@ -101,9 +101,14 @@ func (b *StandardBrain) Think(view WorldView) CombatAction {
 		dz := view.Self.Pos.Z - view.SpawnPos.Z
 		distFromSpawn := math.Sqrt(dx*dx + dy*dy + dz*dz)
 
-		if targetID != 0 && distFromSpawn > leashRange {
-			// Too far from home: disengage and return.
+		if targetID != 0 && distFromSpawn > leashRange &&
+			(targetState == nil || targetState.Pos.Sub(view.SpawnPos).Len() > leashRange) {
+			// Past the leash with the target outside it too: drop the target and go home.
+			// A target still inside the leash circle is fought as usual, since chasing it
+			// pulls the NPC back toward home. Disengaging also unlocks the target, so its
+			// yellow lock warning clears, and the next pick is someone else (#26).
 			ca.Movement = Action{Type: ActionGoto, Pos: view.SpawnPos}
+			ca.Combat = leashDisengage(view, targetID, leashRange)
 			return ca
 		}
 		if targetID == 0 && view.LeashPos == nil && distFromSpawn > 1000 {
@@ -183,6 +188,31 @@ func fleeFrom(view WorldView, targetID uint32) uint32 {
 }
 
 // findNearby returns the view entry for an entity ID, or nil.
+// leashDisengage lists CmdDisengage for the given target and for every lock or lock in
+// progress on something outside the leash circle (or no longer in the bubble).
+func leashDisengage(view WorldView, targetID uint32, leashRange float64) []CombatCmd {
+	var cmds []CombatCmd
+	seen := make(map[uint32]bool, len(view.Targets)+2)
+	add := func(id uint32, force bool) {
+		if id == 0 || seen[id] {
+			return
+		}
+		if !force {
+			if es := findNearby(view, id); es != nil && es.Pos.Sub(view.SpawnPos).Len() <= leashRange {
+				return
+			}
+		}
+		seen[id] = true
+		cmds = append(cmds, CombatCmd{Type: CmdDisengage, TargetID: id})
+	}
+	add(targetID, true)
+	for _, id := range view.Targets {
+		add(id, false)
+	}
+	add(view.Locking, false)
+	return cmds
+}
+
 func findNearby(view WorldView, id uint32) *EntityState {
 	if id == 0 {
 		return nil

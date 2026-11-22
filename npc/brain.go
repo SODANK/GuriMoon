@@ -26,6 +26,9 @@ const (
 	CmdLockTarget   CombatCmdType = iota // start locking a target
 	CmdUnlockTarget                      // unlock a target
 	CmdFireWeapons                       // fire weapons at current target
+	// CmdDisengage drops the lock (or lock in progress) and threat on a target the NPC has
+	// given up at its leash, and ignores that target for npc.leashForgetSec.
+	CmdDisengage
 )
 
 // CombatCmd is a single combat command from a Brain.
