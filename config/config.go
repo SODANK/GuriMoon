@@ -191,6 +191,10 @@ type ServerConfig struct {
 	// uses the default (120). A firing on a healthy server means a sender mints stamps per event.
 	StampResyncLead *int `json:"stampResyncLead"`
 
+	// DestinyTraceAccount logs every DoDestinyUpdate sent to this account ID with its
+	// stamps, action names and the wall-clock stamp (destiny.TraceAccount). 0 = off.
+	DestinyTraceAccount int64 `json:"destinyTraceAccount"`
+
 	// CombatDebug re-enables the per-hit combat trace (weapon hits, missile
 	// aim/launch/impact, NPC fire, HP pushes). Off by default: a fleet fight
 	// writes one line per hit per log, and the write is on the combat path.

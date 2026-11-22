@@ -58,6 +58,33 @@ var (
 // identity at every call site. A holder already seated at this object keeps its
 // slot; one seated at another object releases that seat first.
 func ClaimUndockSlot(objectID, holder int64, hold time.Duration) int {
+	return ClaimUndockSlotWhere(objectID, holder, hold, nil)
+}
+
+// undockSameRun reports whether two band slots share a run line: the same layer
+// and column, any row. A launcher at slot k flies through slot k+3's exit point a
+// row ahead, so two live holders on one line are seated to collide.
+func undockSameRun(a, b int) bool {
+	if a < 0 || b < 0 || a >= UndockLaneMaxSlots || b >= UndockLaneMaxSlots {
+		return false
+	}
+	la, lb := a/UndockLaneSlotsPerLayer, b/UndockLaneSlotsPerLayer
+	ca := (a % UndockLaneSlotsPerLayer) % UndockLaneColumns
+	cb := (b % UndockLaneSlotsPerLayer) % UndockLaneColumns
+	return la == lb && ca == cb
+}
+
+// ClaimUndockSlotWhere is ClaimUndockSlot with a veto. fits (nil: accept every
+// slot) is asked about each candidate; it runs under the registry lock, so it must
+// be pure, and callers snapshot whatever occupancy it reads first. The walk:
+//
+//  1. the first free seat whose run line no other live holder at this object is
+//     on, and that fits accepts;
+//  2. the first free seat fits accepts;
+//  3. the first free seat (fits could not be satisfied; better a seat than none).
+//
+// A holder already seated here keeps its seat only while fits accepts it.
+func ClaimUndockSlotWhere(objectID, holder int64, hold time.Duration, fits func(slot int) bool) int {
 	if hold <= 0 {
 		hold = UndockLaneHold
 	}
@@ -70,30 +97,62 @@ func ClaimUndockSlot(objectID, holder int64, hold time.Duration) int {
 	pruneUndockLaneLocked(now)
 
 	if k, ok := undockLaneHeld[holder]; ok {
-		if k.objectID == objectID {
+		if k.objectID == objectID && (fits == nil || fits(k.slot)) {
 			undockLaneSlots[k] = undockLaneHolder{holder, until}
 			return k.slot
 		}
-		// The ship moved; release the seat it left behind.
+		// The ship moved, or its seat no longer fits; release the seat it left behind.
 		delete(undockLaneSlots, k)
 		delete(undockLaneHeld, holder)
 	}
 
-	for slot := 0; slot < UndockLaneMaxSlots; slot++ {
-		k := undockLaneKey{objectID, slot}
-		if h, taken := undockLaneSlots[k]; taken {
-			// Expiry is decided here as well as by the amortised sweep, so a freed seat
-			// is reusable at once.
-			if !now.After(h.until) {
-				continue
-			}
+	// Live seats at this object. Expiry is decided here as well as by the amortised
+	// sweep, so a freed seat is reusable at once.
+	live := map[int]bool{}
+	for k, h := range undockLaneSlots {
+		if k.objectID != objectID {
+			continue
+		}
+		if now.After(h.until) {
+			delete(undockLaneSlots, k)
 			if held, ok := undockLaneHeld[h.holder]; ok && held == k {
 				delete(undockLaneHeld, h.holder)
 			}
+			continue
 		}
+		live[k.slot] = true
+	}
+	runTaken := func(slot int) bool {
+		for s := range live {
+			if undockSameRun(s, slot) {
+				return true
+			}
+		}
+		return false
+	}
+	take := func(slot int) int {
+		k := undockLaneKey{objectID, slot}
 		undockLaneSlots[k] = undockLaneHolder{holder, until}
 		undockLaneHeld[holder] = k
 		return slot
+	}
+	for pass := 0; pass < 3; pass++ {
+		for slot := 0; slot < UndockLaneMaxSlots; slot++ {
+			if live[slot] {
+				continue
+			}
+			if pass == 0 && runTaken(slot) {
+				continue
+			}
+			if pass < 2 && fits != nil && !fits(slot) {
+				continue
+			}
+			return take(slot)
+		}
+		if fits == nil && pass == 0 {
+			// Pass 2 would repeat pass 3 exactly; skip to it.
+			pass = 1
+		}
 	}
 
 	// Band full. Hand out an overflow corridor slot, bucketed by holder and not

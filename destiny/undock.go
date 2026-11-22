@@ -10,8 +10,11 @@ const (
 	UndockLaneStep = 750.0
 
 	// Lateral columns and their spacing. Three keeps the lane readable as a lane.
+	// 1000 m, not 600: layers sit half a width apart, and two battleship-class hulls
+	// need about 480 m between centres (radii plus ArrivalClearMargin) or the client
+	// throws them apart.
 	UndockLaneColumns = 3
-	UndockLaneWidth   = 600.0
+	UndockLaneWidth   = 1000.0
 
 	// Slots per corridor before the lane wraps into a laterally offset layer.
 	UndockLaneSlotsPerLayer = 36

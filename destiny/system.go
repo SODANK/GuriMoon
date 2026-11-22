@@ -950,7 +950,9 @@ func (ss *SolarSystem) AllEntities() []*Entity {
 // FreeBallFootprints returns the collision footprints of every free ball
 // within rng metres of center, excluding the given ID (0 for none). An arrival
 // lane checks a candidate landing against these as well as its reservations,
-// since a ship that landed earlier and parked holds no reservation.
+// since a ship that landed earlier and parked holds no reservation. A ball in
+// warp counts at its landing (OccupancyFootprint), so a seat is not handed to a
+// second ship while the first is still in its tunnel or exit buffer.
 func (ss *SolarSystem) FreeBallFootprints(center Vec3, rng float64, exclude uint32) []BallFootprint {
 	rngSq := rng * rng
 	var out []BallFootprint
@@ -958,7 +960,7 @@ func (ss *SolarSystem) FreeBallFootprints(center Vec3, rng float64, exclude uint
 		if e.ID == exclude {
 			continue
 		}
-		fp, ok := e.Footprint()
+		fp, ok := e.OccupancyFootprint()
 		if !ok {
 			continue
 		}

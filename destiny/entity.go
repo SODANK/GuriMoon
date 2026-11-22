@@ -1026,12 +1026,25 @@ func (e *Entity) StampLead() int {
 // See docs/destiny-stamps.md#lead-and-debt.
 const stampDebtForgiveEvery = 10 * time.Second
 
+// WallStamp is the wall-clock stamp stampLead measures against: where the
+// client's sim clock should be now. Diagnostic (destiny-trace).
+func (e *Entity) WallStamp() uint32 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.wallStampLocked()
+}
+
 // stampLead is StampLead without locking. Caller must hold e.mu.
 func (e *Entity) stampLead() int {
 	floor := e.lastStamp
 	if e.Manager != nil && e.Manager.Stamp > floor {
 		floor = e.Manager.Stamp
 	}
+	return int(floor) - int(e.wallStampLocked())
+}
+
+// wallStampLocked is WallStamp without locking. Caller must hold e.mu.
+func (e *Entity) wallStampLocked() uint32 {
 	baseStamp, baseTime := e.wallBaseStamp, e.wallBaseTime
 	if baseTime.IsZero() {
 		baseStamp, baseTime = e.BaseStamp, e.BaseTime
@@ -1043,7 +1056,7 @@ func (e *Entity) stampLead() int {
 		wall = baseStamp + 1
 	}
 	wall += e.forgivenDebtLocked(wall)
-	return int(floor) - int(wall)
+	return wall
 }
 
 // forgivenDebtLocked is how far the wall reading may move toward the recovery

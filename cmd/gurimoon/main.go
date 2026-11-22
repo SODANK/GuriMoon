@@ -846,6 +846,10 @@ func main() {
 	if cfg.Server.StampResyncLead != nil {
 		stampLeadResyncThreshold = *cfg.Server.StampResyncLead
 	}
+	if cfg.Server.DestinyTraceAccount > 0 {
+		destiny.TraceAccount.Store(uint64(cfg.Server.DestinyTraceAccount))
+		log.Printf("destiny: per-packet trace ON for account %d", cfg.Server.DestinyTraceAccount)
+	}
 	combatDebug = cfg.Server.CombatDebug
 	npc.CombatDebug = cfg.Server.CombatDebug
 	if combatDebug {
@@ -16010,24 +16014,44 @@ const categoryShipBall = 6
 // Only player hulls (categoryShipBall) have a booster curve to drive. Called at warp start, undock,
 // warp landing and destiny.Stop, and breakGateCloak. See docs/engine-fx.md.
 func sendBoosterFX(ds *destinyConn, c *evenet.Conn, accountID uint64, guid string) {
+	sendBoosterFXSelf(ds, c, accountID, guid)
+	sendBoosterFXGrid(ds, guid)
+}
+
+// boosterFXArgs is the 10-parameter OnSpecialFX shape sendModuleFX uses, or nil when the hull has
+// no booster curve. targetID and otherTypeID must be None, not 0: fxSequencer.AddTrigger drops the
+// trigger when a non-None targetID has no ball.
+func boosterFXArgs(ds *destinyConn, guid string) []marshal.PyRep {
 	if ds == nil || ds.dm == nil || ds.shipCategoryID != categoryShipBall {
-		return
+		return nil
 	}
-	// Same 10-parameter OnSpecialFX shape as sendModuleFX. targetID and otherTypeID must be None, not 0:
-	// fxSequencer.AddTrigger drops the trigger when a non-None targetID has no ball.
-	args := []marshal.PyRep{
+	return []marshal.PyRep{
 		marshal.PyInt{Value: uint64(ds.dm.EntityID)},
 		marshal.PyNone{}, marshal.PyNone{}, marshal.PyNone{}, marshal.PyNone{},
 		marshal.PyList{},
 		marshal.PyString{Value: guid},
 		marshal.PyInt{Value: 0}, marshal.PyInt{Value: 1}, marshal.PyInt{Value: 0},
 	}
-	if c != nil {
-		if err := ds.sendSelfFXStamped(func(stamp uint32) error {
-			return destiny.SendSimpleAction(c, globalNodeID, accountID, stamp, "OnSpecialFX", args...)
-		}); err != nil {
-			log.Printf("sendBoosterFX %s self: %v", guid, err)
-		}
+}
+
+// sendBoosterFXSelf is sendBoosterFX for the pilot's own client only.
+func sendBoosterFXSelf(ds *destinyConn, c *evenet.Conn, accountID uint64, guid string) {
+	args := boosterFXArgs(ds, guid)
+	if args == nil || c == nil {
+		return
+	}
+	if err := ds.sendSelfFXStamped(func(stamp uint32) error {
+		return destiny.SendSimpleAction(c, globalNodeID, accountID, stamp, "OnSpecialFX", args...)
+	}); err != nil {
+		log.Printf("sendBoosterFX %s self: %v", guid, err)
+	}
+}
+
+// sendBoosterFXGrid is sendBoosterFX for the pilot's bubble-mates only.
+func sendBoosterFXGrid(ds *destinyConn, guid string) {
+	args := boosterFXArgs(ds, guid)
+	if args == nil {
+		return
 	}
 	// A gate-cloaked ship is on no one else's grid (ensureBallsKnown skips cloaked entities), so the
 	// broadcast would only send packets their fxSequencer drops.

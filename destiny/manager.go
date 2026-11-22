@@ -462,6 +462,34 @@ func (m *Manager) SendStampedUrgent(send func(stamp uint32) error) error {
 // decoded warp integrator. The dll owns the warp physics; the server only times it.
 // See docs/destiny-dll-spec.md#warp-kinematics-decoded.
 func (m *Manager) WarpPhases(dest Vec3) (align, tunnel, total float64) {
+	tAccel, tCruise, tDecel := m.warpKinematics(dest)
+	align = math.Log(4) * m.mass * m.agility / 1e6
+	if align < 2.0 {
+		align = 2.0
+	}
+	tunnel = math.Ceil(tAccel+tCruise+tDecel) + warpTunnelPadSecs
+	if tunnel < 4 {
+		tunnel = 4
+	}
+	total = align + tunnel
+	return align, tunnel, total
+}
+
+// warpTunnelPadSecs is WarpPhases' allowance for stamp/apply latency on top of
+// the modelled tunnel. The dll's own warp exit comes this much before tunnel end.
+const warpTunnelPadSecs = 2
+
+// WarpDecelStart returns the offset into WarpPhases' tunnel at which the dll's
+// warp deceleration begins (tunnel minus the pad and the modelled decel). Call
+// it before the warp, with the ship where WarpPhases saw it.
+func (m *Manager) WarpDecelStart(dest Vec3, tunnel float64) float64 {
+	_, _, tDecel := m.warpKinematics(dest)
+	return math.Max(0, tunnel-warpTunnelPadSecs-tDecel)
+}
+
+// warpKinematics models the dll's warp integrator: exponential accel from the entry
+// speed to cruise, cruise, exponential decel until speed crosses the exit speed.
+func (m *Manager) warpKinematics(dest Vec3) (tAccel, tCruise, tDecel float64) {
 	const (
 		warpBaseSpeed = 3.0 // m/s, dll warp entry speed
 		warpRate      = 3.0 // 1/s, dll exponential accel/decel rate
@@ -483,24 +511,14 @@ func (m *Manager) WarpPhases(dest Vec3) (align, tunnel, total float64) {
 	if vExit > vMax {
 		vExit = vMax
 	}
-	tAccel := math.Log(vMax/warpBaseSpeed) / warpRate
+	tAccel = math.Log(vMax/warpBaseSpeed) / warpRate
 	dAccel := (vMax - warpBaseSpeed) / warpRate
-	tDecel := math.Log(vMax/vExit) / warpRate
+	tDecel = math.Log(vMax/vExit) / warpRate
 	dDecel := (vMax - vExit) / warpRate
-	tCruise := 0.0
 	if d := dist - dAccel - dDecel; d > 0 {
 		tCruise = d / vMax
 	}
-	align = math.Log(4) * m.mass * m.agility / 1e6
-	if align < 2.0 {
-		align = 2.0
-	}
-	tunnel = math.Ceil(tAccel+tCruise+tDecel) + 2 // +2s pad for stamp/apply latency
-	if tunnel < 4 {
-		tunnel = 4
-	}
-	total = align + tunnel
-	return align, tunnel, total
+	return tAccel, tCruise, tDecel
 }
 
 // WarpTo begins a warp to dest.  effectStamp is the timestamp used in the

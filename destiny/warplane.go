@@ -42,6 +42,10 @@ type BallFootprint struct {
 type arrivalReservation struct {
 	at    BallFootprint
 	until time.Time
+	// owner is the claiming ball's ID (0 for an anonymous claim). A ball holds at
+	// most one landing: claiming again replaces its own reservation instead of
+	// leaving a stale seat behind for the rest of arrivalLaneHold.
+	owner uint32
 }
 
 type arrivalLane struct {
@@ -106,14 +110,47 @@ func ClaimArrivalPointEx(ss *SolarSystem, sysID int64, base, dir Vec3, radius fl
 		occupied = ss.FreeBallFootprints(base, arrivalScanRadius, exclude)
 	}
 
+	var point Vec3
+	var claim ArrivalClaim
+	withLiveLane(sysID, true, func(lane *arrivalLane, now time.Time) {
+		// The claimer's own earlier landing is replaced, not counted against it.
+		if exclude != 0 {
+			kept := lane.res[:0]
+			for _, r := range lane.res {
+				if r.owner != exclude {
+					kept = append(kept, r)
+				}
+			}
+			lane.res = kept
+		}
+		point, claim = claimInLaneLocked(lane, now, base, dir, radius, exclude, occupied)
+	})
+	return point, claim
+}
+
+// withLiveLane runs fn under sysID's lane lock with expired reservations
+// already pruned. create=false skips a system with no lane (fn is not called).
+// A lane the sweep retired between the load and the lock is retried.
+func withLiveLane(sysID int64, create bool, fn func(lane *arrivalLane, now time.Time)) {
 	for {
-		v, _ := arrivalLanes.LoadOrStore(sysID, &arrivalLane{})
-		lane := v
+		var lane *arrivalLane
+		if create {
+			lane, _ = arrivalLanes.LoadOrStore(sysID, &arrivalLane{})
+		} else {
+			v, ok := arrivalLanes.Load(sysID)
+			if !ok {
+				return
+			}
+			lane = v
+		}
 
 		now := time.Now()
 		lane.mu.Lock()
 		if lane.dead {
 			lane.mu.Unlock()
+			if !create {
+				return
+			}
 			continue // swept between the load and the lock; take a fresh lane
 		}
 		kept := lane.res[:0]
@@ -123,33 +160,41 @@ func ClaimArrivalPointEx(ss *SolarSystem, sysID int64, base, dir Vec3, radius fl
 			}
 		}
 		lane.res = kept
-
-		claim := ArrivalClaim{Reservations: len(lane.res), Occupied: len(occupied)}
-		slot := -1
-		var point Vec3
-		for s := 0; s < ArrivalLaneMaxSlots; s++ {
-			p := base.Add(UndockLaneOffset(dir, s))
-			if arrivalPointClear(p, radius, lane.res, occupied) {
-				slot, point = s, p
-				break
-			}
-			claim.Rejected++
-		}
-		if slot < 0 {
-			// Every tracked slot is taken: hand out a point past the band, never a wrapped
-			// seat on a live ball. Spread so two overflows do not pick the same step.
-			slot = ArrivalLaneMaxSlots + int(now.UnixNano()%ArrivalLaneMaxSlots)
-			point = base.Add(UndockLaneOffset(dir, slot))
-			claim.Overflow = true
-		}
-		claim.Slot = slot
-		lane.res = append(lane.res, arrivalReservation{
-			at:    BallFootprint{Pos: point, Radius: radius},
-			until: now.Add(arrivalLaneHold),
-		})
+		fn(lane, now)
 		lane.mu.Unlock()
-		return point, claim
+		return
 	}
+}
+
+// claimInLaneLocked walks the lane for the first seat clear of reservations and
+// occupied, records the reservation for owner and returns it. Caller holds lane.mu.
+func claimInLaneLocked(lane *arrivalLane, now time.Time, base, dir Vec3, radius float64,
+	owner uint32, occupied []BallFootprint) (Vec3, ArrivalClaim) {
+	claim := ArrivalClaim{Reservations: len(lane.res), Occupied: len(occupied)}
+	slot := -1
+	var point Vec3
+	for s := 0; s < ArrivalLaneMaxSlots; s++ {
+		p := base.Add(UndockLaneOffset(dir, s))
+		if arrivalPointClear(p, radius, lane.res, occupied) {
+			slot, point = s, p
+			break
+		}
+		claim.Rejected++
+	}
+	if slot < 0 {
+		// Every tracked slot is taken: hand out a point past the band, never a wrapped
+		// seat on a live ball. Spread so two overflows do not pick the same step.
+		slot = ArrivalLaneMaxSlots + int(now.UnixNano()%ArrivalLaneMaxSlots)
+		point = base.Add(UndockLaneOffset(dir, slot))
+		claim.Overflow = true
+	}
+	claim.Slot = slot
+	lane.res = append(lane.res, arrivalReservation{
+		at:    BallFootprint{Pos: point, Radius: radius},
+		until: now.Add(arrivalLaneHold),
+		owner: owner,
+	})
+	return point, claim
 }
 
 // arrivalPointClear reports whether a hull of the given radius placed at p

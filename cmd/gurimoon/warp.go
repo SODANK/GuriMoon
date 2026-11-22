@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log"
 	"math"
+	"sort"
 	"strconv"
 	"time"
 
@@ -37,6 +38,9 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 	}
 	// Warping away withdraws any docking request (a warp-to-dock files its request after landing).
 	cancelPendingDock(ds)
+	if ds.entity != nil && destiny.TraceAccount.Load() == uint64(accountID) {
+		destiny.TraceEntity.Store(ds.entity)
+	}
 
 	var landing destiny.Vec3
 	if landingOverride != nil {
@@ -59,6 +63,12 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 	}
 	landing, laneClaim := destiny.ClaimArrivalPointEx(ds.solarSystem, ds.sysID, roomAnchor, laneDir, dm.Radius(), laneExclude)
 	alignSecs, tunnelSecs, totalSecs := dm.WarpPhases(celestialPos)
+	// The dll drops out of warp at max sub-warp speed about warpTunnelPad before tunnel end, while the
+	// server's landing step (and its BoosterStop) runs after the exit buffer. A booster still lit when
+	// the ship emerges shows its warp-length trail streaming past the hull, so the pilot's engines go
+	// out when the decel starts. Short hops are a sub-warp GotoPoint and keep their engines to landing.
+	engineOffAt := dm.WarpDecelStart(celestialPos, tunnelSecs)
+	realWarp := celestialPos.Sub(dm.Pos).Len() >= destiny.MinWarpDistM
 
 	// Entering warp drops the gate cloak. It is here and not in WarpToStuff because journal
 	// warps (runAgentWarpToLocation) and acceleration gates call startPlayerWarp directly.
@@ -447,16 +457,35 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 				}
 			}
 		}
-		if selfHold <= mirrorAt {
-			sleepUntil(selfHold)
-			departSweep()
-			sleepUntil(mirrorAt)
-			armWarpMirror()
-		} else {
-			sleepUntil(mirrorAt)
-			armWarpMirror()
-			sleepUntil(selfHold)
-			departSweep()
+		// Engines out for the pilot as the dll's decel begins; bubble-mates at the destination get
+		// their BoosterStop with the landing below.
+		engineOff := func() {
+			sendBoosterFXSelf(ds, c, uint64(accountID), dogma.FXGUIDBoosterStop)
+			log.Printf("[%s] warp DECEL: pilot engines off at tunnel+%.1fs (tunnel %.0fs)", addr, engineOffAt, tunnelSecs)
+		}
+		// Tunnel events in time order; on a tie the depart sweep goes before the mirror.
+		tunnelEvents := []struct {
+			at float64
+			fn func()
+		}{
+			{selfHold, departSweep},
+			{mirrorAt, armWarpMirror},
+		}
+		if realWarp {
+			tunnelEvents = append(tunnelEvents, struct {
+				at float64
+				fn func()
+			}{math.Max(hold, engineOffAt), engineOff})
+		}
+		sort.SliceStable(tunnelEvents, func(i, j int) bool { return tunnelEvents[i].at < tunnelEvents[j].at })
+		for _, ev := range tunnelEvents {
+			sleepUntil(ev.at)
+			ev.fn()
+		}
+		// The dll's own exit is about 2 s before this point.
+		sleepUntil(tunnelSecs - 2)
+		if ds.entity != nil {
+			log.Printf("[%s] warp EXIT (modelled dll exit): wall=%d lead=%+d", addr, ds.entity.WallStamp(), ds.entity.StampLead())
 		}
 		sleepUntil(tunnelSecs)
 
@@ -668,8 +697,14 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 		}
 
 		// Engines out: the dll's decel curve carries no funcName the booster trigger watches, so
-		// the BoosterShort from warp start would decay on its 30 s ramp on a parked ship.
-		sendBoosterFX(ds, c, uint64(accountID), dogma.FXGUIDBoosterStop)
+		// the BoosterShort from warp start would decay on its 30 s ramp on a parked ship. On a real
+		// warp the pilot's own stop went out at decel start (engineOff); a second one here would cut
+		// the engines of a pilot already flying off the landing.
+		if realWarp {
+			sendBoosterFXGrid(ds, dogma.FXGUIDBoosterStop)
+		} else {
+			sendBoosterFX(ds, c, uint64(accountID), dogma.FXGUIDBoosterStop)
+		}
 
 		// Backstop for the departure sweep, which works from per-category snapshots: anything the
 		// client holds that does not belong to the landing grid is removed.

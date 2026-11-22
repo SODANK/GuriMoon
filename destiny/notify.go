@@ -6,7 +6,30 @@ import (
 	evenet "gurimoon/net"
 	"log"
 	"math"
+	"strconv"
+	"sync/atomic"
 )
+
+// TraceAccount, when non-zero, logs every DoDestinyUpdate sent to that account with
+// its stamps and action names (config server.destinyTraceAccount). Diagnostic only:
+// the client rewinds its ballpark for any non-FX action stamped behind its clock.
+var TraceAccount atomic.Uint64
+
+// TraceEntity is the traced account's ship entity, set by the connection when it
+// enters space, so each trace line shows the wall-clock stamp (what the client's
+// sim clock should read) beside the stamps sent.
+var TraceEntity atomic.Pointer[Entity]
+
+func traceDestinySend(accountID uint64, stamps []uint32, actions []string) {
+	if accountID == 0 || TraceAccount.Load() != accountID {
+		return
+	}
+	wallStr := "?"
+	if e := TraceEntity.Load(); e != nil && e.AccountID == accountID {
+		wallStr = strconv.FormatUint(uint64(e.WallStamp()), 10)
+	}
+	log.Printf("[destiny-trace] acct=%d wall=%s stamps=%v actions=%v", accountID, wallStr, stamps, actions)
+}
 
 // ModuleRef is a fitted module reference sent in slimItem.modules so the
 // client can attach turret models to ship hardpoints in space.
@@ -692,6 +715,8 @@ func sendDestinyUpdatesEvents(
 		Payload: payload,
 	}
 
+	traceDestinySend(accountID, []uint32{stamp}, []string{actionName})
+
 	b, err := marshal.Marshal(pkt.Encode())
 	if err != nil {
 		log.Printf("destiny.sendDestinyUpdates: marshal FAILED action=%s: %v", actionName, err)
@@ -884,6 +909,18 @@ func sendActionListEvents(c *evenet.Conn, nodeID, accountID uint64, pairs []mars
 		UserID:  accountID,
 		Payload: payload,
 	}
+	if TraceAccount.Load() == accountID && accountID != 0 {
+		stamps := make([]uint32, 0, len(pairs))
+		for _, pair := range pairs {
+			if tuple, ok := pair.(marshal.PyTuple); ok && len(tuple.Items) > 0 {
+				if s, ok := tuple.Items[0].(marshal.PyInt); ok {
+					stamps = append(stamps, uint32(s.Value))
+				}
+			}
+		}
+		traceDestinySend(accountID, stamps, actionNames)
+	}
+
 	b, err := marshal.Marshal(pkt.Encode())
 	if err != nil {
 		log.Printf("destiny.sendActionList: marshal FAILED actions=%v: %v", actionNames, err)
