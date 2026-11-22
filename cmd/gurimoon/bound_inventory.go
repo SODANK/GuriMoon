@@ -276,7 +276,7 @@ func boundList(cc *callCtx) error {
 	if isCargo {
 		// Cargo hold (flag 5) of the current ship: ds.shipID in space, the DB lookup when docked.
 		var cargoShipID int64
-		if ds != nil && ds.shipID != 0 {
+		if ds != nil && ds.shipID != 0 && *stationID == 0 {
 			cargoShipID = ds.shipID
 		}
 		if cargoShipID == 0 && charID != 0 && sqldb != nil {
@@ -566,7 +566,8 @@ func boundStackAll(cc *callCtx) error {
 	default:
 		// Ship bind (cargo hold, drone bay, ship's corp hangars).
 		saOwnerID = charID
-		if ds != nil && ds.shipID != 0 {
+		// ds.shipID only in space; docked, the DB knows the active ship (#17).
+		if ds != nil && ds.shipID != 0 && *stationID == 0 {
 			saLocationID = ds.shipID
 		}
 		if saLocationID == 0 && charID != 0 && sqldb != nil {

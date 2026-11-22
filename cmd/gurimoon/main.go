@@ -3856,6 +3856,7 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 										log.Printf("[%s] ship.Board(inline): %v", addr, berr)
 									} else {
 										boardHeld = true
+										refreshBoardedShipState(addr, ds, sqldb, *charID, *stationID, newShipID)
 									}
 									log.Printf("[%s] → ship.MachoBindObject(Board) charID=%d shipID=%d→%d", addr, *charID, prevShipID, newShipID)
 								}
@@ -14309,6 +14310,7 @@ func handleShipSvc(c *evenet.Conn, addr string, cs *server.CallStream, pkt *even
 		if err != nil {
 			return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 		}
+		refreshBoardedShipState(addr, ds, sqldb, charID, *stationID, newShipID)
 		// The reply waits for godma's re-prime (boardhold.go).
 		holdBoardReply(c, func() { _ = server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}) })
 		return nil
@@ -14513,6 +14515,28 @@ func boardDockedShip(c *evenet.Conn, addr string, accountID, charID, newShipID i
 		}
 	}
 	return prevShipID, scnErr
+}
+
+// refreshBoardedShipState points the connection's cached ship fields at the ship just
+// boarded in station. Only initDestiny set them, so after an undock and re-dock a docked
+// board left ds.shipID on the previous hull and cargo List kept returning its items (#17).
+// The ballpark (ds.dm, sysID) is untouched; the next undock rebuilds it.
+func refreshBoardedShipState(addr string, ds *destinyConn, sqldb *sql.DB, charID, stationID, shipID int64) {
+	if ds == nil || sqldb == nil || shipID == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	stats, err := evedb.GetShipStats(ctx, sqldb, shipID, charID, stationID)
+	if err != nil || stats == nil {
+		log.Printf("[%s] refreshBoardedShipState shipID=%d: %v", addr, shipID, err)
+		return
+	}
+	ds.shipID = shipID
+	ds.shipTypeID = stats.TypeID
+	ds.shipGroupID = stats.GroupID
+	ds.shipCategoryID = stats.CategoryID
+	ds.shipName = stats.ShipName
 }
 
 // sendUndockSessionChange sends an SCN that moves the client from docked to in space: stationid,
