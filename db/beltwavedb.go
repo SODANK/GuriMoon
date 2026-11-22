@@ -372,3 +372,37 @@ func PurgeBeltWavesForRegion(ctx context.Context, db *sql.DB, regionID int64) (i
 	n, _ := res.RowsAffected()
 	return n, nil
 }
+
+// CountBeltsInSystem is how many asteroid belts a system has, the base the free-belt quota is a
+// share of. Static data; the caller caches it.
+func CountBeltsInSystem(ctx context.Context, db *sql.DB, solarSystemID int64) (int, error) {
+	var n int
+	err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM mapDenormalize WHERE solarSystemID = ? AND groupID = 9`,
+		solarSystemID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("CountBeltsInSystem(%d): %w", solarSystemID, err)
+	}
+	return n, nil
+}
+
+// CountHeldBeltSlots counts the belts of a system, other than excludeCelestialID, that hold one of
+// its NPC slots: a wave with rats still alive, or a wave that had rats and was cleared at or after
+// heldSince (the cleared belt keeps its slot for its own respawn). A wave that rolled empty has no
+// rat rows and holds nothing.
+func CountHeldBeltSlots(ctx context.Context, db *sql.DB, solarSystemID, excludeCelestialID,
+	heldSince int64) (int, error) {
+
+	var n int
+	err := db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM npcBeltWaves w
+		WHERE w.solarSystemID = ? AND w.celestialID <> ?
+		  AND (w.lastClearAt = 0
+		       OR (w.lastClearAt >= ?
+		           AND EXISTS (SELECT 1 FROM npcBeltRats r WHERE r.celestialID = w.celestialID)))`,
+		solarSystemID, excludeCelestialID, heldSince).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("CountHeldBeltSlots(%d): %w", solarSystemID, err)
+	}
+	return n, nil
+}

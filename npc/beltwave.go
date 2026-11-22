@@ -3,6 +3,7 @@ package npc
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"gurimoon/db"
@@ -41,6 +42,68 @@ func (sm *SpawnerManager) SetReseedCooldown(sec int) {
 
 // ReseedCooldown reports the live wave timer.
 func (sm *SpawnerManager) ReseedCooldown() time.Duration { return sm.beltReseedCooldown() }
+
+// MaxOccupiedBeltShare is the share of a system's belts that may carry NPCs at once; the rest
+// stay free to mine. Rounded down, with at least one belt free whenever a system has two or more.
+const MaxOccupiedBeltShare = 0.75
+
+// maxOccupiedBelts is how many of a system's n belts may carry NPCs: 2 -> 1, 3 -> 2, 4 -> 3,
+// 5 -> 3, 8 -> 6. A one-belt system keeps its rats, since it cannot have both kinds.
+func maxOccupiedBelts(n int) int {
+	if n <= 1 {
+		return n
+	}
+	c := int(float64(n) * MaxOccupiedBeltShare)
+	if c >= n {
+		c = n - 1
+	}
+	if c < 1 {
+		c = 1
+	}
+	return c
+}
+
+// lockSystemSeed serialises wave rolls within one system, so the free-belt quota is checked and
+// claimed as one step. Returns the unlock.
+func (sm *SpawnerManager) lockSystemSeed(systemID int64) func() {
+	v, _ := sm.seedLocks.LoadOrStore(systemID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
+}
+
+// beltsInSystem is a system's belt count, cached: it is static data.
+func (sm *SpawnerManager) beltsInSystem(ctx context.Context, systemID int64) (int, error) {
+	if v, ok := sm.beltCounts.Load(systemID); ok {
+		return v.(int), nil
+	}
+	n, err := db.CountBeltsInSystem(ctx, sm.sqldb, systemID)
+	if err != nil {
+		return 0, err
+	}
+	sm.beltCounts.Store(systemID, n)
+	return n, nil
+}
+
+// systemBeltSlotsFull reports whether the other belts of this system already hold every NPC slot
+// the quota allows, so this belt may not roll a wave. A belt that was cleared keeps holding its
+// slot for one cooldown past its own, which lets it respawn where the player is while a belt
+// that was free stays free. Once that grace lapses unclaimed (nobody was there to ask), the slot
+// goes to whichever belt asks first, which is how the free belt moves around over time.
+func (sm *SpawnerManager) systemBeltSlotsFull(ctx context.Context, systemID, celestialID int64,
+	now time.Time) (bool, error) {
+
+	n, err := sm.beltsInSystem(ctx, systemID)
+	if err != nil || n <= 1 {
+		return false, err
+	}
+	heldSince := now.Add(-2 * sm.beltReseedCooldown()).Unix()
+	held, err := db.CountHeldBeltSlots(ctx, sm.sqldb, systemID, celestialID, heldSince)
+	if err != nil {
+		return false, err
+	}
+	return held >= maxOccupiedBelts(n), nil
+}
 
 // regionForSystem resolves a system's region from the preloaded map, falling
 // back to a query.
@@ -105,6 +168,22 @@ func (sm *SpawnerManager) EnsureBeltWave(ctx context.Context, celestialID, syste
 	}
 
 	regionID := sm.regionForSystem(ctx, systemID)
+
+	// Free-belt quota. The check and the claim below must not interleave with another belt of
+	// the same system, or two belts could both see room for the last slot.
+	unlock := sm.lockSystemSeed(systemID)
+	defer unlock()
+	if full, err := sm.systemBeltSlotsFull(ctx, systemID, celestialID, now); err != nil {
+		return db.BeltWaveRow{}, nil, err
+	} else if full {
+		if existing != nil {
+			return *existing, rats, nil // stays cleared; another belt holds the slot
+		}
+		// A virgin belt is left unrecorded so it competes again on the next ask.
+		return db.BeltWaveRow{CelestialID: celestialID, SolarSystemID: systemID,
+			RegionID: regionID, Security: security}, nil, nil
+	}
+
 	roster := sm.rosterForRegion(ctx, regionID)
 	if len(roster) == 0 {
 		// A region that seeds nothing. Record the visit so this is not re-asked

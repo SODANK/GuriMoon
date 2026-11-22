@@ -7,6 +7,7 @@ import (
 	"gurimoon/destiny"
 	"gurimoon/safego"
 	"log"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,6 +45,11 @@ type SpawnerManager struct {
 	officerLedger       map[int64]*officerLedgerEntry // regionID -> state
 	officerMaxPerRegion int
 	officerCooldown     time.Duration
+
+	// Free-belt quota (beltwave.go). seedLocks: systemID -> *sync.Mutex held across one belt's
+	// quota check and claim. beltCounts: systemID -> int, static belt counts.
+	seedLocks  sync.Map
+	beltCounts sync.Map
 }
 
 // NewSpawnerManager creates an empty SpawnerManager.
@@ -279,6 +285,9 @@ func (sm *SpawnerManager) matchCelestials(ss *destiny.SolarSystem, groupID int64
 		}
 		result = append(result, s)
 	}
+	// Belts tick in this order, and with the free-belt quota the first to ask takes the open
+	// slots. Shuffled so the free belts on a fresh load are not always the last ones listed.
+	rand.Shuffle(len(result), func(i, j int) { result[i], result[j] = result[j], result[i] })
 	return result
 }
 
