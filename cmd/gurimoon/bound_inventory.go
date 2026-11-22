@@ -910,10 +910,7 @@ func boundRemoveItems(cc *callCtx) error {
 						_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, destLoc, destFlag)
 						newChER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID)
 						if newChER != nil {
-							chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-								{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(chOldLoc)}},
-								{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(chOldFlag)}},
-							}}
+							chgChange := itemMoveChange(newChER, newChER.OwnerID, chOldLoc, chOldFlag)
 							_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 								evedb.BuildEntityRow(newChER), chgChange,
 							}})
@@ -1007,10 +1004,7 @@ func boundRemoveCharges(cc *callCtx) error {
 		_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, rcShipID, 5)
 		newChargeER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID)
 		if newChargeER != nil {
-			chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-				{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(oldLocID)}},
-				{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(oldFlag)}},
-			}}
+			chgChange := itemMoveChange(newChargeER, newChargeER.OwnerID, oldLocID, oldFlag)
 			_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 				evedb.BuildEntityRow(newChargeER), chgChange,
 			}})
@@ -1211,10 +1205,7 @@ func boundReplaceCharges(cc *callCtx) error {
 				_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, rpShipID, 5)
 				newOldER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID)
 				if newOldER != nil {
-					chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-						{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(oldLocID)}},
-						{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(oldFlag)}},
-					}}
+					chgChange := itemMoveChange(newOldER, newOldER.OwnerID, oldLocID, oldFlag)
 					_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 						evedb.BuildEntityRow(newOldER), chgChange,
 					}})

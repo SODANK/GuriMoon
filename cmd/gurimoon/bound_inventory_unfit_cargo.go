@@ -52,10 +52,7 @@ func prepFittedModuleForCargo(ctx context.Context, c *evenet.Conn, addr string, 
 			chOldLoc, chOldFlag := chargeER.LocationID, chargeER.Flag
 			_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, shipID, 5)
 			if newChER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID); newChER != nil {
-				chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-					{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(chOldLoc)}},
-					{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(chOldFlag)}},
-				}}
+				chgChange := itemMoveChange(newChER, newChER.OwnerID, chOldLoc, chOldFlag)
 				_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 					evedb.BuildEntityRow(newChER), chgChange,
 				}})

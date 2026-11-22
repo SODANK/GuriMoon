@@ -561,6 +561,26 @@ func itemDeletedNotifArgs(er *evedb.EntityRow) marshal.PyTuple {
 	}}
 }
 
+// itemMoveChange builds the OnItemChange change dict for an item that moved to newER from
+// (oldOwnerID, oldLocID, oldFlag), listing only the fields that changed. Leaving out an
+// unchanged ixLocationID matters for a fitted module or charge dropping into its own ship's
+// cargo hold: with it present the client's godma takes its UpdateItem branch, which ignores
+// cargo items without forgetting the slot copy, so a ghost charge stays in the slot and the
+// ammo count doubles on the next load (#20). With only ixFlag, godma drops the slot copy.
+func itemMoveChange(newER *evedb.EntityRow, oldOwnerID, oldLocID, oldFlag int64) marshal.PyDict {
+	var d marshal.PyDict
+	if oldOwnerID != newER.OwnerID {
+		d.Items = append(d.Items, marshal.DictEntry{Key: marshal.PyInt{Value: 2}, Value: marshal.PyInt{Value: uint64(oldOwnerID)}}) // ixOwnerID
+	}
+	if oldLocID != newER.LocationID {
+		d.Items = append(d.Items, marshal.DictEntry{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(oldLocID)}}) // ixLocationID
+	}
+	if oldFlag != newER.Flag {
+		d.Items = append(d.Items, marshal.DictEntry{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(oldFlag)}}) // ixFlag
+	}
+	return d
+}
+
 // mergeLandedStack auto-stacks an item that just landed in a hangar, cargo hold or drone bay
 // onto the stack of the same type already there, and tells the client. Only stackable landing
 // flags are passed in; module slots keep their own charge rows.

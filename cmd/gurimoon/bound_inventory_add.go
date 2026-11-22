@@ -151,10 +151,7 @@ func boundMultiAdd(cc *callCtx) error {
 						chOldFlag := chargeER.Flag
 						_ = evedb.UnfitModuleToHangar(ctx, sqldb, loaded.ItemID, *stationID)
 						if newChER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID); newChER != nil {
-							chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-								{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(chOldLoc)}},
-								{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(chOldFlag)}},
-							}}
+							chgChange := itemMoveChange(newChER, newChER.OwnerID, chOldLoc, chOldFlag)
 							_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 								evedb.BuildEntityRow(newChER), chgChange,
 							}})
@@ -302,11 +299,7 @@ func boundMultiAdd(cc *callCtx) error {
 					noteLootTake(ctx, sqldb, ds, maSrc, charID, oldOwnerID)
 				}
 				if newER, _ := evedb.GetEntityRow(ctx, sqldb, maItemID); newER != nil {
-					changeDict := marshal.PyDict{Items: []marshal.DictEntry{
-						{Key: marshal.PyInt{Value: 2}, Value: marshal.PyInt{Value: uint64(oldOwnerID)}},
-						{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(oldER.LocationID)}},
-						{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(oldER.Flag)}},
-					}}
+					changeDict := itemMoveChange(newER, oldOwnerID, oldER.LocationID, oldER.Flag)
 					_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 						evedb.BuildEntityRow(newER), changeDict,
 					}})
@@ -600,10 +593,7 @@ func boundAdd(cc *callCtx) error {
 						_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, loaded.ItemID, destLoc, destFlag)
 						newChER, _ := evedb.GetEntityRow(ctx, sqldb, loaded.ItemID)
 						if newChER != nil {
-							chgChange := marshal.PyDict{Items: []marshal.DictEntry{
-								{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(chOldLoc)}},
-								{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(chOldFlag)}},
-							}}
+							chgChange := itemMoveChange(newChER, newChER.OwnerID, chOldLoc, chOldFlag)
 							_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 								evedb.BuildEntityRow(newChER), chgChange,
 							}})
@@ -715,10 +705,7 @@ func boundAdd(cc *callCtx) error {
 					_ = evedb.UnloadChargeToCargoOrHangar(ctx, sqldb, existingCharge.ItemID, shipID, 5)
 					if exER != nil {
 						if newExER, _ := evedb.GetEntityRow(ctx, sqldb, existingCharge.ItemID); newExER != nil {
-							swapChange := marshal.PyDict{Items: []marshal.DictEntry{
-								{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(exER.LocationID)}},
-								{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(exER.Flag)}},
-							}}
+							swapChange := itemMoveChange(newExER, newExER.OwnerID, exER.LocationID, exER.Flag)
 							_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 								evedb.BuildEntityRow(newExER), swapChange,
 							}})
@@ -752,10 +739,9 @@ func boundAdd(cc *callCtx) error {
 					remaining := oldER.Quantity - loadQty
 					if remaining <= 0 {
 						_ = evedb.DeleteEntity(ctx, sqldb, addItemID)
-						delNotif := marshal.PyTuple{Items: []marshal.PyRep{
-							evedb.BuildEntityRow(oldER),
-							marshal.PyNone{},
-						}}
+						// A None change dict raises in the client's invCache before the
+						// window hears of it; send a proper deletion (#20).
+						delNotif := itemDeletedNotifArgs(oldER)
 						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", delNotif)
 					} else {
 						_ = evedb.UpdateCargoItemQty(ctx, sqldb, addItemID, remaining)
@@ -912,11 +898,7 @@ func boundAdd(cc *callCtx) error {
 					}
 					newER, _ := evedb.GetEntityRow(ctx, sqldb, addItemID)
 					if newER != nil {
-						changeDict := marshal.PyDict{Items: []marshal.DictEntry{
-							{Key: marshal.PyInt{Value: 2}, Value: marshal.PyInt{Value: uint64(oldOwnerID)}},
-							{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: uint64(oldLocID)}},
-							{Key: marshal.PyInt{Value: 4}, Value: marshal.PyInt{Value: uint64(oldFlag)}},
-						}}
+						changeDict := itemMoveChange(newER, oldOwnerID, oldLocID, oldFlag)
 						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
 							evedb.BuildEntityRow(newER), changeDict,
 						}})
@@ -1128,9 +1110,7 @@ func boundAdd(cc *callCtx) error {
 						}
 					} else {
 						_ = evedb.DeleteEntity(ctx, sqldb, addItemID)
-						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-							evedb.BuildEntityRow(oldER), marshal.PyNone{},
-						}})
+						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", itemDeletedNotifArgs(oldER))
 					}
 				}
 				if loadedAny {
