@@ -100,7 +100,13 @@ func (m *NPCManager) tickEwar(rec *NPCRecord, now time.Time) {
 
 	if primary != 0 && !now.Before(rec.JamUntil) && !now.Before(rec.ewarReadyAt[primary]) {
 		selfPos := entity.Pos()
+		bansApply := m.EwarBanExempt == nil || !m.EwarBanExempt(entity.ID, rec.FactionID)
 		for _, mod := range rec.EwarProfile.Modules {
+			// A banned kind neither rolls nor renews; a scram already held when a
+			// rule is added lapses once its lease runs out.
+			if bansApply && m.ewarBanned(mod.Kind, ss.Security) {
+				continue
+			}
 			maxRange := mod.MaxRange
 			if mod.Kind == "scram" && maxRange <= 0 {
 				// Attr 103 is the authored range. Only a type that ships without it falls

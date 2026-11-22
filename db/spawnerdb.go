@@ -118,6 +118,10 @@ func EnsureSpawnerTables(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("EnsureSpawnerTables spawner-rule migration: %w", err)
 	}
 
+	if err := ensureEwarBanRules(ctx, db); err != nil {
+		return fmt.Errorf("EnsureSpawnerTables: %w", err)
+	}
+
 	// Migrate existing entries to use shipClass based on weight.
 	if _, err := db.ExecContext(ctx, `UPDATE npcSpawnEntries SET shipClass='frigate' WHERE shipClass='frigate' AND weight >= 3`); err != nil {
 		log.Printf("[db] EnsureSpawnerTables: best-effort write failed: %v", err)

@@ -173,6 +173,13 @@ type NPCManager struct {
 	// none, and a nil entry is cached just as eagerly as a populated one so a
 	// belt full of unarmed rats doesn't re-query on every respawn.
 	ewarCache syncx.Map[int64, *db.NPCEwarProfile] // map[int64]*db.NPCEwarProfile
+
+	// ewarBans is the npcEwarBanRules set (ewarban.go); nil until the first load.
+	ewarBans atomic.Pointer[[]db.EwarBanRule]
+
+	// EwarBanExempt, when set, names NPCs the EWAR ban rules do not bind: law
+	// enforcement (CONCORD, empire police and navy). Set once before Start.
+	EwarBanExempt func(entityID uint32, factionID int64) bool
 }
 
 // NewManager creates an NPCManager with the given broadcast callbacks.

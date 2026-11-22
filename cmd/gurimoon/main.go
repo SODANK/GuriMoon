@@ -2595,6 +2595,23 @@ func main() {
 		},
 	)
 
+	// EWAR ban rules (no warp disruption in 0.9/1.0 by default) bind rats only:
+	// CONCORD and empire police/navy squads keep their full loadout.
+	npcMgr.EwarBanExempt = func(entityID uint32, factionID int64) bool {
+		if factionID == concordFactionID {
+			return true
+		}
+		_, ok := policeMembers.Load(entityID)
+		return ok
+	}
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := npcMgr.ReloadEwarBans(ctx); err != nil {
+			log.Printf("[npc-ewar] ReloadEwarBans: %v", err)
+		}
+		cancel()
+	}
+
 	npcMgr.Standings = npc.LoadStandings(context.Background(), sqldb)
 
 	// The spawner manager is told of NPC deaths through npcMgr.SpawnerMgr.
@@ -2689,6 +2706,14 @@ func main() {
 		// The spawner reads the belt wave timer on every belt; this sets its reseed
 		// cooldown when Spawner Rules or Region Spawns change.
 		esp.BeltWaveTimerChanged = spawnerMgr.SetReseedCooldown
+		// EWAR ban edits on Spawner Rules: reload the NPC manager's copy.
+		esp.NPCEwarBansChanged = func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := npcMgr.ReloadEwarBans(ctx); err != nil {
+				log.Printf("[npc-ewar] ReloadEwarBans: %v", err)
+			}
+		}
 		// Create NPC and the raw attribute editor: drop the NPC manager's per-type caches so the
 		// next spawn reads the edited signature radius and EWAR loadout.
 		esp.NPCTypeChanged = func(typeID int64) { npcMgr.InvalidateTypeCaches(typeID) }
