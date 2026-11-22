@@ -584,6 +584,16 @@ func itemMoveChange(newER *evedb.EntityRow, oldOwnerID, oldLocID, oldFlag int64)
 // mergeLandedStack auto-stacks an item that just landed in a hangar, cargo hold or drone bay
 // onto the stack of the same type already there, and tells the client. Only stackable landing
 // flags are passed in; module slots keep their own charge rows.
+// mergeSplitPiece auto-stacks the piece split off a stack, unless the piece
+// landed in its source's own location and flag: that is the pilot splitting a
+// stack in place, and a merge would fold the piece straight back into it.
+func mergeSplitPiece(ctx context.Context, c *evenet.Conn, addr string, accountID, pieceID, srcLoc, srcFlag int64, sqldb *sql.DB) {
+	if er, _ := evedb.GetEntityRow(ctx, sqldb, pieceID); er != nil && er.LocationID == srcLoc && er.Flag == srcFlag {
+		return
+	}
+	mergeLandedStack(ctx, c, addr, accountID, pieceID, sqldb)
+}
+
 func mergeLandedStack(ctx context.Context, c *evenet.Conn, addr string, accountID, itemID int64, sqldb *sql.DB) {
 	if sqldb == nil || itemID == 0 {
 		return

@@ -647,7 +647,7 @@ func boundAdd(cc *callCtx) error {
 					}})
 				}
 				log.Printf("[%s] bound.Add: split %d of %d → hangar station %d", addr, moveQty, addItemID, *stationID)
-				mergeLandedStack(ctx, c, addr, accountID, newItemID, sqldb)
+				mergeSplitPiece(ctx, c, addr, accountID, newItemID, oldLocID, oldFlag, sqldb)
 			}
 		} else {
 			// Destination is the ship: fit a module or load a charge.
@@ -880,7 +880,7 @@ func boundAdd(cc *callCtx) error {
 						}})
 					}
 					log.Printf("[%s] bound.Add: split %d of %d → cargo (ship %d)", addr, moveQty, addItemID, shipID)
-					mergeLandedStack(ctx, c, addr, accountID, newItemID, sqldb)
+					mergeSplitPiece(ctx, c, addr, accountID, newItemID, oldLocID, oldFlag, sqldb)
 				} else {
 					// Full move. Loot and structure-bay rows carry another owner; take
 					// ownership or the cargo List (filtered by ownerID) hides the row.
@@ -970,7 +970,7 @@ func boundAdd(cc *callCtx) error {
 						}})
 					}
 					log.Printf("[%s] bound.Add: split %d of %d → drone bay (ship %d)", addr, moveQty, addItemID, shipID)
-					mergeLandedStack(ctx, c, addr, accountID, newItemID, sqldb)
+					mergeSplitPiece(ctx, c, addr, accountID, newItemID, oldLocID, oldFlag, sqldb)
 				} else {
 					if err := evedb.MoveStackToDroneBay(ctx, sqldb, addItemID, shipID); err != nil {
 						log.Printf("[%s] bound.Add: MoveStackToDroneBay(%d): %v", addr, addItemID, err)

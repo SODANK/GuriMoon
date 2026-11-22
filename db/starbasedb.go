@@ -831,15 +831,15 @@ func AddToStarbaseBay(ctx context.Context, db *sql.DB, structureID, itemID, qty,
 	res.SourceItemID = itemID
 
 	var (
-		typeID, ownerID, srcQty, singleton, srcLoc int64
-		typeName                                   string
-		unitVol                                    float64
+		typeID, ownerID, srcQty, singleton, srcLoc, srcFlag int64
+		typeName                                            string
+		unitVol                                             float64
 	)
 	err := db.QueryRowContext(ctx, `
 		SELECT e.typeID, e.ownerID, e.quantity, e.singleton, COALESCE(e.itemName, ''),
-		       COALESCE(t.volume, 0), e.locationID
+		       COALESCE(t.volume, 0), e.locationID, e.flag
 		  FROM entity e JOIN invTypes t ON t.typeID = e.typeID WHERE e.itemID = ?`, itemID,
-	).Scan(&typeID, &ownerID, &srcQty, &singleton, &typeName, &unitVol, &srcLoc)
+	).Scan(&typeID, &ownerID, &srcQty, &singleton, &typeName, &unitVol, &srcLoc, &srcFlag)
 	if errors.Is(err, sql.ErrNoRows) {
 		return res, fmt.Errorf("AddToStarbaseBay: item %d not found", itemID)
 	}
@@ -888,10 +888,11 @@ func AddToStarbaseBay(ctx context.Context, db *sql.DB, structureID, itemID, qty,
 	}
 
 	// An existing same-type, same-owner loose stack in the bay absorbs the
-	// new units. A singleton (an assembled item) never merges.
+	// new units. A singleton (an assembled item) never merges, nor does a split
+	// in place (same bay flag): the pilot asked for a second stack.
 	var dstItemID, dstQty int64
 	hasTarget := false
-	if singleton == 0 {
+	if singleton == 0 && !(internal && srcFlag == flag) {
 		err = tx.QueryRowContext(ctx, `
 			SELECT itemID, quantity FROM entity
 			 WHERE locationID = ? AND flag = ? AND typeID = ? AND ownerID = ?

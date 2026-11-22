@@ -1087,8 +1087,8 @@ func handleStarbaseBayAdd(
 			return custom("That ammunition cannot be used by this structure.")
 		}
 	}
-	if internal && flag == srcER.Flag {
-		return ok() // dropped where it already is
+	if internal && flag == srcER.Flag && (qty <= 0 || qty >= srcER.Quantity) {
+		return ok() // dropped where it already is; a smaller qty is a split in place
 	}
 	// A corp hangar holds corp property in role-gated divisions, as an office does:
 	// members only, the take role on both ends, and the deposit becomes the corporation's.
