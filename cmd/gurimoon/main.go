@@ -13565,7 +13565,8 @@ func bookmarkLocation(ds *destinyConn, stationID *int64) bookmark.Location {
 	loc.ShipID = ds.shipID
 	loc.SysID = ds.sysID
 	if ds.entity != nil && loc.StationID == 0 {
-		p := ds.entity.Pos()
+		// Mid-warp, Pos is still the tunnel entry; a bookmark goes where the ship is (#25).
+		p := ds.entity.WarpAwarePos()
 		loc.InSpace = true
 		loc.X, loc.Y, loc.Z = p.X, p.Y, p.Z
 	}

@@ -3,6 +3,7 @@ package destiny
 import (
 	"math"
 	"sync/atomic"
+	"time"
 )
 
 // navState describes the current navigation intent of the entity.
@@ -66,6 +67,11 @@ type Manager struct {
 	warpOwnerID     uint32
 	warpExitDist    float64 // warp-exit radius in metres (targetRadius + buffer)
 	warpDistance    float64 // total warp distance in metres (origin→dest)
+	// Pos stays at the tunnel entry for the whole warp (Step has no warp case; the warp
+	// goroutine sets the landing point when it ends). warpPos rebuilds the in-tunnel
+	// position from these two for callers that need it.
+	warpOrigin    Vec3
+	warpStartedAt time.Time
 
 	// TargetLookup resolves an entity ID to its current position.
 	// Set by the caller to enable follow/orbit to track other entities.
@@ -490,12 +496,18 @@ func (m *Manager) WarpDecelStart(dest Vec3, tunnel float64) float64 {
 // warpKinematics models the dll's warp integrator: exponential accel from the entry
 // speed to cruise, cruise, exponential decel until speed crosses the exit speed.
 func (m *Manager) warpKinematics(dest Vec3) (tAccel, tCruise, tDecel float64) {
-	const (
-		warpBaseSpeed = 3.0 // m/s, dll warp entry speed
-		warpRate      = 3.0 // 1/s, dll exponential accel/decel rate
-	)
-	dist := dest.Sub(m.Pos).Len()
-	vMax := WarpSpeedAUperSec * auInMeters
+	_, tAccel, tCruise, tDecel = m.warpProfile(dest.Sub(m.Pos).Len())
+	return tAccel, tCruise, tDecel
+}
+
+const (
+	warpBaseSpeed = 3.0 // m/s, dll warp entry speed
+	warpRate      = 3.0 // 1/s, dll exponential accel/decel rate
+)
+
+// warpProfile is warpKinematics for a warp of dist metres, with the cruise speed.
+func (m *Manager) warpProfile(dist float64) (vMax, tAccel, tCruise, tDecel float64) {
+	vMax = WarpSpeedAUperSec * auInMeters
 	if speedCap := 1.5 * dist; speedCap < vMax {
 		vMax = speedCap
 	}
@@ -518,13 +530,56 @@ func (m *Manager) warpKinematics(dest Vec3) (tAccel, tCruise, tDecel float64) {
 	if d := dist - dAccel - dDecel; d > 0 {
 		tCruise = d / vMax
 	}
-	return tAccel, tCruise, tDecel
+	return vMax, tAccel, tCruise, tDecel
+}
+
+// warpTravelled is how far along a warp of dist metres the ship is t seconds into the
+// tunnel, on the same accel / cruise / decel curve as warpProfile, capped at dist.
+func (m *Manager) warpTravelled(dist, t float64) float64 {
+	if t <= 0 || dist <= 0 {
+		return 0
+	}
+	vMax, tAccel, tCruise, tDecel := m.warpProfile(dist)
+	dAccel := (vMax - warpBaseSpeed) / warpRate
+	var d float64
+	switch {
+	case t < tAccel:
+		d = warpBaseSpeed / warpRate * (math.Exp(warpRate*t) - 1) // ∫ base·e^(rate·s) ds
+	case t < tAccel+tCruise:
+		d = dAccel + vMax*(t-tAccel)
+	default:
+		td := math.Min(t-tAccel-tCruise, tDecel)
+		d = dAccel + vMax*tCruise + vMax*(1-math.Exp(-warpRate*td))/warpRate
+	}
+	return math.Min(d, dist)
+}
+
+// warpPos is where the ship is in its warp tunnel at now: Pos when not warping,
+// otherwise origin plus the distance warpTravelled toward the landing point (the
+// destination pulled back warpExitDist toward the origin). The server clock starts
+// at WarpTo, so mid-cruise it can be a few AU off the client; near either end it is close.
+func (m *Manager) warpPos(now time.Time) Vec3 {
+	if m.nav != navWarp || m.warpStartedAt.IsZero() {
+		return m.Pos
+	}
+	end := m.targetPos
+	if back := m.warpOrigin.Sub(m.targetPos); m.warpExitDist > 0 && !back.IsZero() {
+		end = m.targetPos.Add(back.Normalize().Scale(m.warpExitDist))
+	}
+	path := end.Sub(m.warpOrigin)
+	dist := path.Len()
+	if dist < 1 {
+		return m.Pos
+	}
+	return m.warpOrigin.Add(path.Scale(m.warpTravelled(dist, now.Sub(m.warpStartedAt).Seconds()) / dist))
 }
 
 // WarpTo begins a warp to dest.  effectStamp is the timestamp used in the
 // warp effect tail of the binary ball encoding.  exitDist is the warp-exit
 // radius in metres (typically targetRadius + 2500 m).
 func (m *Manager) WarpTo(dest Vec3, effectStamp, ownerID uint32, exitDist float64) {
+	m.warpOrigin = m.Pos
+	m.warpStartedAt = time.Now()
 	m.nav = navWarp
 	m.targetPos = dest
 	m.warpEffectStamp = effectStamp

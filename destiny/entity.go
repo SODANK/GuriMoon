@@ -1771,6 +1771,17 @@ func (e *Entity) Pos() Vec3 {
 	return e.Manager.Pos
 }
 
+// WarpAwarePos is Pos, except mid-warp, where Pos still holds the tunnel entry:
+// there it is the modelled position along the warp (Manager.warpPos). Thread-safe.
+func (e *Entity) WarpAwarePos() Vec3 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.Manager == nil {
+		return Vec3{}
+	}
+	return e.Manager.warpPos(time.Now())
+}
+
 // Footprint returns the entity's collision geometry and whether it has one.
 // Only a free ball does: the client overlap-resolves free balls against one
 // another and leaves rigid ones (structures, celestials, asteroids) alone. A
