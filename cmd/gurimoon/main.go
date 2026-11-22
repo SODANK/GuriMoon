@@ -1898,6 +1898,7 @@ func main() {
 				// A yellow box on a ball the client does not hold is an orphaned overview entry,
 				// so deliver the NPC first.
 				ensureBallsKnown(targetEntity, npcEntity)
+				targetEntity.NoteTargetedBy(npcEntity.ID)
 			}
 			log.Printf("[npc] lock broadcast: npcID=%d → playerID=%d event=%s", npcEntity.ID, targetEntity.ID, npcEvent)
 			onTargetEvent := marshal.PyTuple{Items: []marshal.PyRep{

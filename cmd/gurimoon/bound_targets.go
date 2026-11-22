@@ -25,6 +25,10 @@ func boundAddTarget(cc *callCtx) error {
 		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
 	tid := uint32(targetIDVal.Value)
+	// The client locks back whatever has just locked it (targetMgr autoTargetBack). A rat or
+	// gun locking from beyond our lock range would otherwise put a range or cap refusal on
+	// screen that the pilot never asked for (#6), so those refusals stay silent.
+	autoLockBack := ds.entity != nil && ds.entity.TargetedByWithin(tid, autoLockBackWindow)
 
 	if ds.entity != nil && tid == ds.entity.ID {
 		// A (0, targetList) reply here would be "already locked": OnTargetAdded on our own ship.
@@ -130,7 +134,7 @@ func boundAddTarget(cc *callCtx) error {
 		if maxT < charMax {
 			key = "TargetingSystemsAlreadyFullyUtilized" // the hull is the limit
 		}
-		return refuseLock(cc, key, map[string]marshal.PyRep{
+		return refuseLockQuiet(cc, autoLockBack, key, map[string]marshal.PyRep{
 			"limit": marshal.PyInt{Value: uint64(maxT)},
 		})
 	}
@@ -185,7 +189,7 @@ func boundAddTarget(cc *callCtx) error {
 					ds.targetMu.Unlock()
 					log.Printf("[%s] bound.AddTarget: target %d out of range (dist=%.0f max=%.0f)", addr, tid, dist, maxRange)
 					group, _ := lockTargetLabel(lockCtx, sqldb, ds, tid)
-					return refuseLock(cc, "TargetNotWithinRange", map[string]marshal.PyRep{
+					return refuseLockQuiet(cc, autoLockBack, "TargetNotWithinRange", map[string]marshal.PyRep{
 						"targetGroupName": marshal.PyString{Value: group},
 						"desiredRange":    marshal.PyReal{Value: maxRange},
 						"actualDistance":  marshal.PyReal{Value: dist},
@@ -263,7 +267,7 @@ func boundAddTarget(cc *callCtx) error {
 		defer safego.Recover("handleBoundCall")
 		fail := func(why, key string, dict map[string]marshal.PyRep) {
 			log.Printf("[%s] → bound.AddTarget CANCELLED targetID=%d (%s)", addr, tid, why)
-			if key != "" {
+			if key != "" && !autoLockBack {
 				pushRemoteMessage(c, accountID, key, dict)
 			}
 			_ = clientMsgErr(c, &req, accountID, lockRefusedSilentKey, nil)
@@ -360,6 +364,7 @@ func boundAddTarget(cc *callCtx) error {
 		}
 		// Notify the target player that they are being targeted ("otheradd").
 		if targetEnt != nil && targetEnt.IsPlayer && targetEnt.Conn != nil {
+			targetEnt.NoteTargetedBy(ds.entity.ID)
 			onTargetEvent := marshal.PyTuple{Items: []marshal.PyRep{
 				marshal.PyString{Value: "OnTarget"},
 				marshal.PyString{Value: "otheradd"},
@@ -385,7 +390,20 @@ const lockRefusedSilentKey = "DeniedShipChanged"
 
 // refuseLock refuses an AddTarget with the client's message key and dict.
 func refuseLock(cc *callCtx, key string, dict map[string]marshal.PyRep) error {
-	pushRemoteMessage(cc.c, cc.accountID, key, dict)
+	return refuseLockQuiet(cc, false, key, dict)
+}
+
+// autoLockBackWindow is how soon after an otheradd an AddTarget on the same ball counts as the
+// client's automatic lock back. The client sends it as soon as the event lands.
+const autoLockBackWindow = 3 * time.Second
+
+// refuseLockQuiet refuses an AddTarget like refuseLock, leaving out the message when quiet.
+func refuseLockQuiet(cc *callCtx, quiet bool, key string, dict map[string]marshal.PyRep) error {
+	if quiet {
+		log.Printf("[%s] bound.AddTarget: %s refusal kept silent (automatic lock back)", cc.addr, key)
+	} else {
+		pushRemoteMessage(cc.c, cc.accountID, key, dict)
+	}
 	return clientMsgErr(cc.c, cc.pkt, cc.accountID, lockRefusedSilentKey, nil)
 }
 

@@ -178,6 +178,13 @@ type Entity struct {
 	// which the MWD bloom and Stealth Emitter arrays overwrite. Protected by mu.
 	implantSig float64
 
+	// targetedBy holds when another ball's lock on this pilot was last announced
+	// (OnTarget otheradd). The client answers otheradd with an automatic lock
+	// back (targetMgr autoTargetBack); AddTarget reads this to refuse that lock
+	// without a message when it fails. Protected by targetedByMu, not mu.
+	targetedByMu sync.Mutex
+	targetedBy   map[uint32]time.Time
+
 	// warpPending is true between SendWarpTo (client starts aligning) and
 	// ModeWarp (server enters the tunnel). The ship is still on grid, holds its
 	// ballpark and stays targetable until IsInWarp(). Protected by mu.
@@ -2868,4 +2875,31 @@ func (e *Entity) NoteFloorMint(stamp uint32) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.recordStamp(stamp, false)
+}
+
+// NoteTargetedBy records that otheradd naming lockerID was just sent to this
+// pilot. Thread-safe.
+func (e *Entity) NoteTargetedBy(lockerID uint32) {
+	e.targetedByMu.Lock()
+	defer e.targetedByMu.Unlock()
+	if e.targetedBy == nil {
+		e.targetedBy = make(map[uint32]time.Time)
+	}
+	now := time.Now()
+	for id, t := range e.targetedBy { // keep the map small
+		if now.Sub(t) > time.Minute {
+			delete(e.targetedBy, id)
+		}
+	}
+	e.targetedBy[lockerID] = now
+}
+
+// TargetedByWithin reports whether otheradd naming lockerID reached this pilot
+// within window: a lock on lockerID now is most likely the client's automatic
+// lock back rather than one the pilot asked for. Thread-safe.
+func (e *Entity) TargetedByWithin(lockerID uint32, window time.Duration) bool {
+	e.targetedByMu.Lock()
+	defer e.targetedByMu.Unlock()
+	t, ok := e.targetedBy[lockerID]
+	return ok && time.Since(t) <= window
 }

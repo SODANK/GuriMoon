@@ -388,6 +388,8 @@ func posLockNotify(gun, target *destiny.Entity, add bool) {
 	ev := "otheradd"
 	if !add {
 		ev = "otherlost"
+	} else {
+		target.NoteTargetedBy(gun.ID)
 	}
 	args := marshal.PyTuple{Items: []marshal.PyRep{
 		marshal.PyList{Items: []marshal.PyRep{marshal.PyTuple{Items: []marshal.PyRep{
