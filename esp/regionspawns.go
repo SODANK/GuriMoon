@@ -32,6 +32,43 @@ func notifyRegionSpawns(regionIDs []int64) {
 	}
 }
 
+// NPCEwarBansChanged, when the game server sets it, reloads the NPC manager's EWAR
+// ban rules after an edit on Spawner Rules, so the change applies without a restart.
+var NPCEwarBansChanged func()
+
+func notifyEwarBans() {
+	if NPCEwarBansChanged != nil {
+		NPCEwarBansChanged()
+	}
+}
+
+// collectEwarBan reads an EWAR ban form. The band is clamped to the real
+// security range and put in order.
+func collectEwarBan(r *http.Request) evedb.EwarBanRule {
+	clamp := func(v float64) float64 {
+		if v < -1 {
+			return -1
+		}
+		if v > 1 {
+			return 1
+		}
+		return v
+	}
+	lo, hi := clamp(parseFloat64(r.FormValue("secMin"))), clamp(parseFloat64(r.FormValue("secMax")))
+	if lo > hi {
+		lo, hi = hi, lo
+	}
+	ruleID, _ := strconv.ParseInt(r.FormValue("ruleID"), 10, 64)
+	return evedb.EwarBanRule{
+		RuleID:      ruleID,
+		RuleName:    strings.TrimSpace(r.FormValue("ruleName")),
+		Kind:        r.FormValue("ewarKind"),
+		SecMin:      lo,
+		SecMax:      hi,
+		Description: strings.TrimSpace(r.FormValue("description")),
+	}
+}
+
 func notifyBeltWaveTimer(sec int) {
 	if BeltWaveTimerChanged != nil {
 		BeltWaveTimerChanged(sec)
@@ -236,6 +273,39 @@ func (s *Server) handleSpawnerRules(w http.ResponseWriter, r *http.Request) {
 					result = fmt.Sprintf("Deleted rule %d", ruleID)
 				}
 
+			case "ewar_ban_create", "ewar_ban_update":
+				b := collectEwarBan(r)
+				if b.RuleName == "" {
+					result = "Rule name is required."
+					break
+				}
+				if !evedb.IsEwarBanKind(b.Kind) {
+					result = fmt.Sprintf("Unknown EWAR kind %q.", b.Kind)
+					break
+				}
+				var err error
+				if r.FormValue("action") == "ewar_ban_create" {
+					_, err = evedb.CreateEwarBanRule(ctx, s.db, b)
+					result = fmt.Sprintf("Created EWAR ban %q for security %.1f to %.1f.", b.RuleName, b.SecMax, b.SecMin)
+				} else {
+					err = evedb.UpdateEwarBanRule(ctx, s.db, b)
+					result = fmt.Sprintf("Updated EWAR ban %d.", b.RuleID)
+				}
+				if err != nil {
+					result = "Error: " + err.Error()
+				} else {
+					notifyEwarBans()
+				}
+
+			case "ewar_ban_delete":
+				ruleID, _ := strconv.ParseInt(r.FormValue("ruleID"), 10, 64)
+				if err := evedb.DeleteEwarBanRule(ctx, s.db, ruleID); err != nil {
+					result = "Error: " + err.Error()
+				} else {
+					notifyEwarBans()
+					result = fmt.Sprintf("Deleted EWAR ban %d.", ruleID)
+				}
+
 			case "tier_create":
 				t := collectSquadTier(r)
 				if t.TierName == "" {
@@ -276,6 +346,7 @@ func (s *Server) handleSpawnerRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tiers, _ := evedb.ESPGetAllSquadTiers(ctx, s.db)
+	ewarBans, _ := evedb.GetAllEwarBanRules(ctx, s.db)
 	globalRow, _ := evedb.GetDefaultSpawnerConfig(ctx, s.db, 9)
 	timerSec := beltWaveTimerSec(globalRow)
 
@@ -284,6 +355,9 @@ func (s *Server) handleSpawnerRules(w http.ResponseWriter, r *http.Request) {
 		"Gaps":                spawnerRuleGaps(rules),
 		"Tiers":               tiers,
 		"TierGaps":            squadTierGaps(tiers),
+		"EwarBans":            ewarBans,
+		"EwarKinds":           evedb.EwarBanKinds,
+		"EwarBansLive":        NPCEwarBansChanged != nil,
 		"WaveTimerSec":        timerSec,
 		"WaveTimerMin":        float64(timerSec) / 60,
 		"WaveTimerDefaultMin": float64(npc.DefaultSeedCooldownSec) / 60,
