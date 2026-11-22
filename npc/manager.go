@@ -87,6 +87,7 @@ type NPCRecord struct {
 	ewarActive     map[string]ewarActive // landed effects by kind
 	ewarNextTry    map[string]time.Time  // next roll allowed, by kind
 	Targets        []uint32             // locked targets (max 3)
+	ewarReadyAt    map[uint32]time.Time // per locked target: no EWAR before this (the post-lock delay)
 	LockingTarget  uint32               // currently locking (0 = none)
 	LockEndTime    time.Time            // when lock completes
 	JamUntil       time.Time            // ECM jam: locks broken, no re-lock until then
@@ -1546,6 +1547,13 @@ func (m *NPCManager) tickNPC(rec *NPCRecord, delta time.Duration, doMovement, do
 			if rec.WeaponCooldown.Before(minCooldown) {
 				rec.WeaponCooldown = minCooldown
 			}
+			// EWAR waits out the same delay. tickEwar runs later in this tick, so without it a
+			// scram or painter landed with the lock, and the stamped EWAR FX could reach the
+			// client ahead of the otheradd event (#22).
+			if rec.ewarReadyAt == nil {
+				rec.ewarReadyAt = make(map[uint32]time.Time)
+			}
+			rec.ewarReadyAt[lockedID] = minCooldown
 
 			// Broadcast lock to the targeted player.
 			if m.lockBroadcast != nil {
@@ -2117,6 +2125,7 @@ func (rec *NPCRecord) hasTarget(id uint32) bool {
 }
 
 func (rec *NPCRecord) removeTarget(id uint32) {
+	delete(rec.ewarReadyAt, id)
 	for i, t := range rec.Targets {
 		if t == id {
 			rec.Targets = append(rec.Targets[:i], rec.Targets[i+1:]...)

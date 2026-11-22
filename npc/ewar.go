@@ -98,7 +98,7 @@ func (m *NPCManager) tickEwar(rec *NPCRecord, now time.Time) {
 	}
 	var applies, renews []applyOp
 
-	if primary != 0 && !now.Before(rec.JamUntil) {
+	if primary != 0 && !now.Before(rec.JamUntil) && !now.Before(rec.ewarReadyAt[primary]) {
 		selfPos := entity.Pos()
 		for _, mod := range rec.EwarProfile.Modules {
 			maxRange := mod.MaxRange
