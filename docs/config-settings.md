@@ -29,6 +29,7 @@ Dials exposed this way:
 |---|---|
 | CONCORD | `concord.responseDelaySec` (five values), `concord.lingerSec` |
 | Sentries and gates | `sentry.respawnMinutes`, `gate.cloakSec`, `gate.jumpFlashMs` (2500; how long a gate jump lets the JumpOut flash play before the system switch) |
+| Collisions | `space.collisions` (on; ships bump off ships, asteroids and solid structures), `space.bumpRestitution` (0.6; share of closing speed a bump gives back, 0 to 1) |
 | Fixed dungeons | `dungeon.fixedRespawnMinutes` (10; how long a killed object of an ESP-placed dungeon stays dead) |
 | NPC | `npc.lockTimeSec`, `npc.lockTimeCapSec`, `npc.leashMult`, `npc.fleeAlignSec`  |
 | Loot | `loot.playerDropChance`, `loot.containerHours` (wreck cans and corpses share it), `loot.npcAnyChance`, `loot.npcLuckyChance`, `loot.npcJackpotChance` |

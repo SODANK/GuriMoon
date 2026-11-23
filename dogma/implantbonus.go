@@ -57,7 +57,7 @@ const (
 	ICFittingPower                      // 323, % module power need; ReqSkill names the modules
 	ICCPUOutput                         // 424, % ship CPU output
 	ICPowerOutput                       // 313, % ship powergrid output
-	ICWarpCapNeed                       // 319 (tag only)
+	ICWarpCapNeed                       // 319, % warp capacitor need
 	ICWarpSpeed                         // 601 (tag only)
 	ICSensorStrength                    // 1027-1030 (tag only)
 	ICResists                           // 994-997, the Aurora pair (tag only)
@@ -95,7 +95,8 @@ func (c ImplantChannel) Folded() bool {
 		ICArmorHP, ICShieldHP, ICHullHP, ICShieldRecharge, ICShieldBoost, ICArmorRepAmount,
 		ICRepairCycle, ICCapCapacity, ICCapRecharge, ICVelocity, ICAgility, ICSigRadius,
 		ICTargetRange, ICMiningYield, ICMiningDroneYield, ICIceCycle, ICNosDuration,
-		ICRemoteRepCapNeed, ICFittingCPU, ICFittingPower, ICCPUOutput, ICPowerOutput:
+		ICRemoteRepCapNeed, ICFittingCPU, ICFittingPower, ICCPUOutput, ICPowerOutput,
+		ICWarpCapNeed:
 		return true
 	}
 	return false

@@ -36,6 +36,13 @@ func boundAddTarget(cc *callCtx) error {
 		return refuseLock(cc, "DeniedTargetSelf", nil)
 	}
 
+	// No locks from inside the warp tunnel (locks during the align are fine; warp engage
+	// cancels them). Silent: the client's own UI greys locking out in warp.
+	if ds.entity != nil && ds.entity.IsInWarp() {
+		log.Printf("[%s] bound.AddTarget: in warp, lock on %d refused", addr, tid)
+		return clientMsgErr(c, pkt, accountID, lockRefusedSilentKey, nil)
+	}
+
 	// A cloaked pilot cannot lock, except under a GM cloak (a camera tool that must pick a subject).
 	if ds.entity != nil && ds.entity.IsCloaked() && !ds.entity.IsGMCloak() {
 		return refuseLock(cc, "DeniedTargetingCloaked", nil)
@@ -291,6 +298,13 @@ func boundAddTarget(cc *callCtx) error {
 		if ds.solarSystem == nil || ds.entity == nil {
 			dropPending()
 			fail("ship left space", "", nil)
+			return
+		}
+		// Backstop to the warp-engage cancel: no lock completes in the tunnel, where the
+		// server position is stale and the target's ball is about to leave the ballpark.
+		if ds.entity.IsInWarp() {
+			dropPending()
+			fail("ship in warp", "", nil)
 			return
 		}
 		targetEnt := ds.solarSystem.GetEntity(tid)

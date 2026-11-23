@@ -247,7 +247,7 @@ func runGangWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB, ds
 	landingBuffer := req.landingBuffer
 	onArrive, _ := beaconWarpArrival(c, addr, accountID, sqldb, ds, sessReg, npcMgr, req.warpType, req.targetID, req.celestial)
 	log.Printf("[%s] gang warp: following leader %d to %s %d", addr, req.leaderCharID, req.warpType, req.targetID)
-	startPlayerWarp(c, addr, accountID, sqldb, ds, dm, req.celestial, req.targetRadius, landingBuffer, req.landing, onArrive)
+	startPlayerWarp(c, addr, accountID, sqldb, ds, dm, req.celestial, req.targetRadius, landingBuffer, req.landing, warpPaysCap, onArrive)
 }
 
 // handleGangRegroup is beyonce.GangRegroup(): the leader's Regroup entry pulls

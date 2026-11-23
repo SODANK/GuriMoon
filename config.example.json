@@ -103,6 +103,8 @@
     "dungeon.fixedRespawnMinutes": 10,
     "gate.cloakSec": 60,
     "gate.jumpFlashMs": 2500,
+    "space.collisions": true,
+    "space.bumpRestitution": 0.6,
     "npc.lockTimeSec": 3,
     "npc.lockTimeCapSec": 30,
     "npc.leashMult": 1.5,

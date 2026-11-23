@@ -12,6 +12,7 @@ import (
 	"time"
 
 	evedb "gurimoon/db"
+	"gurimoon/destiny"
 	"gurimoon/esp"
 	"gurimoon/tick"
 )
@@ -52,6 +53,15 @@ func (t *typeNameCache) name(typeID int64) string {
 func liveLocation(id int64, names *typeNameCache) (string, float64, float64, float64, bool) {
 	if globalSysMgr == nil || id <= 0 || id > 1<<32-1 {
 		return "", 0, 0, 0, false
+	}
+	// Asteroids: the client never hints cfg.evelocations from an asteroid's AddBalls (michelle
+	// skips categoryAsteroid), yet menusvc.WarpToItem names the target with
+	// cfg.evelocations.Get before it sends WarpToStuff, so a miss here raises and the warp
+	// never leaves the client. Every system reuses the band, and config answers are cached
+	// per ID for all sessions, so the name is generic and the position unset: the client
+	// reads only the name, for the "Warping to ..." line.
+	if uint32(id) >= destiny.AsteroidIDBase && uint32(id) < destiny.AsteroidIDCeiling {
+		return "Asteroid", 0, 0, 0, true
 	}
 	for _, ss := range globalSysMgr.All() {
 		e := ss.GetEntity(uint32(id))

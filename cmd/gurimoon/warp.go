@@ -25,9 +25,10 @@ import (
 // warp (align, tunnel, arrival) to celestialPos on a goroutine. The landing is offset
 // toward the ship by targetRadius+landingBuffer unless landingOverride is set. The RPC
 // response must already be sent. onArrive runs at tunnel end (dungeon room pre-render).
+// capMode says whether the ship's capacitor pays for the warp (warpcap.go).
 func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB,
 	ds *destinyConn, dm *destiny.Manager, celestialPos destiny.Vec3,
-	targetRadius, landingBuffer float64, landingOverride *destiny.Vec3, onArrive func()) {
+	targetRadius, landingBuffer float64, landingOverride *destiny.Vec3, capMode warpCapMode, onArrive func()) {
 
 	// Only the covert ops cloak warps. WarpToStuff refuses on its call; the journal, gang and
 	// acceleration-gate warps have answered theirs, so the refusal is a pushed message.
@@ -36,17 +37,48 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 		pushRemoteMessage(c, accountID, "CantWarpWhileCloaked", nil)
 		return
 	}
-	// Warping away withdraws any docking request (a warp-to-dock files its request after landing).
-	cancelPendingDock(ds)
-	if ds.entity != nil && destiny.TraceAccount.Load() == uint64(accountID) {
-		destiny.TraceEntity.Store(ds.entity)
-	}
 
 	var landing destiny.Vec3
 	if landingOverride != nil {
 		landing = *landingOverride
 	} else {
 		landing = warpLandingPoint(dm.Pos, celestialPos, targetRadius+landingBuffer)
+	}
+
+	// Warp capacitor (warpcap.go), sized now and drained at tunnel entry. A capacitor short of
+	// the whole warp pulls the landing in along the same line; the celestial moves with it so
+	// the tunnel still ends the usual exit distance short of it. A shortened warp lands in
+	// open space, so the arrival hook (a site's room) does not run.
+	var warpCapCost float64
+	if capMode == warpPaysCap {
+		plan := planPlayerWarpCap(ds, sqldb, dm, landing)
+		if plan.refuse {
+			log.Printf("[%s] warp: BLOCKED — capacitor %.1f GJ, minimum warp needs %.1f GJ", addr, plan.got, plan.need)
+			pushRemoteMessage(c, accountID, "NotEnoughEnergy", map[string]marshal.PyRep{
+				"effectname": marshal.PyString{Value: warpCapEffectName},
+				"need":       marshal.PyReal{Value: plan.need},
+				"got":        marshal.PyReal{Value: plan.got},
+			})
+			return
+		}
+		warpCapCost = plan.cost
+		if plan.short {
+			dir := landing.Sub(dm.Pos).Normalize()
+			exitDist := celestialPos.Sub(landing).Len()
+			fullDist := landing.Sub(dm.Pos).Len()
+			landing = dm.Pos.Add(dir.Scale(plan.reach))
+			celestialPos = landing.Add(dir.Scale(exitDist))
+			onArrive = nil
+			log.Printf("[%s] warp: SHORTENED by capacitor — %.3f of %.3f AU (%.1f GJ)",
+				addr, plan.reach/metersPerAU, fullDist/metersPerAU, plan.cost)
+			pushRemoteMessage(c, accountID, "WarpingWithAvailablePower", nil)
+		}
+	}
+
+	// Warping away withdraws any docking request (a warp-to-dock files its request after landing).
+	cancelPendingDock(ds)
+	if ds.entity != nil && destiny.TraceAccount.Load() == uint64(accountID) {
+		destiny.TraceEntity.Store(ds.entity)
 	}
 	// roomAnchor is the landing before the arrival lane moves this ship, so every pilot
 	// entering one site builds the room in the same place.
@@ -241,6 +273,13 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 			return
 		}
 
+		// The warp drive draws its charge as the ship enters warp. A capacitor drained during the
+		// align gives what it has: the landing was fixed when the WarpTo went out.
+		if warpCapCost > 0 && ds.entity != nil {
+			drained := drainEntityCap(ds.entity, warpCapCost)
+			warpLog.Info("warp CAP", "cost", warpCapCost, "drained", drained)
+		}
+
 		// Phase 2, warp tunnel. Leave the bubble before dm.WarpTo: with a valid BubbleID the tick
 		// loop sees the bubble exit and re-inserts the entity into a transit bubble, which
 		// re-engages NPCs and leaves the pilot stuck in the warp animation.
@@ -268,6 +307,21 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 			ds.entity.SetWarpPending(false) // IsInWarp() now true
 		}
 		log.Printf("[%s] warp TUNNEL: bubble removed, server nav set to warp", addr)
+		// Stop, on this pilot's client only, every departure-grid weapon FX aimed at the ship. The
+		// fire FX repeats client-side until a stop, the NPC drops its lock a tick later when this
+		// pilot is no longer in its bubble, and the balls stay in the ballpark until the depart
+		// sweep: without this the rats keep firing into the tunnel. Other witnesses keep theirs
+		// until the NPC's own lock loss.
+		if ds.entity != nil {
+			for _, n := range departNPCs {
+				for _, ae := range n.GetActiveEffects() {
+					if ae.TargetID == ds.entity.ID && ae.ModuleID == int64(n.ID) {
+						stopNPCFireFXFor(ds.entity, n, ds.entity.ID)
+						log.Printf("[%s] warp TUNNEL: stopped fire FX of %d on ship", addr, n.ID)
+					}
+				}
+			}
+		}
 		// Entering warp switches the afterburner or MWD off (not at the click: the prop mod pushes the align).
 		// Handed to the connection goroutine, which owns the module maps; a stale request is replaced.
 		select {
@@ -287,9 +341,19 @@ func startPlayerWarp(c *evenet.Conn, addr string, accountID int64, sqldb *sql.DB
 		// drone groups stay behind.
 		fighterWarpFollow(ds, celestialPos, landing, warpDir, warpExitDist, tunnelSecs)
 
-		// Clear target locks at warp engage: locks break when the ship enters warp.
-		if len(ds.targets) > 0 {
-			ds.targets = nil
+		// Clear target locks at warp engage: locks break when the ship enters warp. A lock
+		// started during the align is still on its timer here; cancel it too, or it completes
+		// mid-warp and keeps the departure grid's ball on the overview after its RemoveBalls.
+		// Its goroutine answers the cancel with a refusal, which clears the locking bracket.
+		ds.targetMu.Lock()
+		for tid, cancelFn := range ds.lockingTargets {
+			cancelFn()
+			delete(ds.lockingTargets, tid)
+		}
+		hadTargets := len(ds.targets) > 0
+		ds.targets = nil
+		ds.targetMu.Unlock()
+		if hadTargets {
 			clearArgs := marshal.PyTuple{Items: []marshal.PyRep{
 				marshal.PyString{Value: "clear"},
 			}}

@@ -69,6 +69,10 @@ type SolarSystem struct {
 	// Set from the asteroids.respawnMinutes setting at load.
 	asteroidRespawn time.Duration
 
+	// bumpCooldown holds pairs that just bumped, until when they are left alone.
+	// Touched only by the tick goroutine (resolveBumps), so it takes no lock.
+	bumpCooldown map[bumpPairKey]time.Time
+
 	// onAsteroidRespawn is called from the respawn goroutine, outside ss.mu, for
 	// each rock that comes back so main.go can push AddBalls to the grid. Guarded
 	// by mu; set through SetOnAsteroidRespawn on every player registration.
@@ -2819,12 +2823,14 @@ func (ss *SolarSystem) tickLoop() {
 				e.FlushQueuedActions(FlushNodeID, false)
 			}
 
+			movers := make([]tickMover, 0, len(candidates))
 			for _, e := range candidates {
 				e.mu.Lock()
 				if e.Manager == nil || !e.Manager.IsMoving() {
 					e.mu.Unlock()
 					continue
 				}
+				movers = append(movers, tickMover{e: e, prev: e.Manager.Pos})
 				e.Manager.Step(dt)
 				pos := e.Manager.Pos
 				bubID := e.BubbleID
@@ -2847,6 +2853,10 @@ func (ss *SolarSystem) tickLoop() {
 					transitionCB(ss, e, bubID)
 				}
 			}
+
+			// Bumps: the client does not collide ships at sub-warp speed, so the
+			// server does. See collision.go.
+			ss.resolveBumps(movers, candidates, time.Now())
 		case <-ss.stopCh:
 			return
 		}

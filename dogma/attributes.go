@@ -211,6 +211,11 @@ const (
 	SkillMechanic           int64 = 3392  // +5% hull HP per level (attr 327)
 	SkillEnergyManagement   int64 = 3418  // +5% capacitor capacity per level (attr 1079)
 	SkillEnergySystemsOp    int64 = 3417  // -5% capacitor recharge time per level (attr 314)
+	SkillWarpDriveOperation int64 = 3455  // -10% warp capacitor need per level (attr 319)
+
+	// Warp capacitor cost (cmd/gurimoon/warpcap.go).
+	AttrWarpCapacitorNeed      int64 = 153 // GJ per kg of ship mass per AU warped
+	AttrWarpCapacitorNeedBonus int64 = 319 // % on attr 153: Warp Drive Operation, hardwirings
 
 	// Mining skills.
 	SkillMining         int64 = 3386  // +5% mining yield per level

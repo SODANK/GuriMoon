@@ -881,7 +881,35 @@ const (
 	groupTrackingComputer  = 213 // active: applies only while running
 	groupTrackingEnhancer  = 211 // passive: applies while online
 	groupCapBattery        = 61  // only group whose capacitorBonus adds capacity
+	groupArmorReinforcer   = 329 // armor plates: online armorReinforcerMassAdd (1959) adds attr 796
 )
+
+// GetShipPlateMass sums the massAddition (attr 796) of the online armor plates fitted to a
+// ship: the mass armorReinforcerMassAdd adds to the hull while the plate is online.
+// Afterburners and MWDs carry attr 796 too but add it only while running, so they are left out.
+func GetShipPlateMass(ctx context.Context, db *sql.DB, shipID int64) (float64, error) {
+	if shipID == 0 {
+		return 0, nil
+	}
+	var total sql.NullFloat64
+	err := db.QueryRowContext(ctx, `
+		SELECT SUM(COALESCE(NULLIF(a.valueFloat, 0), CAST(a.valueInt AS DOUBLE), a.valueFloat))
+		FROM entity e
+		JOIN entity_attributes ea ON ea.itemID = e.itemID
+		 AND ea.attributeID = 2 AND ea.valueInt = 1
+		JOIN invTypes t ON t.typeID = e.typeID
+		JOIN dgmTypeAttributes a ON a.typeID = e.typeID AND a.attributeID = ?
+		WHERE e.locationID = ? AND e.flag BETWEEN 11 AND 34
+		  AND t.groupID = ?`,
+		dogma.AttrMassAddition, shipID, groupArmorReinforcer).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("GetShipPlateMass: %w", err)
+	}
+	if !total.Valid || total.Float64 < 0 {
+		return 0, nil
+	}
+	return total.Float64, nil
+}
 
 // stackMultipliers folds a list of multiplier-style values (≈1.0 ± x) into
 // one factor with the standard stacking penalty, strongest deviation first.
@@ -1247,6 +1275,21 @@ func GetCapacitorSkillMultipliers(ctx context.Context, db *sql.DB, charID int64)
 	capMult *= im.CapCapacity
 	rechargeMult *= im.CapRecharge
 	return
+}
+
+// GetWarpCapNeedMultiplier is the pilot's multiplier on a ship's warpCapacitorNeed (attr 153):
+// Warp Drive Operation (3455, attr 319, -10% per level) and any warp-cap hardwiring.
+func GetWarpCapNeedMultiplier(ctx context.Context, db *sql.DB, charID int64) float64 {
+	if charID == 0 {
+		return 1
+	}
+	mult := 1.0
+	if lvl, err := GetCharacterSkillLevel(ctx, db, charID, dogma.SkillWarpDriveOperation); err == nil && lvl > 0 {
+		if attrs, aerr := TypeAttrs(ctx, db, dogma.SkillWarpDriveOperation); aerr == nil {
+			mult *= 1.0 + attrs[dogma.AttrWarpCapacitorNeedBonus]/100.0*float64(lvl)
+		}
+	}
+	return mult * orOne(GetCharImplantMults(ctx, db, charID).WarpCapNeed)
 }
 
 // RemoteRepairBonusesFrom is the pure fold behind GetRemoteRepairBonuses: the cycle and cap

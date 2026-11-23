@@ -683,7 +683,7 @@ func handleDestinyBoundCall(cc *callCtx) error {
 			})
 		}
 
-		startPlayerWarp(c, addr, accountID, sqldb, ds, dm, celestialPos, targetRadius, landingBuffer, warpInOverride, onWarpArrive)
+		startPlayerWarp(c, addr, accountID, sqldb, ds, dm, celestialPos, targetRadius, landingBuffer, warpInOverride, warpPaysCap, onWarpArrive)
 		return nil
 
 	case "StargateJump":

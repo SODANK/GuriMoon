@@ -767,6 +767,13 @@ func cancelSkillCompletionTimer(c *evenet.Conn, charID int64) {
 func main() {
 	// Queued-action flushes originate inside the destiny tick loop.
 	destiny.FlushNodeID = globalNodeID
+	// Server-side bumps, live dials from server_settings.
+	destiny.BumpsEnabled = func() bool {
+		v, ok := evedb.CachedSetting("space.collisions")
+		v = strings.TrimSpace(v)
+		return !ok || (v != "0" && v != "false")
+	}
+	destiny.BumpRestitution = func() float64 { return evedb.CachedSettingFloat("space.bumpRestitution", 0.6, 0, 1) }
 
 	cfgPath := flag.String("config", "config.json", "path to config.json")
 	stringsPath := flag.String("strings", "data/strings.txt", "path to EVE string table file")
@@ -7660,7 +7667,7 @@ func runAgentWarpToLocation(c *evenet.Conn, addr string, accountID, charID, agen
 
 	log.Printf("[%s] → agent.WarpToLocation missionID=%d type=%q target=(%.0f,%.0f,%.0f) range=%.0f spawn=%v",
 		addr, m.MissionID, locationType, target.X, target.Y, target.Z, warpRange, onArrive != nil)
-	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, target, 0, buffer, nil, onArrive)
+	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, target, 0, buffer, nil, warpPaysCap, onArrive)
 }
 
 // missionDungeonOnArrive returns a callback that spawns the mission's dungeon
@@ -11215,7 +11222,7 @@ func runActivateGate(c *evenet.Conn, addr string, accountID int64, gateID uint32
 	// along the gate's own direction, whatever angle it entered the warp at. The room anchor is that
 	// point, and dunSpawnShift carries the beacon the same distance ahead.
 	gateLanding := landing.Sub(dir.Scale(deadspaceLandingBuffer))
-	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, landing, 0, deadspaceLandingBuffer, &gateLanding, func() {
+	startPlayerWarp(c, addr, accountID, sqldb, ds, ds.dm, landing, 0, deadspaceLandingBuffer, &gateLanding, warpCapFree, func() {
 		ds.dunPendingOpenSite = gateOpenSiteID
 		if err := spawnDungeonRoom(c, addr, accountID, sqldb, ds, nextRoomID, sessReg, npcMgr, gateMissionID); err != nil {
 			log.Printf("[%s] ActivateAccelerationGate: spawnDungeonRoom %d: %v", addr, nextRoomID, err)
@@ -16564,7 +16571,49 @@ func startBallparkReconciliation(ctx context.Context, ds *destinyConn, addr stri
 // clearing the client's red box (tactical.py drops the guid from its attackers list on active=0).
 // The guid must match the start event's, so the stored active effect is consulted: Laser for turret
 // NPCs, MissileDeployment for missile NPCs. Safe to call when no effect is active.
+//
+// The target hears the stop even after leaving the bubble: a pilot entering the warp tunnel leaves
+// the bubble at once but holds the departure grid's balls until the depart sweep, and a weapon FX
+// with no stop loops on its client for the whole tunnel.
 func stopNPCFireFX(npcEntity *destiny.Entity, ss *destiny.SolarSystem, targetID uint32) {
+	fxStop := npcFireStopAction(npcEntity, targetID)
+	npcEntity.ClearActiveEffect(int64(npcEntity.ID))
+	targetSent := false
+	for _, p := range ss.GetBubbleConnectedPlayersExcept(npcEntity.ID) {
+		if !p.KnowsBall(npcEntity.ID) {
+			continue
+		}
+		if p.ID == targetID {
+			targetSent = true
+		}
+		p.SendFXStamped(func(stamp uint32) error {
+			return destiny.SendActionList(p.Conn, globalNodeID, p.AccountID, stamp, fxStop)
+		})
+	}
+	if !targetSent {
+		if t := ss.GetEntity(targetID); t != nil && t.IsPlayer && t.Conn != nil && t.KnowsBall(npcEntity.ID) {
+			t.SendFXStamped(func(stamp uint32) error {
+				return destiny.SendActionList(t.Conn, globalNodeID, t.AccountID, stamp, fxStop)
+			})
+		}
+	}
+}
+
+// stopNPCFireFXFor sends npcEntity's fire-FX stop against targetID to one pilot only, leaving the
+// NPC's stored effect (and every other witness's view of it) alone. Used at warp tunnel entry.
+func stopNPCFireFXFor(p, npcEntity *destiny.Entity, targetID uint32) {
+	if p == nil || p.Conn == nil || !p.KnowsBall(npcEntity.ID) {
+		return
+	}
+	fxStop := npcFireStopAction(npcEntity, targetID)
+	p.SendFXStamped(func(stamp uint32) error {
+		return destiny.SendActionList(p.Conn, globalNodeID, p.AccountID, stamp, fxStop)
+	})
+}
+
+// npcFireStopAction builds the OnSpecialFX stop for npcEntity's weapon against targetID, taking the
+// guid and types from its stored active effect when there is one.
+func npcFireStopAction(npcEntity *destiny.Entity, targetID uint32) marshal.PyRep {
 	guid := dogma.FXGUIDLaser
 	var modTypeID, otherType int64
 	if npcEntity.NPCTurretTypeID != 0 && len(npcEntity.Slim.Modules) > 0 {
@@ -16579,13 +16628,12 @@ func stopNPCFireFX(npcEntity *destiny.Entity, ss *destiny.SolarSystem, targetID 
 			break
 		}
 	}
-	npcEntity.ClearActiveEffect(int64(npcEntity.ID))
 	// otherTypeID is PyNone when 0: turret.py SetAmmoColor calls cfg.invtypes.Get on it.
 	var otherTypeRep marshal.PyRep = marshal.PyNone{}
 	if otherType != 0 {
 		otherTypeRep = marshal.PyInt{Value: uint64(otherType)}
 	}
-	fxStop := destiny.BuildSimpleAction("OnSpecialFX",
+	return destiny.BuildSimpleAction("OnSpecialFX",
 		marshal.PyInt{Value: uint64(npcEntity.ID)}, // entityID
 		marshal.PyInt{Value: uint64(npcEntity.ID)}, // moduleID (EntityShip keys turrets by ball ID)
 		marshal.PyInt{Value: uint64(modTypeID)},    // moduleTypeID
@@ -16597,14 +16645,6 @@ func stopNPCFireFX(npcEntity *destiny.Entity, ss *destiny.SolarSystem, targetID 
 		marshal.PyInt{Value: 0},                    // start
 		marshal.PyInt{Value: 0},                    // active
 	)
-	for _, p := range ss.GetBubbleConnectedPlayersExcept(npcEntity.ID) {
-		if !p.KnowsBall(npcEntity.ID) {
-			continue
-		}
-		p.SendFXStamped(func(stamp uint32) error {
-			return destiny.SendActionList(p.Conn, globalNodeID, p.AccountID, stamp, fxStop)
-		})
-	}
 }
 
 // isSpawnCmd checks whether a slash CallStream contains a "/spawn" command.

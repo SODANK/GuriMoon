@@ -45,6 +45,9 @@ type ImplantMults struct {
 	// field or nil map means no implant.
 	FittingCPUNeed, FittingPowerNeed map[int64]float64
 	CPUOutput, PowerOutput           float64
+	// WarpCapNeed scales the ship's warpCapacitorNeed (attr 153). Zero means no implant;
+	// read it through orOne.
+	WarpCapNeed float64
 	// Sets is the standing of each pirate set with at least one piece in.
 	Sets map[dogma.ImplantSet]ImplantSetState
 	// Tags are the plugged implants' tags, for display and planners
@@ -65,7 +68,7 @@ func IdentityImplantMults() ImplantMults {
 		Velocity: 1, Agility: 1, SigRadius: 1, TargetRange: 1,
 		MiningYield: 1, MiningDroneYield: 1, IceCycle: 1, NosDuration: 1,
 		FittingCPUNeed: map[int64]float64{}, FittingPowerNeed: map[int64]float64{},
-		CPUOutput: 1, PowerOutput: 1,
+		CPUOutput: 1, PowerOutput: 1, WarpCapNeed: 1,
 		Sets: map[dogma.ImplantSet]ImplantSetState{},
 	}
 }
@@ -81,7 +84,7 @@ func (m ImplantMults) IsIdentity() bool {
 		m.SigRadius == 1 && m.TargetRange == 1 &&
 		m.MiningYield == 1 && m.MiningDroneYield == 1 && m.IceCycle == 1 && m.NosDuration == 1 &&
 		len(m.FittingCPUNeed) == 0 && len(m.FittingPowerNeed) == 0 &&
-		orOne(m.CPUOutput) == 1 && orOne(m.PowerOutput) == 1
+		orOne(m.CPUOutput) == 1 && orOne(m.PowerOutput) == 1 && orOne(m.WarpCapNeed) == 1
 }
 
 // orOne reads an unset (zero) multiplier as 1.
@@ -255,6 +258,8 @@ func (m *ImplantMults) apply(c dogma.ImplantChannel, reqSkill int64, f float64) 
 		m.CPUOutput = orOne(m.CPUOutput) * f
 	case dogma.ICPowerOutput:
 		m.PowerOutput = orOne(m.PowerOutput) * f
+	case dogma.ICWarpCapNeed:
+		m.WarpCapNeed = orOne(m.WarpCapNeed) * f
 	}
 }
 
