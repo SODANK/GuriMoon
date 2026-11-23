@@ -1176,6 +1176,15 @@ var CorpRoleFilter func(corpID, charID int64, roles uint64) uint64
 // character (the rolebots module answers false for its own pilots). Nil = always ask.
 var CorpRoleFilterApplies func(charID int64) bool
 
+// FilterCorpRoles runs CorpRoleFilter over one role mask of a member of corpID, the same rule
+// GetCorporationMemberInfo applies to the member row.
+func FilterCorpRoles(_ context.Context, _ *sql.DB, charID, corpID int64, roles uint64) uint64 {
+	if CorpRoleFilter == nil || corpID == 0 || (CorpRoleFilterApplies != nil && !CorpRoleFilterApplies(charID)) {
+		return roles
+	}
+	return CorpRoleFilter(corpID, charID, roles)
+}
+
 func applyCorpRoleFilter(f func(corpID, charID int64, roles uint64) uint64, corpID, charID int64, info *CorpMemberInfo) {
 	if f == nil || info == nil {
 		return

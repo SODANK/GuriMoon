@@ -523,6 +523,9 @@ func handleOfficeAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountI
 				evedb.BuildEntityRow(newER), change)
 		}
 		log.Printf("[%s] → office Add: split %d×%d → office %d flag %d", addr, qty, oldER.TypeID, officeID, flag)
+		if h := esp.OfficeDepositHook; h != nil && !fromInside {
+			h(officeCorpID, charID, newItemID, oldER.TypeID, flag)
+		}
 		return rsp(server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}))
 	}
 
@@ -645,6 +648,9 @@ func handleOfficeTake(c *evenet.Conn, addr string, pkt *evenet.PyPacket, account
 			mergeLandedStack(ctx, c, addr, accountID, newItemID, sqldb)
 		}
 		log.Printf("[%s] → office take: split %d×%d → char %d %s", addr, qty, oldER.TypeID, charID, where)
+		if h := esp.OfficeTakeHook; h != nil {
+			h(officeCorpID, charID, officeStationID, oldER.TypeID, qty, oldFlag)
+		}
 		return rsp(server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}))
 	}
 
@@ -664,6 +670,9 @@ func handleOfficeTake(c *evenet.Conn, addr string, pkt *evenet.PyPacket, account
 		mergeLandedStack(ctx, c, addr, accountID, oldER.ItemID, sqldb)
 	}
 	log.Printf("[%s] → office take: item %d office %d → char %d %s", addr, oldER.ItemID, oldLoc, charID, where)
+	if h := esp.OfficeTakeHook; h != nil {
+		h(officeCorpID, charID, officeStationID, oldER.TypeID, oldQty, oldFlag)
+	}
 	return rsp(server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}))
 }
 

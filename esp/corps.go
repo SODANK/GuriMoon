@@ -30,6 +30,11 @@ type CorpFieldChange struct {
 // office hangar. The rolebots module credits a donated blueprint as equity.
 var OfficeDepositHook func(corpID, charID, itemID, typeID, flag int64)
 
+// OfficeTakeHook is set by a module. handleOfficeTake (cmd/gurimoon) calls it on the RPC
+// goroutine after a member took qty of typeID out of division flag of corpID's office at
+// stationID; the hook must not block.
+var OfficeTakeHook func(corpID, charID, stationID, typeID, qty, flag int64)
+
 // MemberBaseChangedHook is set by a module. applyMemberUpdateRow (cmd/gurimoon) calls it on the
 // RPC goroutine, so a handler must not block, after Edit Member changed a Base
 // (chrCorporationRoles.baseID; 0 = none). actorID may be the member itself.

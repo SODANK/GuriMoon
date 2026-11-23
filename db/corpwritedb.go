@@ -271,6 +271,23 @@ func GetCorpMgmtSkills(ctx context.Context, db *sql.DB, charID int64) CorpMgmtSk
 	return s
 }
 
+// RepairCEOGrantableRoles gives every corporation's CEO every grantable role, as SetCorpCEO and
+// JoinCorporation now write them: rows from before held none, which the client's role window
+// reads when it decides what the CEO may tick.
+func RepairCEOGrantableRoles(ctx context.Context, db *sql.DB) error {
+	all := ^uint64(0)
+	_, err := db.ExecContext(ctx, `
+		UPDATE chrCorporationRoles r
+		  JOIN corporation c ON c.ceoID = r.characterID
+		   SET r.grantableRoles = ?, r.grantableRolesAtHQ = ?, r.grantableRolesAtBase = ?, r.grantableRolesAtOther = ?
+		 WHERE r.grantableRoles <> ? OR r.grantableRolesAtHQ <> ? OR r.grantableRolesAtBase <> ? OR r.grantableRolesAtOther <> ?`,
+		all, all, all, all, all, all, all, all)
+	if err != nil {
+		return fmt.Errorf("RepairCEOGrantableRoles: %w", err)
+	}
+	return nil
+}
+
 // SetCorpCEO transfers the CEO seat, granting RoleAll to the new CEO's role
 // row.  Returns the previous ceoID.
 func SetCorpCEO(ctx context.Context, db *sql.DB, corpID, newCeoID int64) (oldCeoID int64, err error) {
@@ -284,8 +301,9 @@ func SetCorpCEO(ctx context.Context, db *sql.DB, corpID, newCeoID int64) (oldCeo
 	}
 	all := ^uint64(0)
 	if _, err = db.ExecContext(ctx,
-		`REPLACE INTO chrCorporationRoles (characterID, corprole, rolesAtAll, rolesAtBase, rolesAtHQ, rolesAtOther)
-		 VALUES (?, ?, ?, ?, ?, ?)`, newCeoID, all, all, all, all, all); err != nil {
+		`REPLACE INTO chrCorporationRoles (characterID, corprole, rolesAtAll, rolesAtBase, rolesAtHQ, rolesAtOther,
+		   grantableRoles, grantableRolesAtHQ, grantableRolesAtBase, grantableRolesAtOther)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, newCeoID, all, all, all, all, all, all, all, all, all); err != nil {
 		return 0, fmt.Errorf("SetCorpCEO grant: %w", err)
 	}
 	if oldCeoID != 0 && oldCeoID != newCeoID {

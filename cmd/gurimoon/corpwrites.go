@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"reflect"
 	"time"
 
 	"gurimoon/corp"
@@ -22,6 +23,7 @@ import (
 	evenet "gurimoon/net"
 	"gurimoon/server"
 	"gurimoon/server/slash"
+	"gurimoon/tick"
 )
 
 // corpWriteMethods lists the methods handleCorpRegistryWrite owns.
@@ -36,6 +38,20 @@ var corpWriteMethods = map[string]bool{
 	"MoveCompanyShares": true, "MovePrivateShares": true,
 	"GetLockedItemsByLocation": true, "UpdateSanctionedAction": true,
 	"UpdateApplicationOffer": true,
+}
+
+func init() {
+	// A CEO row written before JoinCorporation and SetCorpCEO granted the grantable masks holds none.
+	moduleBootHooks = append(moduleBootHooks, func(sqldb *sql.DB, _ *esp.SessionRegistry, _ *tick.Manager) {
+		if sqldb == nil {
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := evedb.RepairCEOGrantableRoles(ctx, sqldb); err != nil {
+			log.Printf("%v", err)
+		}
+	})
 }
 
 // ─── small helpers ─────────────────────────────────────────────────────────
@@ -728,19 +744,53 @@ func handleCorpRegistryWrite(c *evenet.Conn, addr string, cs *server.CallStream,
 			log.Printf("[%s] corpRegistry.UpdateMembers: unparseable rowset arg %T", addr, arg(0))
 			return corpUserErr(c, pkt, accountID, "Malformed member update.")
 		}
+		failed, firstErr := 0, error(nil)
 		for _, row := range lines {
 			if err := applyMemberUpdateRow(ctx, c, addr, charID, corpID, sqldb, row); err != nil {
 				log.Printf("[%s] UpdateMembers row: %v", addr, err)
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
 			}
 		}
-		log.Printf("[%s] → corpRegistry.UpdateMembers corpID=%d (%d rows)", addr, corpID, len(lines))
+		log.Printf("[%s] → corpRegistry.UpdateMembers corpID=%d (%d rows, %d refused)", addr, corpID, len(lines), failed)
+		if firstErr != nil {
+			return corpUserErr(c, pkt, accountID, memberUpdateRefusal(failed, len(lines), firstErr))
+		}
 		return done()
 
 	case "ExecuteActions":
-		// (targetIDs, actions=[[verb, property, value], ...]). The verb and GIVE-property constants are
-		// not in the decompiles; the raw actions are logged until the mapping is verified live.
-		log.Printf("[%s] corpRegistry.ExecuteActions charID=%d targets=%+v actions=%+v — logged only, mapping unverified",
-			addr, charID, arg(0), arg(1))
+		// (targetIDs, actions=[[verb, property, value], ...]): the member search's mass edit. Each
+		// target becomes one UpdateMember line, so every permission rule applies. The raw call is
+		// logged until the shape is confirmed live.
+		log.Printf("[%s] corpRegistry.ExecuteActions charID=%d targets=%+v actions=%+v", addr, charID, arg(0), arg(1))
+		targets, okT := pySeq(arg(0))
+		actions, okA := pySeq(arg(1))
+		if !okT || !okA {
+			return corpUserErr(c, pkt, accountID, "Malformed member action.")
+		}
+		failed, firstErr := 0, error(nil)
+		for _, t := range targets {
+			tp := pyOptInt(t)
+			if tp == nil {
+				continue
+			}
+			row, err := memberActionRow(ctx, sqldb, *tp, actions)
+			if err == nil && row != nil {
+				err = applyMemberUpdateRow(ctx, c, addr, charID, corpID, sqldb, row)
+			}
+			if err != nil {
+				log.Printf("[%s] ExecuteActions target %d: %v", addr, *tp, err)
+				failed++
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+		if firstErr != nil {
+			return corpUserErr(c, pkt, accountID, memberUpdateRefusal(failed, len(targets), firstErr))
+		}
 		return done()
 
 	case "InsertVoteCase":
@@ -1112,6 +1162,71 @@ func restrictToHeldMasks(ctx context.Context, sqldb *sql.DB, charID int64, u *ev
 	return nil
 }
 
+// memberMasks is a member's stored role row: held and grantable roles in the order corporation-wide
+// (roles), at HQ, at Base, at Other.
+type memberMasks struct {
+	held, grant [4]uint64
+	title       uint64
+	baseID      int64
+}
+
+// grants reports whether the member holds any role as grantable.
+func (mm memberMasks) grants() bool {
+	return mm.grant != [4]uint64{}
+}
+
+func readMemberMasks(ctx context.Context, sqldb *sql.DB, charID int64) (memberMasks, error) {
+	var mm memberMasks
+	err := sqldb.QueryRowContext(ctx, `
+		SELECT COALESCE(corprole, 0), COALESCE(rolesAtHQ, 0), COALESCE(rolesAtBase, 0), COALESCE(rolesAtOther, 0),
+		       COALESCE(grantableRoles, 0), COALESCE(grantableRolesAtHQ, 0),
+		       COALESCE(grantableRolesAtBase, 0), COALESCE(grantableRolesAtOther, 0),
+		       COALESCE(titleMask, 0), COALESCE(baseID, 0)
+		  FROM chrCorporationRoles WHERE characterID = ?`, charID,
+	).Scan(&mm.held[0], &mm.held[1], &mm.held[2], &mm.held[3],
+		&mm.grant[0], &mm.grant[1], &mm.grant[2], &mm.grant[3], &mm.title, &mm.baseID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return mm, fmt.Errorf("could not read the member's roles")
+	}
+	return mm, nil
+}
+
+// restrictToGrantable refuses a member update by a grantor who is neither CEO nor Director unless
+// every role it adds or removes is one the grantor holds as grantable for that column. Roles at
+// Base are grantable only between members sharing a Base. Grantable masks, titles and the Base
+// stay a Director's to change. The Director role is never grantable. Pure.
+func restrictToGrantable(grantor, grantee memberMasks, u *evedb.CorpMemberUpdate) error {
+	grant := grantor.grant
+	if grantor.baseID == 0 || grantor.baseID != grantee.baseID {
+		grant[2] = 0
+	}
+	for i := range grant {
+		grant[i] &^= corp.RoleDirector
+	}
+	held := [4]*int64{u.Roles, u.RolesAtHQ, u.RolesAtBase, u.RolesAtOther}
+	for i, f := range held {
+		if f == nil {
+			continue
+		}
+		if (uint64(*f)^grantee.held[i])&^grant[i] != 0 {
+			return fmt.Errorf("you may only grant or revoke roles you hold as grantable")
+		}
+	}
+	grantable := [4]*int64{u.GrantableRoles, u.GrantableRolesAtHQ, u.GrantableRolesAtBase, u.GrantableRolesAtOther}
+	for i, f := range grantable {
+		if f != nil && uint64(*f) != grantee.grant[i] {
+			return fmt.Errorf("only a Director may change which roles a member can grant")
+		}
+	}
+	if u.TitleMask != nil && uint64(*u.TitleMask) != grantee.title {
+		return fmt.Errorf("only a Director may change a member's titles")
+	}
+	if u.BaseID != nil && *u.BaseID != grantee.baseID {
+		return fmt.Errorf("only a Director may change a member's base")
+	}
+	return nil
+}
+
 // applyMemberUpdateRow validates and persists one member-update line.
 func applyMemberUpdateRow(ctx context.Context, c *evenet.Conn, addr string, callerID, corpID int64, sqldb *sql.DB, row []marshal.PyRep) error {
 	if len(row) < 1 {
@@ -1135,8 +1250,23 @@ func applyMemberUpdateRow(ctx context.Context, c *evenet.Conn, addr string, call
 		return fmt.Errorf("that character is not in your corporation")
 	}
 	isDirector := isDirectorOrCEO(ctx, sqldb, corpID, callerID)
+	// A member who is neither CEO nor Director may edit another member only through the roles it
+	// holds as grantable (restrictToGrantable), and never the CEO's or a Director's row.
+	var grantor, grantee memberMasks
 	if target != callerID && !isDirector {
-		return fmt.Errorf("only a Director may edit other members")
+		var err error
+		if grantor, err = readMemberMasks(ctx, sqldb, callerID); err != nil {
+			return err
+		}
+		if !grantor.grants() {
+			return fmt.Errorf("only a Director, or a member holding grantable roles, may edit other members")
+		}
+		if grantee, err = readMemberMasks(ctx, sqldb, target); err != nil {
+			return err
+		}
+		if isCorpCEO(ctx, sqldb, corpID, target) || grantee.held[0]&corp.RoleDirector != 0 {
+			return fmt.Errorf("only the CEO may edit the roles of the CEO or a Director")
+		}
 	}
 	u := &evedb.CorpMemberUpdate{}
 	if s, ok := pyStr(at(1)); ok && isDirector {
@@ -1159,23 +1289,40 @@ func applyMemberUpdateRow(ctx context.Context, c *evenet.Conn, addr string, call
 	if u.BaseID != nil && *u.BaseID != 0 && !evedb.IsCorpBaseStation(ctx, sqldb, corpID, *u.BaseID) {
 		return fmt.Errorf("a member's base must be one of the corporation's offices")
 	}
-	// Granting the Director role is CEO-only; self-demotion (roles=0 from the
-	// remove-all menu) is always allowed.
-	if u.Roles != nil && corp.HasRole(uint64(*u.Roles), corp.RoleDirector) &&
-		!isCorpCEO(ctx, sqldb, corpID, callerID) {
-		return fmt.Errorf("only the CEO may grant the Director role")
+	// Granting or revoking the Director role is CEO-only; self-demotion (roles=0 from the
+	// remove-all menu) is always allowed. A line that leaves the bit as it is (a Director's
+	// hangar roles edited) is no Director change.
+	if u.Roles != nil && !isCorpCEO(ctx, sqldb, corpID, callerID) {
+		var held uint64
+		_ = sqldb.QueryRowContext(ctx,
+			`SELECT COALESCE(corprole, 0) FROM chrCorporationRoles WHERE characterID = ?`, target).Scan(&held)
+		next := uint64(*u.Roles)
+		if (next^held)&corp.RoleDirector != 0 && !(target == callerID && next&corp.RoleDirector == 0) {
+			return fmt.Errorf("only the CEO may grant or revoke the Director role")
+		}
 	}
-	// A non-Director may only edit themselves, and only downward. The client's gate
-	// (corputil.CanEditRole) is client-side, so a hand-built UpdateMember would otherwise grant roles.
+	// A non-Director edits itself only downward, and another member only within its grantable
+	// roles. The client's gate (corputil.CanEditRole) is client-side, so a hand-built UpdateMember
+	// would otherwise grant roles.
 	if !isDirector {
-		if err := restrictToHeldMasks(ctx, sqldb, target, u); err != nil {
+		var err error
+		if target == callerID {
+			err = restrictToHeldMasks(ctx, sqldb, target, u)
+		} else {
+			err = restrictToGrantable(grantor, grantee, u)
+		}
+		if err != nil {
 			return err
 		}
 	}
 	oldInfo, _ := evedb.GetCorporationMemberInfo(ctx, sqldb, target)
+	oldLine, _ := evedb.GetCorpMemberLine(ctx, sqldb, corpID, target)
 	if err := evedb.UpdateCorpMemberRow(ctx, sqldb, target, u); err != nil {
 		return err
 	}
+	// The member list and role window redraw from their cache; without this the edit looks
+	// undone until the window is reopened.
+	notifyMemberRowChanged(ctx, sqldb, corpID, target, oldLine)
 	// The target hears about their own new mask whoever made the edit; a self-edit is forced
 	// because it arrives inside the client's PerformSessionChange.
 	pushMemberRoleSession(ctx, sqldb, target, oldInfo, target == callerID && u.Roles != nil)
@@ -1190,4 +1337,134 @@ func applyMemberUpdateRow(ctx context.Context, c *evenet.Conn, addr string, call
 	}
 	log.Printf("[%s] → corpRegistry member update target=%d by=%d", addr, target, callerID)
 	return nil
+}
+
+// memberUpdateRefusal is the dialog text for a batch of member lines some of which were refused.
+func memberUpdateRefusal(failed, total int, first error) string {
+	if total <= 1 {
+		return first.Error()
+	}
+	return fmt.Sprintf("%d of %d member updates were refused: %v", failed, total, first)
+}
+
+// notifyMemberRowChanged pushes OnCorporationMemberChanged(charID, {col: (old, new)}) to the
+// corporation for every member column that differs from before (the line read before the
+// write; nil sends every column). There is no corporationID entry, so the client reads it as an
+// edit of a member it already lists, not a join or a leave (corpmembership.go).
+func notifyMemberRowChanged(ctx context.Context, sqldb *sql.DB, corpID, charID int64, before []marshal.PyRep) {
+	if globalSessReg == nil || sqldb == nil {
+		return
+	}
+	after, err := evedb.GetCorpMemberLine(ctx, sqldb, corpID, charID)
+	if err != nil || after == nil {
+		return
+	}
+	var entries []marshal.DictEntry
+	for i, col := range evedb.CorpMemberColumns() {
+		if col == "characterID" || col == "corporationID" || i >= len(after) {
+			continue
+		}
+		var oldV, newV marshal.PyRep = marshal.PyNone{}, marshal.PyNone{}
+		if after[i] != nil {
+			newV = after[i]
+		}
+		if i < len(before) && before[i] != nil {
+			oldV = before[i]
+		}
+		if before != nil && reflect.DeepEqual(oldV, newV) {
+			continue
+		}
+		entries = append(entries, chg(col, oldV, newV))
+	}
+	if len(entries) == 0 {
+		return
+	}
+	notifyCorp(globalSessReg, corpID, "OnCorporationMemberChanged", marshal.PyTuple{Items: []marshal.PyRep{
+		marshal.PyInt{Value: uint64(charID)}, marshal.PyDict{Items: entries},
+	}})
+}
+
+// pySeq reads a list or tuple argument.
+func pySeq(rep marshal.PyRep) ([]marshal.PyRep, bool) {
+	switch v := rep.(type) {
+	case marshal.PyList:
+		return v.Items, true
+	case marshal.PyTuple:
+		return v.Items, true
+	}
+	return nil, false
+}
+
+// The member search's mass-edit verbs (eveconstants CTV_*). GIVE and COMMS are not member edits.
+const (
+	ctvAdd    = 1
+	ctvRemove = 2
+	ctvSet    = 3
+)
+
+// memberActionCols maps an ExecuteActions property to its UpdateMember argument slot.
+var memberActionCols = map[string]int{
+	"roles": 4, "grantableRoles": 5,
+	"rolesAtHQ": 6, "grantableRolesAtHQ": 7,
+	"rolesAtBase": 8, "grantableRolesAtBase": 9,
+	"rolesAtOther": 10, "grantableRolesAtOther": 11,
+	"baseID": 12, "titleMask": 13,
+}
+
+// memberActionRow turns ExecuteActions' verbs for one member into an UpdateMember line over the
+// member's stored masks; nil when no action touches a member field.
+func memberActionRow(ctx context.Context, sqldb *sql.DB, target int64, actions []marshal.PyRep) ([]marshal.PyRep, error) {
+	var cur [14]uint64
+	err := sqldb.QueryRowContext(ctx, `
+		SELECT COALESCE(corprole, 0), COALESCE(grantableRoles, 0),
+		       COALESCE(rolesAtHQ, 0), COALESCE(grantableRolesAtHQ, 0),
+		       COALESCE(rolesAtBase, 0), COALESCE(grantableRolesAtBase, 0),
+		       COALESCE(rolesAtOther, 0), COALESCE(grantableRolesAtOther, 0),
+		       COALESCE(baseID, 0), COALESCE(titleMask, 0)
+		  FROM chrCorporationRoles WHERE characterID = ?`, target,
+	).Scan(&cur[4], &cur[5], &cur[6], &cur[7], &cur[8], &cur[9], &cur[10], &cur[11], &cur[12], &cur[13])
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("could not read the member's roles")
+	}
+	row := make([]marshal.PyRep, 14)
+	row[0] = marshal.PyInt{Value: uint64(target)}
+	touched := false
+	for _, a := range actions {
+		parts, ok := pySeq(a)
+		if !ok || len(parts) < 3 {
+			continue
+		}
+		verb := pyOptInt(parts[0])
+		prop, okP := pyStr(parts[1])
+		if verb == nil || !okP {
+			continue
+		}
+		if prop == "title" && *verb == ctvSet {
+			if _, ok := pyStr(parts[2]); ok {
+				row[1], touched = parts[2], true
+			}
+			continue
+		}
+		slot, known := memberActionCols[prop]
+		val := pyOptInt(parts[2])
+		if !known || val == nil {
+			continue
+		}
+		v := uint64(*val)
+		switch *verb {
+		case ctvAdd:
+			cur[slot] |= v
+		case ctvRemove:
+			cur[slot] &^= v
+		case ctvSet:
+			cur[slot] = v
+		default:
+			continue
+		}
+		row[slot], touched = marshal.PyInt{Value: cur[slot]}, true
+	}
+	if !touched {
+		return nil, nil
+	}
+	return row, nil
 }

@@ -6,13 +6,17 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"gurimoon/corp"
 )
 
 // Location roles: roles that hold only at a place. A member row carries rolesAtAll, rolesAtHQ,
 // rolesAtBase and rolesAtOther beside corprole (chrCorporationRoles); the client folds them in
-// sessions.py. With server_settings corp.locationRoles = 1 the corporation-job gate and the
-// office hangar gates fold them the same way for the station the action happens at. Off (the
-// default) they read corprole alone.
+// sessions.py. The client's role window writes hangar and container roles only into the three
+// location columns, so every gate reads them. With server_settings corp.locationRoles = 1 the
+// corporation-job gate and the office hangar gates fold them for the station the action happens
+// at (a place with no station, such as a starbase array, counts as Other). Off (the default) a
+// location role holds everywhere.
 
 // SettingCorpLocationRoles is the server_settings switch.
 const SettingCorpLocationRoles = "corp.locationRoles"
@@ -34,17 +38,19 @@ func LocationRolesOn(ctx context.Context, db *sql.DB) bool {
 	return locationRolesOn.Load()
 }
 
-// RolesAtStation folds a member's location roles for one station. Pure:
-// stationID 0 (no place) or on = false answers corprole alone.
+// RolesAtStation folds a member's location roles for one station. Pure. With on = false every
+// location column counts everywhere; stationID 0 (no station) counts as Other.
 func RolesAtStation(info *CorpMemberInfo, stationID, hqID int64, on bool) uint64 {
 	if info == nil {
 		return 0
 	}
-	roles := info.Corprole
-	if !on || stationID == 0 {
-		return roles
+	roles := info.Corprole | info.RolesAtAll
+	if !on {
+		return roles | info.RolesAtHQ | info.RolesAtBase | info.RolesAtOther
 	}
-	roles |= info.RolesAtAll
+	if stationID == 0 {
+		return roles | info.RolesAtOther
+	}
 	atBase := info.BaseID != 0 && stationID == info.BaseID
 	atHQ := hqID != 0 && stationID == hqID
 	if atBase {
@@ -71,5 +77,12 @@ func MemberRolesAt(ctx context.Context, db *sql.DB, charID, corpID, stationID in
 		_ = db.QueryRowContext(ctx,
 			`SELECT COALESCE(stationID, 0) FROM corporation WHERE corporationID = ?`, corpID).Scan(&hq)
 	}
-	return RolesAtStation(info, stationID, hq, on)
+	roles := RolesAtStation(info, stationID, hq, on)
+	// A Director holds every hangar and container role, as in the client; the module's filter
+	// still has its say over the expansion.
+	if roles&corp.RoleDirector != 0 {
+		roles |= corp.LocationalMask()
+		roles = FilterCorpRoles(ctx, db, charID, corpID, roles)
+	}
+	return roles
 }

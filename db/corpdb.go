@@ -521,9 +521,11 @@ func JoinCorporation(ctx context.Context, db *sql.DB, charID, newCorpID, oldCorp
 
 	if _, err := db.ExecContext(ctx, `
 		REPLACE INTO chrCorporationRoles
-		  (characterID, corprole, rolesAtAll, rolesAtBase, rolesAtHQ, rolesAtOther)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		charID, roles, roles, roles, roles, roles,
+		  (characterID, corprole, rolesAtAll, rolesAtBase, rolesAtHQ, rolesAtOther,
+		   grantableRoles, grantableRolesAtHQ, grantableRolesAtBase, grantableRolesAtOther)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		// A CEO may grant everything it holds; a plain member nothing.
+		charID, roles, roles, roles, roles, roles, roles, roles, roles, roles,
 	); err != nil {
 		return 0, fmt.Errorf("JoinCorporation roles: %w", err)
 	}
