@@ -217,6 +217,20 @@ func (ss *SolarSystem) LootContainersOlderThan(cutoff time.Time) []int64 {
 	return ids
 }
 
+// SetLootBallName renames a loot-slice ball (a jetcan or launched container) and returns its
+// updated descriptor for a ball swap. Safe for concurrent use.
+func (ss *SolarSystem) SetLootBallName(entityID uint32, name string) (BallDesc, SlimItem, DamageState, bool) {
+	ss.mu.Lock()
+	defer ss.mu.Unlock()
+	for i := range ss.LootBalls {
+		if ss.LootBalls[i].EntityID == entityID {
+			ss.LootBalls[i].Name = name
+			return ss.LootBalls[i], ss.LootSlims[i], ss.LootDamage[entityID], true
+		}
+	}
+	return BallDesc{}, SlimItem{}, DamageState{}, false
+}
+
 // LootSpawnedAt returns a loot container's spawn time, for the expiry sweep.
 func (ss *SolarSystem) LootSpawnedAt(entityID uint32) (time.Time, bool) {
 	ss.mu.RLock()

@@ -22498,6 +22498,8 @@ func loadLootContainersIntoSystem(addr string, sqldb *sql.DB, ss *destiny.SolarS
 		} else if c.Kind == evedb.LootKindLaunched {
 			bd, slim = launchedContainerBallSlim(c.ContainerID, pos, c.OwnerID, c.TypeID, c.GroupID, c.Radius, c.Name)
 			launchedCans.Store(c.ContainerID, struct{}{})
+		} else {
+			bd.Name = c.Name // a jetcan keeps the name its owner gave it
 		}
 		ss.AddLootContainerAt(bd, slim, time.Unix(c.SpawnedAt, 0))
 	}

@@ -736,6 +736,9 @@ func boundSetLabel(cc *callCtx) error {
 		if ds != nil && ds.solarSystem != nil && slItemID > 0 && slItemID <= math.MaxUint32 {
 			if bd, bslim, bdmg, ok := ds.solarSystem.SetStarbaseBallName(uint32(slItemID), slName); ok {
 				broadcastBallSwap(ds.solarSystem, uint32(slItemID), bd, bslim, bdmg)
+			} else if bd, bslim, bdmg, ok := ds.solarSystem.SetLootBallName(uint32(slItemID), slName); ok {
+				// A jetcan or launched cargo container (jetcan.go).
+				broadcastBallSwap(ds.solarSystem, uint32(slItemID), bd, bslim, bdmg)
 			}
 		}
 		// Push the changed row so open windows refresh.
