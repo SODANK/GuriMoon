@@ -120,7 +120,81 @@ func EnsureLootTables(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return fmt.Errorf("EnsureLootTables: %w", err)
 	}
+	// kind: LootKindDropped (jetcans, kill loot) or LootKindLaunched (a cargo container a
+	// pilot launched for self or corp), which keeps its own, longer expiry clock.
+	if _, err := db.ExecContext(ctx, `
+		ALTER TABLE spaceLootContainers ADD COLUMN IF NOT EXISTS kind TINYINT NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("EnsureLootTables kind: %w", err)
+	}
 	return nil
+}
+
+// Loot container kinds (spaceLootContainers.kind).
+const (
+	LootKindDropped  int64 = 0 // jetcan, kill loot, death can: short clock, gone once emptied
+	LootKindLaunched int64 = 1 // launched cargo container: long clock, stays when empty, scoopable
+)
+
+// LootCutoffs is the expiry cutoff per kind, unix seconds: a container spawned before the
+// cutoff of its kind has expired.
+type LootCutoffs struct {
+	Dropped  int64
+	Launched int64
+}
+
+// lootExpiredWhere is the shared WHERE fragment for "this spaceLootContainers row has
+// expired"; its two placeholders are Dropped then Launched.
+const lootExpiredWhere = `((kind = 1 AND spawnedAt < ?) OR (kind <> 1 AND spawnedAt < ?))`
+
+func (c LootCutoffs) args() []any { return []any{c.Launched, c.Dropped} }
+
+// LaunchContainerIntoSpace moves an assembled cargo container (with whatever is inside it)
+// out of a ship and into space at x/y/z as a launched loot container owned by ownerID.
+func LaunchContainerIntoSpace(ctx context.Context, db *sql.DB, itemID, ownerID, solarSystemID int64, x, y, z float64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("LaunchContainerIntoSpace begin: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE entity SET locationID=?, flag=0, ownerID=?, singleton=1, x=?, y=?, z=?
+		WHERE itemID=?`, solarSystemID, ownerID, x, y, z, itemID); err != nil {
+		return fmt.Errorf("LaunchContainerIntoSpace move: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		REPLACE INTO spaceLootContainers (containerID, solarSystemID, spawnedAt, kind)
+		VALUES (?, ?, ?, ?)`, itemID, solarSystemID, time.Now().Unix(), LootKindLaunched); err != nil {
+		return fmt.Errorf("LaunchContainerIntoSpace spawn row: %w", err)
+	}
+	return tx.Commit()
+}
+
+// ErrContainerGone is ScoopContainerToCargo's answer when the container already left space.
+var ErrContainerGone = errors.New("container is no longer in space")
+
+// ScoopContainerToCargo takes a launched container back into a ship's cargo hold with its
+// contents still inside it. The scooping pilot becomes its owner: the cargo hold lists and
+// weighs only the pilot's own rows, so a corp-owned container would vanish there.
+func ScoopContainerToCargo(ctx context.Context, db *sql.DB, itemID, solarSystemID, shipID, charID int64) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ScoopContainerToCargo begin: %w", err)
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `
+		UPDATE entity SET locationID=?, flag=5, ownerID=?, x=0, y=0, z=0
+		WHERE itemID=? AND locationID=?`, shipID, charID, itemID, solarSystemID)
+	if err != nil {
+		return fmt.Errorf("ScoopContainerToCargo move: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrContainerGone
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM spaceLootContainers WHERE containerID = ?`, itemID); err != nil {
+		return fmt.Errorf("ScoopContainerToCargo clock: %w", err)
+	}
+	return tx.Commit()
 }
 
 // CreateLootContainer inserts a Cargo Container entity in space at the given system and
@@ -299,11 +373,10 @@ func DeleteLootContainer(ctx context.Context, db *sql.DB, containerID int64) err
 	return DeleteEntityDeep(ctx, db, containerID)
 }
 
-// CleanupSpaceLootContainers deletes in-space loot containers that are expired (older than
-// cutoffSeconds) or have no spaceLootContainers row. Tracked, unexpired containers survive a
-// restart and reload when their system is entered.
-func CleanupSpaceLootContainers(ctx context.Context, db *sql.DB, cutoffSeconds int64) error {
-	cutoff := time.Now().Unix() - cutoffSeconds
+// CleanupSpaceLootContainers deletes in-space loot containers that are expired (spawned
+// before the cutoff of their kind) or have no spaceLootContainers row. Tracked, unexpired
+// containers survive a restart and reload when their system is entered.
+func CleanupSpaceLootContainers(ctx context.Context, db *sql.DB, cutoff LootCutoffs) error {
 
 	// Legacy containers: entity rows with no spawn-tracking row.
 	rows, err := db.QueryContext(ctx, `
@@ -327,7 +400,7 @@ func CleanupSpaceLootContainers(ctx context.Context, db *sql.DB, cutoffSeconds i
 	// Expired tracked containers.
 	rows2, err := db.QueryContext(ctx, `
 		SELECT containerID FROM spaceLootContainers
-		WHERE spawnedAt < ?`, cutoff)
+		WHERE `+lootExpiredWhere, cutoff.args()...)
 	if err != nil {
 		return fmt.Errorf("CleanupSpaceLootContainers expired query: %w", err)
 	}
@@ -357,14 +430,18 @@ func CleanupSpaceLootContainers(ctx context.Context, db *sql.DB, cutoffSeconds i
 	return nil
 }
 
-// ListLootContainersForSystem returns tracked loot containers in a solar system younger than
-// cutoffUnix, with position and owner from the entity row.
-func ListLootContainersForSystem(ctx context.Context, db *sql.DB, sysID, cutoffUnix int64) ([]SpaceLootContainer, error) {
+// ListLootContainersForSystem returns the unexpired tracked loot containers in a solar
+// system, with position and owner from the entity row.
+func ListLootContainersForSystem(ctx context.Context, db *sql.DB, sysID int64, cutoff LootCutoffs) ([]SpaceLootContainer, error) {
+	args := append([]any{sysID}, cutoff.args()...)
 	rows, err := db.QueryContext(ctx, `
-		SELECT s.containerID, e.ownerID, e.x, e.y, e.z, s.spawnedAt, e.typeID, e.itemName
+		SELECT s.containerID, e.ownerID, COALESCE(e.x, 0), COALESCE(e.y, 0), COALESCE(e.z, 0), s.spawnedAt, e.typeID,
+		       COALESCE(NULLIF(e.itemName, ''), t.typeName, ''),
+		       COALESCE(t.groupID, 0), COALESCE(t.radius, 0), s.kind
 		FROM spaceLootContainers s
 		JOIN entity e ON e.itemID = s.containerID
-		WHERE s.solarSystemID = ? AND s.spawnedAt >= ?`, sysID, cutoffUnix)
+		LEFT JOIN invTypes t ON t.typeID = e.typeID
+		WHERE s.solarSystemID = ? AND NOT `+lootExpiredWhere, args...)
 	if err != nil {
 		return nil, fmt.Errorf("ListLootContainersForSystem: %w", err)
 	}
@@ -372,7 +449,7 @@ func ListLootContainersForSystem(ctx context.Context, db *sql.DB, sysID, cutoffU
 	var out []SpaceLootContainer
 	for rows.Next() {
 		var c SpaceLootContainer
-		if err := rows.Scan(&c.ContainerID, &c.OwnerID, &c.X, &c.Y, &c.Z, &c.SpawnedAt, &c.TypeID, &c.Name); err != nil {
+		if err := rows.Scan(&c.ContainerID, &c.OwnerID, &c.X, &c.Y, &c.Z, &c.SpawnedAt, &c.TypeID, &c.Name, &c.GroupID, &c.Radius, &c.Kind); err != nil {
 			return nil, fmt.Errorf("ListLootContainersForSystem scan: %w", err)
 		}
 		out = append(out, c)
@@ -386,16 +463,19 @@ type SpaceLootContainer struct {
 	OwnerID     int64
 	X, Y, Z     float64
 	SpawnedAt   int64 // unix seconds
-	TypeID      int64 // TypeCargoContainer, or TypeCorpse for a podded pilot
+	TypeID      int64 // TypeCargoContainer, TypeCorpse for a podded pilot, or a launched container's type
 	Name        string
+	GroupID     int64
+	Radius      float64 // the type's radius, 0 when unknown
+	Kind        int64   // LootKindDropped or LootKindLaunched
 }
 
-// DeleteExpiredLootContainers removes tracked containers older than cutoffUnix in systems not
-// in loadedSystems, so a can is never pulled out from under an on-grid client. Returns the count.
-func DeleteExpiredLootContainers(ctx context.Context, db *sql.DB, cutoffUnix int64, loadedSystems map[int64]struct{}) (int, error) {
+// DeleteExpiredLootContainers removes expired tracked containers in systems not in
+// loadedSystems, so a can is never pulled out from under an on-grid client. Returns the count.
+func DeleteExpiredLootContainers(ctx context.Context, db *sql.DB, cutoff LootCutoffs, loadedSystems map[int64]struct{}) (int, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT containerID, solarSystemID FROM spaceLootContainers
-		WHERE spawnedAt < ?`, cutoffUnix)
+		WHERE `+lootExpiredWhere, cutoff.args()...)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteExpiredLootContainers query: %w", err)
 	}

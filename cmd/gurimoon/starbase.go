@@ -285,6 +285,13 @@ func scoopFromCall(ds *destinyConn, addr string, charID int64, args marshal.PyTu
 	if !ok {
 		return
 	}
+	if handled, err := scoopLaunchedContainer(ds, addr, charID, int64(id.Value), sqldb); handled {
+		if err != nil {
+			log.Printf("[%s] ship.Scoop container %d refused: %v", addr, int64(id.Value), err)
+			posRefusal(ds, "Cannot scoop", err)
+		}
+		return
+	}
 	if handled, err := scoopCorpseFromCall(ds, addr, charID, int64(id.Value), sqldb); handled {
 		if err != nil {
 			log.Printf("[%s] ship.Scoop corpse %d refused: %v", addr, int64(id.Value), err)

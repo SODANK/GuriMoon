@@ -12,8 +12,8 @@ import (
 // boundDrop handles the bound call "Drop".
 func boundDrop(cc *callCtx) error {
 	c, addr, cs, pkt, accountID, charID, sqldb, ds := cc.c, cc.addr, cc.cs, cc.pkt, cc.accountID, cc.charID, cc.sqldb, cc.ds
-	// ship.Drop(ids[, ownerID]) drops drones from the drone bay, or structures from the
-	// cargo hold (Launch for Corporation).
+	// ship.Drop(ids[, ownerID]) drops drones from the drone bay, or cargo containers and
+	// structures from the cargo hold (Launch for Self / Launch for Corporation).
 	var dropIDs []int64
 	if len(cs.ArgTuple.Items) >= 1 {
 		dropIDs = parseDroneIDs(cs.ArgTuple.Items[0])
@@ -24,10 +24,7 @@ func boundDrop(cc *callCtx) error {
 			dropOwnerID = int64(v.Value)
 		}
 	}
-	structIDs, droneIDs := splitStructureDropIDs(sqldb, ds.shipID, dropIDs)
-	newIDs := launchStructuresForPlayer(ds, addr, charID, dropOwnerID, structIDs, sqldb)
-	newIDs = append(newIDs, launchDronesForPlayer(ds, charID, droneIDs, sqldb)...)
-	log.Printf("[%s] → ship.Drop %v → launched %v (%d structures)", addr, dropIDs, newIDs, len(structIDs))
+	newIDs := dropFromShip(ds, addr, charID, dropOwnerID, dropIDs, sqldb)
 	return server.SendCallRsp(c, pkt, accountID, pyIntList(newIDs))
 }
 

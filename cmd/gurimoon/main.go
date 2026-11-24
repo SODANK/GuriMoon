@@ -1523,7 +1523,7 @@ func main() {
 	// Remove loot containers that are expired or have no tracking row
 	// (legacy). Tracked, non-expired containers survive and reload with
 	// their system.
-	if err := evedb.CleanupSpaceLootContainers(context.Background(), sqldb, int64(lootContainerTTL().Seconds())); err != nil {
+	if err := evedb.CleanupSpaceLootContainers(context.Background(), sqldb, lootCutoffs(time.Now())); err != nil {
 		log.Printf("CleanupSpaceLootContainers: %v (non-fatal)", err)
 	}
 
@@ -3828,10 +3828,7 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 									dropOwnerID = int64(v.Value)
 								}
 							}
-							structIDs, droneIDs := splitStructureDropIDs(sqldb, ds.shipID, ids)
-							newIDs := launchStructuresForPlayer(ds, addr, *charID, dropOwnerID, structIDs, sqldb)
-							newIDs = append(newIDs, launchDronesForPlayer(ds, *charID, droneIDs, sqldb)...)
-							inlineResult = pyIntList(newIDs)
+							inlineResult = pyIntList(dropFromShip(ds, addr, *charID, dropOwnerID, ids, sqldb))
 						case pkt.Dest.Service == "posMgr" && mth == "AnchorStructure":
 							if itemID, x, y, z, ok := parseAnchorStructureArgs(argsTuple); ok {
 								if err := anchorStructureForPlayer(ds, addr, *charID, itemID, x, y, z, sqldb); err != nil {
@@ -4346,9 +4343,13 @@ func handlePacket(c *evenet.Conn, addr string, pkt *evenet.PyPacket, sqldb *sql.
 			switch cs.Method {
 			case "CheckLootRightExceptions":
 				// Same contract as the bound-moniker form: False makes the client show its
-				// ConfirmStealItem dialog.
-				log.Printf("[%s] → aggressionMgr.CheckLootRightExceptions → False", addr)
-				return server.SendCallRsp(c, pkt, *accountID, marshal.PyBool{Value: false})
+				// ConfirmStealItem dialog; True (rights to the container) skips it.
+				var corpID int64
+				if ds != nil {
+					corpID = ds.corpID
+				}
+				ok := checkLootRightExceptions(addr, cs, *charID, corpID, sqldb)
+				return server.SendCallRsp(c, pkt, *accountID, marshal.PyBool{Value: ok})
 			default:
 				server.RecordUnhandled(addr, "aggressionMgr", cs, false)
 				log.Printf("[%s] CallReq: unhandled aggressionMgr method=%q — sending exception", addr, cs.Method)
@@ -9170,10 +9171,14 @@ func handleBoundCall(cc *callCtx) error {
 	}
 
 	// aggressionMgr moniker: consider.py asks before taking from a container it does not
-	// own. No loot-right exceptions are tracked; False sends the client to ConfirmStealItem.
+	// own. True (the owner's corp or fleet, jetcan.go) skips the ConfirmStealItem prompt.
 	if cs.Method == "CheckLootRightExceptions" {
-		log.Printf("[%s] → bound.CheckLootRightExceptions → False", addr)
-		return server.SendCallRsp(c, pkt, accountID, marshal.PyBool{Value: false})
+		var corpID int64
+		if ds != nil {
+			corpID = ds.corpID
+		}
+		ok := checkLootRightExceptions(addr, cs, charID, corpID, sqldb)
+		return server.SendCallRsp(c, pkt, accountID, marshal.PyBool{Value: ok})
 	}
 
 	// Alliance bound object: identified by its bind number, because its method names
@@ -22480,8 +22485,7 @@ func loadLootContainersIntoSystem(addr string, sqldb *sql.DB, ss *destiny.SolarS
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cutoff := time.Now().Unix() - int64(lootContainerTTL().Seconds())
-	containers, err := evedb.ListLootContainersForSystem(ctx, sqldb, sysID, cutoff)
+	containers, err := evedb.ListLootContainersForSystem(ctx, sqldb, sysID, lootCutoffs(time.Now()))
 	if err != nil {
 		log.Printf("[%s] loadLootContainersIntoSystem sysID=%d: %v", addr, sysID, err)
 		return
@@ -22491,6 +22495,9 @@ func loadLootContainersIntoSystem(addr string, sqldb *sql.DB, ss *destiny.SolarS
 		bd, slim := lootContainerBallSlim(c.ContainerID, pos, c.OwnerID)
 		if c.TypeID == evedb.TypeCorpse {
 			bd, slim = corpseBallSlim(c.ContainerID, pos, c.OwnerID, c.Name)
+		} else if c.Kind == evedb.LootKindLaunched {
+			bd, slim = launchedContainerBallSlim(c.ContainerID, pos, c.OwnerID, c.TypeID, c.GroupID, c.Radius, c.Name)
+			launchedCans.Store(c.ContainerID, struct{}{})
 		}
 		ss.AddLootContainerAt(bd, slim, time.Unix(c.SpawnedAt, 0))
 	}
@@ -22666,6 +22673,7 @@ func despawnLootContainer(ss *destiny.SolarSystem, containerID int64, sqldb *sql
 		return
 	}
 	removeLootBallFromGrid(ss, containerID)
+	launchedCans.Delete(containerID)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := evedb.DeleteLootContainer(ctx, sqldb, containerID); err != nil {
@@ -22679,6 +22687,28 @@ func despawnLootContainer(ss *destiny.SolarSystem, containerID int64, sqldb *sql
 // for both the per-container timer and the expiry sweep.
 func lootContainerTTL() time.Duration {
 	return evedb.CachedSettingDuration("loot.containerHours", time.Hour, 2, 0.1, 24*30)
+}
+
+// launchedContainerTTL is how long a cargo container launched for self or corp stays in
+// space: server_settings loot.launchedContainerHours, default 48. Emptying it does not end it.
+func launchedContainerTTL() time.Duration {
+	return evedb.CachedSettingDuration("loot.launchedContainerHours", time.Hour, 48, 0.1, 24*365)
+}
+
+// lootCutoffs is the expiry cutoff of each loot container kind as of now.
+func lootCutoffs(now time.Time) evedb.LootCutoffs {
+	return evedb.LootCutoffs{
+		Dropped:  now.Add(-lootContainerTTL()).Unix(),
+		Launched: now.Add(-launchedContainerTTL()).Unix(),
+	}
+}
+
+// lootExpired reports whether a container spawned at spawned has outlived its kind's clock.
+func lootExpired(containerID int64, spawned time.Time, cut evedb.LootCutoffs) bool {
+	if _, launched := launchedCans.Load(containerID); launched {
+		return spawned.Unix() < cut.Launched
+	}
+	return spawned.Unix() < cut.Dropped
 }
 
 // startLootStatsLog writes the loot roll tally to the log every 5 minutes and resets it
@@ -22708,10 +22738,21 @@ func startLootExpirySweep(tickMgr *tick.Manager) {
 		if globalSysMgr == nil || globalDB == nil {
 			return true
 		}
-		cutoff := time.Now().Add(-lootContainerTTL())
+		now := time.Now()
+		cut := lootCutoffs(now)
+		// The younger cutoff of the two kinds picks the candidates; lootExpired then holds
+		// each to its own kind's clock.
+		earliest := cut.Dropped
+		if cut.Launched > earliest {
+			earliest = cut.Launched
+		}
 		for _, ss := range globalSysMgr.All() {
-			for _, id := range ss.LootContainersOlderThan(cutoff) {
-				log.Printf("[death-loot] container %d expired (unlooted for %v)", id, lootContainerTTL())
+			for _, id := range ss.LootContainersOlderThan(time.Unix(earliest, 0)) {
+				spawned, ok := ss.LootSpawnedAt(uint32(id))
+				if !ok || !lootExpired(id, spawned, cut) {
+					continue
+				}
+				log.Printf("[death-loot] container %d expired (in space since %s)", id, spawned.Format(time.RFC3339))
 				despawnLootContainer(ss, id, globalDB)
 			}
 		}
@@ -22723,7 +22764,7 @@ func startLootExpirySweep(tickMgr *tick.Manager) {
 				loaded[ss.ID] = struct{}{}
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			n, err := evedb.DeleteExpiredLootContainers(ctx, globalDB, cutoff.Unix(), loaded)
+			n, err := evedb.DeleteExpiredLootContainers(ctx, globalDB, cut, loaded)
 			cancel()
 			if err != nil {
 				log.Printf("[death-loot] DeleteExpiredLootContainers: %v", err)
@@ -22797,6 +22838,10 @@ func startOrphanCapsuleSweep(tickMgr *tick.Manager, sqldb *sql.DB) {
 // system's loot slices qualify, so player-dropped cans are never affected.
 func despawnLootContainerIfEmpty(ds *destinyConn, sqldb *sql.DB, containerID int64) {
 	if sqldb == nil || !isLootContainer(ds, containerID) {
+		return
+	}
+	// A launched container stays until its clock runs out or its owner scoops it.
+	if _, launched := launchedCans.Load(containerID); launched {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

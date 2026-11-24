@@ -111,6 +111,7 @@
     "npc.fleeAlignSec": 12,
     "loot.playerDropChance": 0.5,
     "loot.containerHours": 2,
+    "loot.launchedContainerHours": 48,
     "loot.npcAnyChance": 0.65,
     "loot.npcLuckyChance": 0.20,
     "loot.npcJackpotChance": 0.05,

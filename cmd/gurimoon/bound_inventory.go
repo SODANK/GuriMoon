@@ -385,6 +385,9 @@ func boundGetItem(cc *callCtx) error {
 		} else if contID := bindNumFromCallStream(cs); isLootContainer(ds, contID) {
 			// Loot container bound: answer with the container row so capacity is computed against the can.
 			giItemID = contID
+		} else if contID := bindNumFromCallStream(cs); contID >= 100000000 && charID != 0 && isOwnedContainerBind(sqldb, charID, contID) {
+			// Hangar container bound: the container itself, so the window's gauge reads its hold.
+			giItemID = contID
 		} else if charID != 0 && sqldb != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			shipID, _ := evedb.GetCurrentShipID(ctx, sqldb, charID)
@@ -782,6 +785,26 @@ func boundGetCapacity(cc *callCtx) error {
 		// Station hangars are unlimited in this era.
 		return server.SendCallRsp(c, pkt, accountID, gcRow(9e15, 0))
 	}
+	// Jetcans and launched containers: the type's hold, 27,500 m³ when it names none.
+	if gcBind := bindNumFromCallStream(cs); sqldb != nil && isLootContainer(ds, gcBind) {
+		if _, isBay := ds.solarSystem.GetStarbaseSlim(uint32(gcBind)); !isBay {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			capacity, used := lootCanCapacity(ctx, sqldb, gcBind)
+			return server.SendCallRsp(c, pkt, accountID, gcRow(capacity, used))
+		}
+	}
+	// An assembled container in a hangar, ship or corp office: its own hold, not the ship's.
+	if gcBind := bindNumFromCallStream(cs); sqldb != nil && gcBind >= 100000000 {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		hc := hangarContainerRow(ctx, sqldb, charID, gcBind)
+		if hc != nil {
+			capacity, used := containerCapacity(ctx, sqldb, hc.TypeID, gcBind)
+			cancel()
+			return server.SendCallRsp(c, pkt, accountID, gcRow(capacity, used))
+		}
+		cancel()
+	}
 	// Structure bays and loot containers bind by their own itemID and answer
 	// with their own capacity.
 	if gcBind := bindNumFromCallStream(cs); sqldb != nil && (isStructureBay(ds, gcBind) || isLootContainer(ds, gcBind)) {
@@ -970,7 +993,7 @@ func boundRemoveCharges(cc *callCtx) error {
 				rcFlag = int64(pi.Value)
 			}
 		}
-		if rcFlag == 0 && cs.ArgDict.Items != nil {
+		if rcFlag == 0 && cs.ArgDict != nil {
 			for _, de := range cs.ArgDict.Items {
 				if ks, ok := de.Key.(marshal.PyString); ok && ks.Value == "flag" {
 					if pi, ok := de.Value.(marshal.PyInt); ok {
@@ -1087,9 +1110,10 @@ func jettisonItems(c *evenet.Conn, addr string, accountID, charID int64, ids []i
 		return
 	}
 
-	// Offset the container 2500 m from the ship.
+	// Offset the container 1000 m from the ship: clear of a bump, and well inside the
+	// client's 2500 m Open Cargo range so the jettisoner can keep filling it.
 	shipPos := ds.entity.Pos()
-	containerPos := destiny.Vec3{X: shipPos.X + 2500, Y: shipPos.Y, Z: shipPos.Z}
+	containerPos := destiny.Vec3{X: shipPos.X + 1000, Y: shipPos.Y, Z: shipPos.Z}
 
 	containerID, err := evedb.CreateLootContainer(ctx, sqldb, charID, ds.sysID,
 		containerPos.X, containerPos.Y, containerPos.Z)
@@ -1100,9 +1124,21 @@ func jettisonItems(c *evenet.Conn, addr string, accountID, charID int64, ids []i
 
 	moved := 0
 	types := make(map[int64]struct{})
+	var canUsed float64 // a jetcan holds jetcanDefaultCapacity; what does not fit stays aboard
 	for _, it := range items {
 		er := it.er
 		moveItemID := er.ItemID
+		moveQty := er.Quantity
+		if qty > 0 && len(items) == 1 && qty < er.Quantity {
+			moveQty = qty
+		}
+		need := evedb.ItemVolume(ctx, sqldb, er.ItemID, er.TypeID) * float64(moveQty)
+		if canUsed+need > jetcanDefaultCapacity+1e-6 {
+			log.Printf("[%s] Jettison: item %d (%.1f m3) does not fit the can (%.1f of %.0f m3 used) — kept aboard",
+				addr, er.ItemID, need, canUsed, jetcanDefaultCapacity)
+			continue
+		}
+		canUsed += need
 		if qty > 0 && len(items) == 1 && qty < er.Quantity {
 			splitID, splitErr := evedb.SplitStackN(ctx, sqldb, moveItemID, qty)
 			if splitErr != nil {
@@ -1139,6 +1175,9 @@ func jettisonItems(c *evenet.Conn, addr string, accountID, charID int64, ids []i
 	if moved == 0 {
 		// Every move failed: drop the empty container row rather than spawn an empty can.
 		_ = evedb.DeleteLootContainer(ctx, sqldb, containerID)
+		if canUsed == 0 {
+			platformNotify(ds, fmt.Sprintf("Jettison: that does not fit in a cargo container (%.0f m3 at most).", jetcanDefaultCapacity))
+		}
 		return
 	}
 

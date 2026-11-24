@@ -38,21 +38,13 @@ func boundMultiAdd(cc *callCtx) error {
 			}
 		}
 	}
-	var maQty int64 // 0 = all; the client sends None for whole stacks
-	if len(cs.ArgTuple.Items) >= 2 {
-		if pi, ok := cs.ArgTuple.Items[1].(marshal.PyInt); ok {
-			maQty = int64(pi.Value)
-		}
-	}
-	var maFlag int64
-	if len(cs.ArgTuple.Items) >= 3 {
-		if pi, ok := cs.ArgTuple.Items[2].(marshal.PyInt); ok {
-			maFlag = int64(pi.Value)
-		}
-	}
+	// qty 0 = all; the client sends None for whole stacks. A drag from another
+	// container's window sends (ids, sourceID, flag=...) (invAddArgs).
+	maQty, maFlag := invAddArgs(cs)
 	maIsHangar := cs.RemoteObject == hangarBindID ||
 		strings.HasSuffix(cs.RemoteObjectStr, fmt.Sprintf(":%d", hangarBindID))
-	log.Printf("[%s] bound.MultiAdd itemIDs=%v qty=%d flag=%d isHangar=%v charID=%d", addr, maItemIDs, maQty, maFlag, maIsHangar, charID)
+	log.Printf("[%s] bound.MultiAdd itemIDs=%v qty=%d flag=%d isHangar=%v charID=%d bind=%d args=%v kwargs=%v",
+		addr, maItemIDs, maQty, maFlag, maIsHangar, charID, bindNumFromCallStream(cs), cs.ArgTuple, cs.ArgDict)
 	if courierSealBlocks(sqldb, cs, maItemIDs) {
 		log.Printf("[%s] bound.MultiAdd: refused — courier package is sealed", addr)
 		return sendNotInMissionPackage(c, pkt, accountID)
@@ -62,12 +54,22 @@ func boundMultiAdd(cc *callCtx) error {
 		log.Printf("[%s] bound.MultiAdd: refused — member hangar is view only", addr)
 		return corpUserErr(c, pkt, accountID, "That hangar is view only.")
 	}
+	// Jetcan, kill can or launched container in space: a multi-item drop (jetcan.go).
+	if contBind := bindNumFromCallStream(cs); !maIsHangar && isLootContainer(ds, contBind) {
+		for _, maItemID := range maItemIDs {
+			if refused, err := handleLootCanAdd(c, addr, pkt, accountID, charID, contBind, maItemID, 0, sqldb, ds); refused {
+				return err
+			}
+		}
+		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+	}
 	// The pilot's own assembled container (alsc.go): multi-item drop.
 	if !maIsHangar && sqldb != nil && charID != 0 {
 		if contBind := bindNumFromCallStream(cs); contBind >= 100000000 && isOwnedContainerBind(sqldb, charID, contBind) {
 			for _, maItemID := range maItemIDs {
-				if _, err := handleContainerAdd(c, addr, pkt, accountID, charID, derefStation(stationID),
-					contBind, maItemID, 0, false, sqldb, ds); err != nil {
+				// Stop at the first refusal: it has answered the call.
+				if refused, err := handleContainerAddRefused(c, addr, pkt, accountID, charID, derefStation(stationID),
+					contBind, maItemID, 0, false, sqldb, ds); refused || err != nil {
 					return err
 				}
 			}
@@ -194,6 +196,11 @@ func boundMultiAdd(cc *callCtx) error {
 		// the loop.
 		maSrcLocs := map[int64]bool{}
 		maTold := map[string]bool{} // fit refusals already shown this call
+		maRefusal := ""             // first refusal, shown when nothing moved
+		maMoved := false
+		if maFlag == 0 && lootTakeDefaultsToCargo(ctx, sqldb, ds, maItemIDs) {
+			maFlag = dogma.FlagCargo
+		}
 		shipER, _ := evedb.GetEntityRow(ctx, sqldb, shipID)
 		var hiSlots, medSlots, loSlots int64
 		var cpuOutput, pgOutput float64
@@ -226,6 +233,9 @@ func boundMultiAdd(cc *callCtx) error {
 			if !maOK {
 				log.Printf("[%s] bound.MultiAdd: refused item %d (loc %d owner %d): %s",
 					addr, maItemID, oldER.LocationID, oldER.OwnerID, maWhy)
+				if maRefusal == "" {
+					maRefusal = maWhy
+				}
 				continue
 			}
 			if maSrc == srcStructureBay && !structureTakeAllowed(ctx, addr, sqldb, ds, oldER.LocationID, charID, oldER.Flag) {
@@ -255,7 +265,7 @@ func boundMultiAdd(cc *callCtx) error {
 				}
 				if newOwner := takeOwnerFor(maSrc, charID, oldER.OwnerID); newOwner != oldER.OwnerID {
 					_ = evedb.SetEntityOwner(ctx, sqldb, maItemID, newOwner)
-					noteLootTake(ctx, sqldb, ds, maSrc, charID, oldER.OwnerID)
+					noteLootTake(ctx, sqldb, ds, maSrc, charID, oldER.OwnerID, oldER.LocationID)
 				}
 				if newER, _ := evedb.GetEntityRow(ctx, sqldb, maItemID); newER != nil {
 					changeDict := marshal.PyDict{Items: []marshal.DictEntry{
@@ -268,6 +278,7 @@ func boundMultiAdd(cc *callCtx) error {
 				}
 				log.Printf("[%s] bound.MultiAdd: moved item %d (qty %d) → drone bay of ship %d", addr, maItemID, oldER.Quantity, shipID)
 				maSrcLocs[oldER.LocationID] = true
+				maMoved = true
 				continue
 			}
 			// Cargo drops (MultiAdd(ids, None, 5)) move the whole stack; the module
@@ -296,7 +307,7 @@ func boundMultiAdd(cc *callCtx) error {
 					continue
 				}
 				if newOwnerID != oldOwnerID {
-					noteLootTake(ctx, sqldb, ds, maSrc, charID, oldOwnerID)
+					noteLootTake(ctx, sqldb, ds, maSrc, charID, oldOwnerID, oldER.LocationID)
 				}
 				if newER, _ := evedb.GetEntityRow(ctx, sqldb, maItemID); newER != nil {
 					changeDict := itemMoveChange(newER, oldOwnerID, oldER.LocationID, oldER.Flag)
@@ -306,6 +317,7 @@ func boundMultiAdd(cc *callCtx) error {
 				}
 				log.Printf("[%s] bound.MultiAdd(cargo): moved item %d → cargo (ship %d)", addr, maItemID, shipID)
 				maSrcLocs[oldER.LocationID] = true
+				maMoved = true
 				continue
 			}
 			// Charge loads arrive through bound.Add, never here; a charge must not
@@ -445,6 +457,7 @@ func boundMultiAdd(cc *callCtx) error {
 			}
 			log.Printf("[%s] bound.MultiAdd: fitted item %d → ship %d flag %d", addr, fitItemID, shipID, targetFlag)
 			maSrcLocs[oldLocID] = true
+			maMoved = true
 			// Auto-online runs fitOnlineRefusal; a refused module stays offline and
 			// the pilot is told once per refusal kind. See docs/cmd-misc-notes.md#fit-online-refusal.
 			if refKey, refDict := fitOnlineRefusal(ctx, sqldb, charID, shipID, fitItemID,
@@ -469,6 +482,9 @@ func boundMultiAdd(cc *callCtx) error {
 		sendShipFittingStats(c, accountID, charID, shipID, sqldb)
 		pushWeaponAttrs(c, accountID, charID, shipID, sqldb, ds.activeEffectIDs())
 		broadcastSlimItemChange(c, accountID, ds, shipID, sqldb)
+		if !maMoved && maRefusal != "" {
+			return corpUserErr(c, pkt, accountID, "You cannot move that item: "+maRefusal+".")
+		}
 	}
 	return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 }
@@ -488,21 +504,11 @@ func boundAdd(cc *callCtx) error {
 		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
 	addItemID := int64(addItemIDRep.Value)
-	var addQty int64 // 0 means "all"
-	if len(cs.ArgTuple.Items) >= 2 {
-		if pi, ok := cs.ArgTuple.Items[1].(marshal.PyInt); ok {
-			addQty = int64(pi.Value)
-		}
-	}
-	var addFlag int64
-	if len(cs.ArgTuple.Items) >= 3 {
-		if pi, ok := cs.ArgTuple.Items[2].(marshal.PyInt); ok {
-			addFlag = int64(pi.Value)
-		}
-	}
+	addQty, addFlag := invAddArgs(cs) // qty 0 means "all"
 	addIsHangar := cs.RemoteObject == hangarBindID ||
 		strings.HasSuffix(cs.RemoteObjectStr, fmt.Sprintf(":%d", hangarBindID))
-	log.Printf("[%s] bound.Add itemID=%d qty=%d flag=%d isHangar=%v charID=%d", addr, addItemID, addQty, addFlag, addIsHangar, charID)
+	log.Printf("[%s] bound.Add itemID=%d qty=%d flag=%d isHangar=%v charID=%d bind=%d args=%v kwargs=%v",
+		addr, addItemID, addQty, addFlag, addIsHangar, charID, bindNumFromCallStream(cs), cs.ArgTuple, cs.ArgDict)
 	// Courier packages are sealed both ways: nothing comes out before delivery
 	// and nothing goes in.
 	if courierSealBlocks(sqldb, cs, []int64{addItemID}) {
@@ -518,6 +524,14 @@ func boundAdd(cc *callCtx) error {
 	if contBind := bindNumFromCallStream(cs); isNPCCargo(ds, contBind) {
 		refused, err := handleDunCargoAdd(c, addr, pkt, accountID, charID, contBind, addItemID, addQty, sqldb, ds)
 		return sendNoneAfterDunCargoAdd(c, pkt, accountID, refused, err)
+	}
+	// Jetcan, kill can or launched container in space: a drop into it (jetcan.go).
+	if contBind := bindNumFromCallStream(cs); !addIsHangar && isLootContainer(ds, contBind) {
+		refused, err := handleLootCanAdd(c, addr, pkt, accountID, charID, contBind, addItemID, addQty, sqldb, ds)
+		if refused {
+			return err
+		}
+		return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
 	// Member hangar binds are view only (both client windows are oneWay).
 	// See docs/corp-notes.md#member-hangars.
@@ -564,6 +578,9 @@ func boundAdd(cc *callCtx) error {
 		}
 		// Refuse anything the caller could not have dragged from an open window.
 		// See docs/cmd-misc-notes.md#item-source.
+		if addFlag == 0 && !addIsHangar && lootTakeDefaultsToCargo(ctx, sqldb, ds, []int64{addItemID}) {
+			addFlag = dogma.FlagCargo
+		}
 		addShipID, _ := evedb.GetCurrentShipID(ctx, sqldb, charID)
 		addSrc, addWhy, addOK := authorizeItemMove(ctx, sqldb, ds, charID, addShipID, *stationID,
 			oldER, itemDestFor(addIsHangar, addFlag))
@@ -879,6 +896,9 @@ func boundAdd(cc *callCtx) error {
 							evedb.BuildEntityRow(newER), marshal.PyDict{},
 						}})
 					}
+					if oldER.OwnerID != charID {
+						noteLootTake(ctx, sqldb, ds, addSrc, charID, oldER.OwnerID, oldLocID)
+					}
 					log.Printf("[%s] bound.Add: split %d of %d → cargo (ship %d)", addr, moveQty, addItemID, shipID)
 					mergeSplitPiece(ctx, c, addr, accountID, newItemID, oldLocID, oldFlag, sqldb)
 				} else {
@@ -894,7 +914,7 @@ func boundAdd(cc *callCtx) error {
 						return server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 					}
 					if newOwnerID != oldOwnerID {
-						noteLootTake(ctx, sqldb, ds, addSrc, charID, oldOwnerID)
+						noteLootTake(ctx, sqldb, ds, addSrc, charID, oldOwnerID, oldLocID)
 					}
 					newER, _ := evedb.GetEntityRow(ctx, sqldb, addItemID)
 					if newER != nil {
@@ -978,7 +998,7 @@ func boundAdd(cc *callCtx) error {
 					}
 					if newOwner := takeOwnerFor(addSrc, charID, oldER.OwnerID); newOwner != oldER.OwnerID {
 						_ = evedb.SetEntityOwner(ctx, sqldb, addItemID, newOwner)
-						noteLootTake(ctx, sqldb, ds, addSrc, charID, oldER.OwnerID)
+						noteLootTake(ctx, sqldb, ds, addSrc, charID, oldER.OwnerID, oldLocID)
 					}
 					if newER, _ := evedb.GetEntityRow(ctx, sqldb, addItemID); newER != nil {
 						changeDict := marshal.PyDict{Items: []marshal.DictEntry{

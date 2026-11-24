@@ -217,6 +217,14 @@ func (ss *SolarSystem) LootContainersOlderThan(cutoff time.Time) []int64 {
 	return ids
 }
 
+// LootSpawnedAt returns a loot container's spawn time, for the expiry sweep.
+func (ss *SolarSystem) LootSpawnedAt(entityID uint32) (time.Time, bool) {
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	t, ok := ss.LootSpawned[entityID]
+	return t, ok
+}
+
 // RemoveLootContainer drops a loot container from the system's shared slices.
 // Returns true if the entity was found and removed.
 func (ss *SolarSystem) RemoveLootContainer(entityID uint32) bool {

@@ -178,11 +178,16 @@ func warpableBall(ds *destinyConn, ballID uint32) (pos destiny.Vec3, radius floa
 // noteLootTake is called by the generic Add/MultiAdd paths beside takeOwnerFor,
 // the moment a row changes hands, for a take out of an in-space container.
 // Anything else, or the law switch off, is a no-op.
-func noteLootTake(ctx context.Context, sqldb *sql.DB, ds *destinyConn, kind itemSourceKind, charID, oldOwner int64) {
+func noteLootTake(ctx context.Context, sqldb *sql.DB, ds *destinyConn, kind itemSourceKind, charID, oldOwner, containerID int64) {
 	if kind != srcLootContainer || !lootTheftAggroEnabled() {
 		return
 	}
 	if ds == nil || ds.solarSystem == nil || sqldb == nil || oldOwner <= 0 || oldOwner == charID {
+		return
+	}
+	// Rights to the container cover everything in it: the can owner's corp and fleet
+	// take freely, whoever dropped the stack in.
+	if containerLootRights(ctx, sqldb, charID, ds.corpID, containerID) {
 		return
 	}
 	owner := resolveLootOwner(ctx, sqldb, oldOwner)

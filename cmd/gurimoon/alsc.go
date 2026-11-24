@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -116,7 +117,17 @@ func ownedContainerRow(ctx context.Context, sqldb *sql.DB, charID, itemID int64)
 	if err != nil || er == nil || er.Singleton == 0 || er.OwnerID != charID || !evedb.IsContainerGroup(er.GroupID) {
 		return nil
 	}
+	// A container floating in space (the pilot's own jetcan or launched can) is an in-space
+	// inventory: range-checked and open to drops from anyone (jetcan.go), not a hangar one.
+	if isSolarSystemID(er.LocationID) {
+		return nil
+	}
 	return er
+}
+
+// isSolarSystemID reports whether a locationID names a solar system, i.e. the row is in space.
+func isSolarSystemID(id int64) bool {
+	return id >= 30000000 && id < 32000000
 }
 
 // spaceSecureCanRow answers whether itemID is an assembled secure container floating or
@@ -133,6 +144,34 @@ func spaceSecureCanRow(ctx context.Context, sqldb *sql.DB, itemID int64) *evedb.
 	return er
 }
 
+// hangarContainer is an assembled container the caller may open as its own inventory: their
+// own, in their hangar or ship, or their corp's, standing in a division of a corp office.
+type hangarContainer struct {
+	*evedb.EntityRow
+	OfficeCorpID    int64 // non-zero: a corp container in an office
+	OfficeStationID int64
+}
+
+// hangarContainerRow answers "is this a container the caller may bind": ownedContainerRow, or a
+// corp-owned assembled container in an office of the caller's corp. Roles are checked per action.
+func hangarContainerRow(ctx context.Context, sqldb *sql.DB, charID, itemID int64) *hangarContainer {
+	if er := ownedContainerRow(ctx, sqldb, charID, itemID); er != nil {
+		return &hangarContainer{EntityRow: er}
+	}
+	if sqldb == nil || charID == 0 || itemID < 100_000_000 {
+		return nil
+	}
+	er, err := evedb.GetEntityRow(ctx, sqldb, itemID)
+	if err != nil || er == nil || er.Singleton == 0 || !evedb.IsContainerGroup(er.GroupID) {
+		return nil
+	}
+	corpID, stationID, _, err := evedb.GetOfficeByItemID(ctx, sqldb, er.LocationID)
+	if err != nil || corpID == 0 || er.OwnerID != corpID || boundCharCorpID(charID, sqldb) != corpID {
+		return nil
+	}
+	return &hangarContainer{EntityRow: er, OfficeCorpID: corpID, OfficeStationID: stationID}
+}
+
 // isOwnedContainerBind is the GetInventoryFromId probe: cheap enough for the
 // bind path because it only runs for IDs in the entity band.
 func isOwnedContainerBind(sqldb *sql.DB, charID, itemID int64) bool {
@@ -141,7 +180,14 @@ func isOwnedContainerBind(sqldb *sql.DB, charID, itemID int64) bool {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return ownedContainerRow(ctx, sqldb, charID, itemID) != nil
+	return hangarContainerRow(ctx, sqldb, charID, itemID) != nil
+}
+
+// containerCapacity is a hangar container's hold and what is already in it.
+func containerCapacity(ctx context.Context, sqldb *sql.DB, typeID, contID int64) (capacity, used float64) {
+	capacity, _ = evedb.GetModuleCapacity(ctx, sqldb, typeID)
+	used, _ = evedb.GetContainerUsedVolume(ctx, sqldb, contID)
+	return capacity, used
 }
 
 func containerLog(ctx context.Context, sqldb *sql.DB, er *evedb.EntityRow, charID, action, arg1, arg2, flag int64, ok bool) {
@@ -180,9 +226,15 @@ func gateContainer(ctx context.Context, c *evenet.Conn, pkt *evenet.PyPacket, ac
 func listOwnedContainer(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountID, charID, contID int64, sqldb *sql.DB) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	er := ownedContainerRow(ctx, sqldb, charID, contID)
-	if er == nil {
+	hc := hangarContainerRow(ctx, sqldb, charID, contID)
+	if hc == nil {
 		return false, nil
+	}
+	er := hc.EntityRow
+	// A corp container shows its contents to whoever may view its division.
+	if hc.OfficeCorpID != 0 && !slices.Contains(corpHangarQueryFlagsAt(ctx, sqldb, hc.OfficeCorpID, charID, hc.OfficeStationID), er.Flag) {
+		log.Printf("[%s] → bound.List(corp container %d): no view role for division %d", addr, contID, er.Flag)
+		return true, server.SendCallRsp(c, pkt, accountID, makeInvRowset(invBrokerItemCols, nil))
 	}
 	if _, ok, err := gateContainer(ctx, c, pkt, accountID, charID, sqldb, er, evedb.ALSCNeedPasswordToOpen, false); !ok {
 		return true, err
@@ -196,23 +248,42 @@ func listOwnedContainer(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accou
 	return true, server.SendCallRsp(c, pkt, accountID, r)
 }
 
-// handleContainerAdd moves one of the caller's items INTO a container bind.
-// Taking out goes through the generic Add path, where classifyItemSource
-// already answers srcOwnNested for the container's contents and refuses a
-// locked item.
+// handleContainerAdd moves an item INTO a container bind: from the pilot's hangar or ship into a
+// container in their hangar or ship (either way while docked), between an ALSC's flags, or, for
+// a corp container in an office, from the pilot or another division of that office under the
+// division take role. Taking out goes through the generic Add path, where classifyItemSource
+// answers srcOwnNested for the container's contents and refuses a locked item, and through
+// handleOfficeTake for a corp container. handled=false means contID is not a container bind.
+// reply=false (MultiAdd) answers only a refusal; see handleContainerAddRefused.
 func handleContainerAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountID, charID, stationID, contID, itemID, qty int64,
 	reply bool, sqldb *sql.DB, ds *destinyConn) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cont := ownedContainerRow(ctx, sqldb, charID, contID)
-	if cont == nil {
+	_, err := handleContainerAddRefused(c, addr, pkt, accountID, charID, stationID, contID, itemID, qty, reply, sqldb, ds)
+	if err == errContainerNotMine {
 		return false, nil
 	}
+	return true, err
+}
+
+// errContainerNotMine is handleContainerAddRefused's "not a container bind" answer.
+var errContainerNotMine = errors.New("not a hangar container")
+
+// handleContainerAddRefused is handleContainerAdd reporting whether the call was already answered
+// with a refusal, so a MultiAdd stops there. err is errContainerNotMine when contID is not a
+// container the caller may bind.
+func handleContainerAddRefused(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountID, charID, stationID, contID, itemID, qty int64,
+	reply bool, sqldb *sql.DB, ds *destinyConn) (refused bool, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	hc := hangarContainerRow(ctx, sqldb, charID, contID)
+	if hc == nil {
+		return false, errContainerNotMine
+	}
+	cont := hc.EntityRow
 	answer := func(err error) (bool, error) {
 		if err != nil || !reply {
-			return true, err
+			return false, err
 		}
-		return true, server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
+		return false, server.SendCallRsp(c, pkt, accountID, marshal.PyNone{})
 	}
 	refuse := func(msg string) (bool, error) {
 		return true, corpUserErr(c, pkt, accountID, msg)
@@ -231,27 +302,61 @@ func handleContainerAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accou
 		return refuse("An assembled container cannot be put inside another container.")
 	}
 	shipID, _ := evedb.GetCurrentShipID(ctx, sqldb, charID)
-	if _, why, ok := authorizeItemMove(ctx, sqldb, ds, charID, shipID, stationID, er, destCargo); !ok {
-		return refuse("You cannot move that item: " + why + ".")
-	}
-	if er.OwnerID != charID {
-		return refuse("You can only put your own items in a container.")
-	}
-	if cont.LocationID != er.LocationID && cont.ItemID != er.LocationID {
-		// Same hangar or same ship as the container, or already inside it
-		// (a move between its own flags).
-		return refuse("The container and the item must be in the same place.")
+	alreadyInside := er.LocationID == contID
+	newOwner := er.OwnerID
+	if hc.OfficeCorpID != 0 {
+		// Corp container: docked at its office, with the take role on its division.
+		if stationID == 0 || stationID != hc.OfficeStationID {
+			return refuse("You must be docked at that office's station.")
+		}
+		if !corpHangarMayTakeAt(ctx, sqldb, hc.OfficeCorpID, charID, hc.OfficeStationID, cont.Flag) {
+			return refuse("You do not have the hangar role for that division.")
+		}
+		if !alreadyInside {
+			if officeID, _, _, divFlag, ok := officeOfRow(ctx, sqldb, er); ok && officeID == cont.LocationID {
+				// From another division of the same office (or another container in it).
+				if !corpHangarMayTakeAt(ctx, sqldb, hc.OfficeCorpID, charID, hc.OfficeStationID, divFlag) {
+					return refuse("You do not have the hangar role for that division.")
+				}
+				if evedb.IsItemLockedDown(ctx, sqldb, er.ItemID) {
+					return true, clientMsgErr(c, pkt, accountID, evedb.LockMsgItemIsLocked, nil)
+				}
+			} else {
+				if _, why, ok := authorizeItemMove(ctx, sqldb, ds, charID, shipID, stationID, er, destCargo); !ok {
+					return refuse("You cannot move that item: " + why + ".")
+				}
+				if er.OwnerID != charID {
+					return refuse("You can only donate your own items to the corporation hangar.")
+				}
+				newOwner = hc.OfficeCorpID
+			}
+		}
+	} else if !alreadyInside {
+		// The pilot's own container, reachable from where they are: in their ship, or on the
+		// floor of the station they are docked in.
+		reachable := (shipID != 0 && cont.LocationID == shipID) || (stationID != 0 && cont.LocationID == stationID)
+		if !reachable {
+			return refuse("You cannot reach that container from here.")
+		}
+		if _, why, ok := authorizeItemMove(ctx, sqldb, ds, charID, shipID, stationID, er, destCargo); !ok {
+			return refuse("You cannot move that item: " + why + ".")
+		}
+		if er.OwnerID != charID {
+			return refuse("You can only put your own items in a container.")
+		}
 	}
 	// Capacity: the container's type capacity against what is already in it.
-	capacity, _ := evedb.GetModuleCapacity(ctx, sqldb, cont.TypeID)
-	used, _ := evedb.GetContainerUsedVolume(ctx, sqldb, contID)
-	unitVol, _ := evedb.GetTypeVolume(ctx, sqldb, er.TypeID)
+	capacity, used := containerCapacity(ctx, sqldb, cont.TypeID, contID)
+	unitVol := evedb.ItemVolume(ctx, sqldb, er.ItemID, er.TypeID)
 	moveQty := er.Quantity
 	if qty > 0 && qty < er.Quantity {
 		moveQty = qty
 	}
-	if er.LocationID != contID && capacity > 0 && used+unitVol*float64(moveQty) > capacity+1e-6 {
-		return refuse(fmt.Sprintf("The container is full: %.1f of %.1f m³ used.", used, capacity))
+	if !alreadyInside && capacity > 0 && used+unitVol*float64(moveQty) > capacity+1e-6 {
+		return true, clientMsgErr(c, pkt, accountID, "NotEnoughCargoSpace", map[string]marshal.PyRep{
+			"volume":    marshal.PyReal{Value: unitVol * float64(moveQty)},
+			"available": marshal.PyReal{Value: max(capacity-used, 0)},
+		})
 	}
 	// Inside an ALSC every item carries its lock state as its flag; in any
 	// other container the contents sit at flag 0.
@@ -260,9 +365,16 @@ func handleContainerAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accou
 		insideFlag = evedb.FlagUnlocked
 	}
 	oldFlag := er.Flag
+	if er.Flag >= 11 && er.Flag <= 34 && er.LocationID == shipID {
+		// A fitted module or loaded charge: take it off the ship cleanly first.
+		prepFittedModuleForCargo(ctx, c, addr, accountID, charID, shipID, er, sqldb)
+	}
 	moveID, err := moveStackIntoContainer(ctx, c, accountID, sqldb, er, contID, moveQty, insideFlag)
 	if err != nil {
 		return refuse(err.Error())
+	}
+	if newOwner != er.OwnerID {
+		_ = evedb.SetEntityOwner(ctx, sqldb, moveID, newOwner)
 	}
 	containerLog(ctx, sqldb, cont, charID, evedb.ALSCActionAdd, er.TypeID, moveQty, oldFlag, true)
 	log.Printf("[%s] → container %d: item %d (type %d ×%d) added by char %d", addr, contID, moveID, er.TypeID, moveQty, charID)

@@ -476,11 +476,13 @@ func handleOfficeAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountI
 	}
 	// Moving WITHIN the office (division tab to division tab) is a corp-item
 	// move; anything coming in from outside must be the pilot's own property.
-	fromInside := oldER.LocationID == officeID
+	// A corp container in this office counts as inside it.
+	srcOffice, _, _, srcDiv, srcInOffice := officeOfRow(ctx, sqldb, oldER)
+	fromInside := srcInOffice && srcOffice == officeID
 	if !fromInside && oldER.OwnerID != charID {
 		return rsp(corpUserErr(c, pkt, accountID, "You can only donate your own items to the corporation hangar."))
 	}
-	if fromInside && !corpHangarMayTakeAt(ctx, sqldb, officeCorpID, charID, officeStationID, oldER.Flag) {
+	if fromInside && !corpHangarMayTakeAt(ctx, sqldb, officeCorpID, charID, officeStationID, srcDiv) {
 		return rsp(corpUserErr(c, pkt, accountID, "You do not have the hangar role for that division."))
 	}
 	// A locked-down print stays in its division (corplockdown.go). Using it
@@ -550,6 +552,26 @@ func handleOfficeAdd(c *evenet.Conn, addr string, pkt *evenet.PyPacket, accountI
 	return rsp(server.SendCallRsp(c, pkt, accountID, marshal.PyNone{}))
 }
 
+// officeOfRow finds the corp office an item is in: on a division floor, or inside an assembled
+// container standing in one. divFlag is the division its role checks use: the item's own flag,
+// or the container's.
+func officeOfRow(ctx context.Context, sqldb *sql.DB, er *evedb.EntityRow) (officeID, corpID, stationID, divFlag int64, ok bool) {
+	if er == nil || sqldb == nil {
+		return 0, 0, 0, 0, false
+	}
+	if corpID, stationID, _, err := evedb.GetOfficeByItemID(ctx, sqldb, er.LocationID); err == nil && corpID != 0 {
+		return er.LocationID, corpID, stationID, er.Flag, true
+	}
+	parent, err := evedb.GetEntityRow(ctx, sqldb, er.LocationID)
+	if err != nil || parent == nil || !evedb.IsContainerGroup(parent.GroupID) {
+		return 0, 0, 0, 0, false
+	}
+	if corpID, stationID, _, err := evedb.GetOfficeByItemID(ctx, sqldb, parent.LocationID); err == nil && corpID != 0 {
+		return parent.LocationID, corpID, stationID, parent.Flag, true
+	}
+	return 0, 0, 0, 0, false
+}
+
 // handleOfficeTakeToHangar is bound.Add/MultiAdd arriving on the station hangar for an item that
 // lives inside a corp office: the take-out drag. The item becomes the taker's property, role-gated
 // on the source division. handled=false when the item is not in an office.
@@ -567,8 +589,9 @@ func handleOfficeTake(c *evenet.Conn, addr string, pkt *evenet.PyPacket, account
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	officeCorpID, officeStationID, _, err := evedb.GetOfficeByItemID(ctx, sqldb, oldER.LocationID)
-	if err != nil || officeCorpID == 0 {
+	// The item may sit on a division floor or inside a corp container in one.
+	_, officeCorpID, officeStationID, divFlag, inOffice := officeOfRow(ctx, sqldb, oldER)
+	if !inOffice {
 		return false, nil
 	}
 	rsp := func(e error) (bool, error) {
@@ -581,7 +604,7 @@ func handleOfficeTake(c *evenet.Conn, addr string, pkt *evenet.PyPacket, account
 	if boundCharCorpID(charID, sqldb) != officeCorpID || stationID != officeStationID {
 		return rsp(corpUserErr(c, pkt, accountID, "That item belongs to another corporation."))
 	}
-	if !corpHangarMayTakeAt(ctx, sqldb, officeCorpID, charID, officeStationID, oldER.Flag) {
+	if !corpHangarMayTakeAt(ctx, sqldb, officeCorpID, charID, officeStationID, divFlag) {
 		return rsp(corpUserErr(c, pkt, accountID, "You do not have the hangar role to take from that division."))
 	}
 	if evedb.IsItemLockedDown(ctx, sqldb, oldER.ItemID) {
