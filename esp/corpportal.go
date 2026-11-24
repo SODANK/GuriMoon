@@ -61,11 +61,53 @@ func corpPortalSite(corp *evedb.ESPCorpFull, public bool) igbSite {
 	secs := append([]CorpPortalSection(nil), CorpPortalSections...)
 	sort.SliceStable(secs, func(i, j int) bool { return secs[i].Order < secs[j].Order })
 	for _, sec := range secs {
-		if !sec.Chartered {
+		// A section for some members only is added by withViewerNav, which knows who is looking.
+		if !sec.Chartered && sec.Visible == nil {
 			site.Nav = append(site.Nav, igbNavItem{sec.Key, sec.Label, sec.Path})
 		}
 	}
 	site.Nav = append(site.Nav, igbNavItem{"directory", "Directory", "/corp/directory"})
+	return site
+}
+
+// withViewerNav adds the sections shown to some members only (CorpPortalSection.Visible) to the
+// menu of the viewer's own corporation, each where its Order puts it. A section whose test fails
+// or panics is left out. Profile pages and chartered corporations never call it.
+func withViewerNav(ctx context.Context, site igbSite, corp *evedb.ESPCorpFull, viewer int64) igbSite {
+	if corp == nil || viewer == 0 || len(site.Nav) == 0 {
+		return site
+	}
+	shown := func(sec CorpPortalSection) (ok bool) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("igb: corp portal section %s: %v", sec.Key, rec)
+				ok = false
+			}
+		}()
+		return sec.Visible(ctx, corp.CorporationID, viewer)
+	}
+	var secs []CorpPortalSection
+	extra := false
+	for _, sec := range CorpPortalSections {
+		switch {
+		case sec.Chartered:
+		case sec.Visible == nil:
+			secs = append(secs, sec)
+		case shown(sec):
+			secs = append(secs, sec)
+			extra = true
+		}
+	}
+	if !extra {
+		return site
+	}
+	sort.SliceStable(secs, func(i, j int) bool { return secs[i].Order < secs[j].Order })
+	// Overview first and Directory last, as corpPortalSite leaves them.
+	nav := []igbNavItem{site.Nav[0]}
+	for _, sec := range secs {
+		nav = append(nav, igbNavItem{sec.Key, sec.Label, sec.Path})
+	}
+	site.Nav = append(nav, site.Nav[len(site.Nav)-1])
 	return site
 }
 
@@ -168,7 +210,7 @@ func (s *NewsServer) handleCorpPortal(w http.ResponseWriter, r *http.Request) {
 		s.writeCorpDirectory(ctx, &b, site, true)
 		finishSitePage(w, &b, site, 0)
 	default:
-		site := corpPortalSite(corp, false)
+		site := withViewerNav(ctx, corpPortalSite(corp, false), corp, igbIdentity(r).ID)
 		writeCorpPortalHeader(&b, site, "overview")
 		s.writeCorpOverview(ctx, &b, site, corp, r, igbIdentity(r).ID)
 		finishSitePage(w, &b, site, 0)
@@ -206,6 +248,9 @@ func (s *NewsServer) handleCorpDirectory(w http.ResponseWriter, r *http.Request)
 	defer cancel()
 	corp, npc := s.viewerCorp(ctx, r)
 	site := corpPortalSite(corp, npc || corp == nil)
+	if corp != nil && !npc {
+		site = withViewerNav(ctx, site, corp, igbIdentity(r).ID)
+	}
 	var b strings.Builder
 	writeCorpPortalHeader(&b, site, "directory")
 	b.WriteString("<br>")
@@ -221,14 +266,16 @@ func WriteCorpPortalPage(w http.ResponseWriter, r *http.Request, key, body strin
 	srv := corpPortalServer
 	var corp *evedb.ESPCorpFull
 	npc := false
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
 	if srv != nil {
-		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		corp, npc = srv.viewerCorp(ctx, r)
-		cancel()
 	}
 	site := corpPortalSite(corp, npc)
 	if npc {
 		site = withCharteredNav(site, corp)
+	} else {
+		site = withViewerNav(ctx, site, corp, igbIdentity(r).ID)
 	}
 	var b strings.Builder
 	writeCorpPortalHeader(&b, site, key)

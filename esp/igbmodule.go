@@ -31,6 +31,10 @@ type CorpPortalSection struct {
 	// Chartered shows the section only to a chartered (NPC) corporation's own
 	// members, and only when CorpPortalChartered says a module runs it.
 	Chartered bool
+	// Visible shows the section only to the members it answers true for. Nil shows it to every
+	// member. The viewer comes from a forgeable header, so this keeps the menu tidy and nothing
+	// more: the section's handler decides for itself who may see or do what.
+	Visible func(ctx context.Context, corpID, charID int64) bool
 }
 
 // CorpPortalSections is populated by modules before NewNewsServer runs.
