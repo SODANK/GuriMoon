@@ -660,7 +660,7 @@ func boundAdd(cc *callCtx) error {
 				newER, _ := evedb.GetEntityRow(ctx, sqldb, newItemID)
 				if newER != nil {
 					_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-						evedb.BuildEntityRow(newER), marshal.PyDict{},
+						evedb.BuildEntityRow(newER), newItemChange(),
 					}})
 				}
 				log.Printf("[%s] bound.Add: split %d of %d → hangar station %d", addr, moveQty, addItemID, *stationID)
@@ -893,7 +893,7 @@ func boundAdd(cc *callCtx) error {
 					newER, _ := evedb.GetEntityRow(ctx, sqldb, newItemID)
 					if newER != nil {
 						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-							evedb.BuildEntityRow(newER), marshal.PyDict{},
+							evedb.BuildEntityRow(newER), newItemChange(),
 						}})
 					}
 					if oldER.OwnerID != charID {
@@ -986,7 +986,7 @@ func boundAdd(cc *callCtx) error {
 					_, _ = sqldb.ExecContext(ctx, `UPDATE entity SET flag=87 WHERE itemID=?`, newItemID)
 					if newER, _ := evedb.GetEntityRow(ctx, sqldb, newItemID); newER != nil {
 						_ = server.SendNotification(c, accountID, "OnItemChange", "charid", marshal.PyTuple{Items: []marshal.PyRep{
-							evedb.BuildEntityRow(newER), marshal.PyDict{},
+							evedb.BuildEntityRow(newER), newItemChange(),
 						}})
 					}
 					log.Printf("[%s] bound.Add: split %d of %d → drone bay (ship %d)", addr, moveQty, addItemID, shipID)

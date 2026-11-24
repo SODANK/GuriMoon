@@ -581,6 +581,16 @@ func itemMoveChange(newER *evedb.EntityRow, oldOwnerID, oldLocID, oldFlag int64)
 	return d
 }
 
+// newItemChange is the OnItemChange change dict for a row the client has never seen, such as the
+// piece a split creates: ixLocationID with old value 0. An empty dict reads as an update to a
+// known item, so the client drops an unknown one and the new stack shows only after the window
+// re-lists. 0, not None: None reads as a removal.
+func newItemChange() marshal.PyDict {
+	return marshal.PyDict{Items: []marshal.DictEntry{
+		{Key: marshal.PyInt{Value: 3}, Value: marshal.PyInt{Value: 0}}, // ixLocationID
+	}}
+}
+
 // mergeLandedStack auto-stacks an item that just landed in a hangar, cargo hold or drone bay
 // onto the stack of the same type already there, and tells the client. Only stackable landing
 // flags are passed in; module slots keep their own charge rows.
