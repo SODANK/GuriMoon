@@ -376,11 +376,14 @@ func reprocessOneItem(ctx context.Context, c *evenet.Conn, addr string, accountI
 		}
 	}
 
+	// A corporation's ore refines into the same division of its office, still the
+	// corporation's; the character's own into its station hangar.
+	outOwner, outLoc, outFlag := evedb.ReprocessOutputSlot(item, charID, stationID)
 	for _, l := range lines {
 		if l.playerAmount <= 0 {
 			continue
 		}
-		existingID, existingQty, err := evedb.FindHangarItemByType(ctx, tx, l.typeID, charID, stationID)
+		existingID, existingQty, err := evedb.FindStackAt(ctx, tx, l.typeID, outOwner, outLoc, outFlag)
 		if err != nil {
 			log.Printf("[%s] reprocessingSvc.Reprocess find stack typeID=%d: %v", addr, l.typeID, err)
 			return
@@ -392,7 +395,7 @@ func reprocessOneItem(ctx context.Context, c *evenet.Conn, addr string, accountI
 			}
 			mergedStacks = append(mergedStacks, qtyChange{itemID: existingID, oldQty: existingQty})
 		} else {
-			newID, err := evedb.CreateItem(ctx, tx, l.typeID, charID, stationID, int(l.playerAmount))
+			newID, err := evedb.CreateStackAt(ctx, tx, l.typeID, outOwner, outLoc, outFlag, l.playerAmount)
 			if err != nil {
 				log.Printf("[%s] reprocessingSvc.Reprocess create typeID=%d: %v", addr, l.typeID, err)
 				return

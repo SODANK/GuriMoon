@@ -41,6 +41,36 @@ func CorpHangarQueryRole(flag int64) uint64 {
 	return 0
 }
 
+// CorpHangarTakeRole is the role that lets a member take from a division, 0 for a flag
+// that is not a corporation hangar division.
+func CorpHangarTakeRole(flag int64) uint64 {
+	for _, d := range corpHangarRoles {
+		if d.Flag == flag {
+			return d.TakeRole
+		}
+	}
+	return 0
+}
+
+// CorpHangarTakeRoleAllowed is the pure rule for using up a division's stock in place
+// (reprocessing it): the CEO, a Director, or take on that division.
+func CorpHangarTakeRoleAllowed(roles uint64, isCEO bool, flag int64) bool {
+	t := CorpHangarTakeRole(flag)
+	if t == 0 {
+		return false
+	}
+	return isCEO || roles&corp.RoleDirector != 0 || roles&t != 0
+}
+
+// CorpHangarTakeAllowed reads the member's roles at the station (location roles count a Base
+// role only at the Base) and applies CorpHangarTakeRoleAllowed.
+func CorpHangarTakeAllowed(ctx context.Context, db *sql.DB, corpID, charID, stationID, flag int64) bool {
+	var ceoID int64
+	_ = db.QueryRowContext(ctx,
+		`SELECT COALESCE(ceoID, 0) FROM corporation WHERE corporationID = ?`, corpID).Scan(&ceoID)
+	return CorpHangarTakeRoleAllowed(MemberRolesAt(ctx, db, charID, corpID, stationID), ceoID == charID, flag)
+}
+
 // CorpJobRoleAllowed is the pure role rule: may a member holding roles use a print
 // (or materials) in division flag for a corporation job?
 func CorpJobRoleAllowed(roles uint64, isCEO bool, flag int64) bool {

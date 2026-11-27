@@ -83,16 +83,27 @@ type HangarItemInfo struct {
 	Singleton  int64
 	GroupID    int64
 	CategoryID int64
+	// Flag is the item's entity flag: 4 or 5 for the character's own hangar or cargo, the
+	// division flag (4, 116-121) for a stack in its corporation's office.
+	Flag int64
+}
+
+// CorpOwned reports whether the item is the corporation's, refined in place: the output then
+// stays corporation property in the same division (ReprocessOutputSlot).
+func (hi *HangarItemInfo) CorpOwned(charID int64) bool {
+	return hi != nil && hi.OwnerID != charID
 }
 
 // GetHangarItem returns an item the character can reprocess at the given station: in the
-// station hangar (flag=4) or in the cargo of one of their ships docked there (flag=5; the
-// client calls Reprocess while the ore is still in cargo). Reprocessing is local.
+// station hangar (flag=4), in the cargo of one of their ships docked there (flag=5; the
+// client calls Reprocess while the ore is still in cargo), or in a division of its
+// corporation's office there when it may take from that division (corpHangarItem).
+// Reprocessing is local.
 func GetHangarItem(ctx context.Context, db *sql.DB, itemID, charID, stationID int64) (*HangarItemInfo, error) {
 	var hi HangarItemInfo
 	err := db.QueryRowContext(ctx, `
 		SELECT e.itemID, e.typeID, e.ownerID, e.locationID, e.quantity, e.singleton,
-		       COALESCE(t.groupID, 0), COALESCE(g.categoryID, 0)
+		       COALESCE(t.groupID, 0), COALESCE(g.categoryID, 0), e.flag
 		FROM entity e
 		JOIN invTypes t ON t.typeID = e.typeID
 		LEFT JOIN invGroups g ON g.groupID = t.groupID
@@ -103,14 +114,78 @@ func GetHangarItem(ctx context.Context, db *sql.DB, itemID, charID, stationID in
 		             WHERE s.itemID = e.locationID AND s.ownerID = e.ownerID
 		               AND s.locationID = ?)) )`,
 		itemID, charID, stationID, stationID).Scan(
-		&hi.ItemID, &hi.TypeID, &hi.OwnerID, &hi.LocationID, &hi.Quantity, &hi.Singleton, &hi.GroupID, &hi.CategoryID)
+		&hi.ItemID, &hi.TypeID, &hi.OwnerID, &hi.LocationID, &hi.Quantity, &hi.Singleton, &hi.GroupID, &hi.CategoryID, &hi.Flag)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+			return corpHangarItem(ctx, db, itemID, charID, stationID)
 		}
 		return nil, fmt.Errorf("GetHangarItem: %w", err)
 	}
 	return &hi, nil
+}
+
+// corpHangarItem is GetHangarItem for a stack in the character's corporation's office at the
+// station (a rented office, or the station itself for an owner): it answers the item only when
+// the member may take from that division there (CorpHangarTakeAllowed), as moving it out would
+// need. nil, nil for anything else, which the client reads as "contains no materials".
+func corpHangarItem(ctx context.Context, db *sql.DB, itemID, charID, stationID int64) (*HangarItemInfo, error) {
+	var corpID int64
+	if err := db.QueryRowContext(ctx,
+		`SELECT COALESCE(corporationID, 0) FROM character_ WHERE characterID = ?`, charID,
+	).Scan(&corpID); err != nil || corpID == 0 {
+		return nil, nil
+	}
+	officeID, _, err := GetCorpOfficeAt(ctx, db, corpID, stationID)
+	if err != nil || officeID == 0 {
+		return nil, err
+	}
+	var hi HangarItemInfo
+	err = db.QueryRowContext(ctx, `
+		SELECT e.itemID, e.typeID, e.ownerID, e.locationID, e.quantity, e.singleton,
+		       COALESCE(t.groupID, 0), COALESCE(g.categoryID, 0), e.flag
+		FROM entity e
+		JOIN invTypes t ON t.typeID = e.typeID
+		LEFT JOIN invGroups g ON g.groupID = t.groupID
+		WHERE e.itemID = ? AND e.ownerID = ? AND e.locationID = ?
+		  AND (e.flag = ? OR e.flag BETWEEN ? AND ?)`,
+		itemID, corpID, officeID, FlagCorpHangarDiv1, FlagCorpSAGFirst, FlagCorpSAGLast).Scan(
+		&hi.ItemID, &hi.TypeID, &hi.OwnerID, &hi.LocationID, &hi.Quantity, &hi.Singleton, &hi.GroupID, &hi.CategoryID, &hi.Flag)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("GetHangarItem corp: %w", err)
+	}
+	if !CorpHangarTakeAllowed(ctx, db, corpID, charID, stationID, hi.Flag) {
+		return nil, nil
+	}
+	return &hi, nil
+}
+
+// ReprocessOutputSlot is where a reprocessed item's minerals land: owner, location and flag.
+// The character's own ore (hangar or cargo) refines into its station hangar; a corporation's
+// refines into the same division of the same office, still the corporation's.
+func ReprocessOutputSlot(hi *HangarItemInfo, charID, stationID int64) (ownerID, locationID, flag int64) {
+	if hi.CorpOwned(charID) {
+		return hi.OwnerID, hi.LocationID, hi.Flag
+	}
+	return charID, stationID, FlagCorpHangarDiv1
+}
+
+// CreateStackAt creates a packaged stack of typeID at an owner, location and flag (CreateItem
+// writes flag 4 only).
+func CreateStackAt(ctx context.Context, db DBTX, typeID, ownerID, locationID, flag, quantity int64) (int64, error) {
+	newID, err := CreateItem(ctx, db, typeID, ownerID, locationID, int(quantity))
+	if err != nil {
+		return 0, err
+	}
+	if flag != FlagCorpHangarDiv1 {
+		if _, err := db.ExecContext(ctx,
+			`UPDATE entity SET flag = ? WHERE itemID = ?`, flag, newID); err != nil {
+			return 0, fmt.Errorf("CreateStackAt flag: %w", err)
+		}
+	}
+	return newID, nil
 }
 
 // ReduceEntityQuantity decreases entity quantity. Deletes if it reaches 0.
